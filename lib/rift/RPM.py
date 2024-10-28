@@ -46,6 +46,7 @@ import rpm
 
 from rift import RiftError
 from rift.Annex import Annex, is_binary
+import rift.utils
 
 RPMLINT_CONFIG_V1 = 'rpmlint'
 RPMLINT_CONFIG_V2 = 'rpmlint.toml'
@@ -296,7 +297,9 @@ class Spec():
         """
         Update epoch:version-release
         """
-        self.evr = f"{self.epoch}{self.version}-{self.release.rstrip(self.dist)}"
+        self.evr = "{}{}-{}".format(self.epoch,
+                                    self.version,
+                                    rift.utils.removesuffix(self.release, self.dist))
 
     def _inc_release(self, release):
         dist = self.dist

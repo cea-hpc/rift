@@ -75,3 +75,14 @@ def setup_dl_opener(proxy, no_proxy, fake_user_agent=True):
     if fake_user_agent:
         opener.addheaders = [('User-agent', 'Mozilla/5.0')]
     urllib.request.install_opener(opener)
+
+def removesuffix(input_string, suffix):
+    """
+    The removesuffix method was introduced in python 3.9,
+    to preserve compatibility with older version, this is
+    a reimplementation
+    """
+    if suffix and input_string.endswith(suffix):
+        return input_string[:-len(suffix)]
+    return input_string
+
