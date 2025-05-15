@@ -14,7 +14,7 @@ from TestUtils import (
     RiftProjectTestCase,
 )
 from rift import RiftError
-from rift.RPM import Spec, Variable, RPMLINT_CONFIG, RPM
+from rift.RPM import Spec, Variable, RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2, RPM, rpmlint_v2
 
 class SpecTest(RiftTestCase):
     """
@@ -77,21 +77,39 @@ class SpecTest(RiftTestCase):
         self.assertIsNone(Spec(self.spec).check())
 
 
-    def test_specfile_check_with_rpmlint(self):
-        """ Test specfile check function with a custom rpmlint file"""
+    def test_specfile_check_with_rpmlint_v1(self):
+        """ Test specfile check function with a custom rpmlint v1 file"""
         # Make an errorneous specfile with hardcoded /lib
+        if rpmlint_v2():
+            self.skipTest("This test requires rpmlint v1")
         self.files = "/lib/test"
         self.update_spec()
         with self.assertRaisesRegex(RiftError, 'rpmlint reported errors'):
             Spec(self.spec).check()
 
-        # Create rpmlintfile to ignore hardcoded library path
-        rpmlintfile = os.sep.join([self.directory, RPMLINT_CONFIG])
+        # Create rpmlint config to ignore hardcoded library path
+        rpmlintfile = os.sep.join([self.directory, RPMLINT_CONFIG_V1])
         with open(rpmlintfile, "w") as rpmlint:
             rpmlint.write('addFilter("E: hardcoded-library-path")')
         self.assertIsNone(Spec(self.spec).check())
         os.unlink(rpmlintfile)
 
+    def test_specfile_check_with_rpmlint_v2(self):
+        """ Test specfile check function with a custom rpmlint v2 file"""
+        if not rpmlint_v2():
+            self.skipTest("This test requires rpmlint v2")
+        self.buildsteps = "$RPM_BUILD_ROOT"
+        self.update_spec()
+
+        with self.assertRaisesRegex(RiftError, 'rpmlint reported errors'):
+            Spec(self.spec).check()
+
+        # Create rpmlint config file to ignore rpm-buildroot-usage
+        rpmlintfile = os.sep.join([self.directory, RPMLINT_CONFIG_V2])
+        with open(rpmlintfile, "w") as rpmlint:
+            rpmlint.write('Filters = ["rpm-buildroot-usage"]')
+        self.assertIsNone(Spec(self.spec).check())
+        os.unlink(rpmlintfile)
 
     def test_bump_release(self):
         """ Test bump_release """
@@ -204,15 +222,15 @@ class RPMTest(RiftProjectTestCase):
         """RPM initializer works with bin/src RPM with/without conf."""
         # test load bin RPM without config
         rpm = RPM(self.bin_rpm)
-        self.assertEquals(rpm.name, 'pkg')
-        self.assertEquals(rpm.arch, 'noarch')
-        self.assertEquals(rpm.is_source, False)
+        self.assertEqual(rpm.name, 'pkg')
+        self.assertEqual(rpm.arch, 'noarch')
+        self.assertEqual(rpm.is_source, False)
 
         # test load src RPM with config
         rpm = RPM(self.src_rpm, self.config)
-        self.assertEquals(rpm.name, 'pkg')
-        self.assertEquals(rpm.arch, 'noarch')
-        self.assertEquals(rpm.is_source, True)
+        self.assertEqual(rpm.name, 'pkg')
+        self.assertEqual(rpm.arch, 'noarch')
+        self.assertEqual(rpm.is_source, True)
 
     def test_extract_srpm(self):
         """RPM.extract_srpm() extracts files from source RPM."""

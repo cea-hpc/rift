@@ -112,20 +112,20 @@ class VMTest(RiftTestCase):
         # 2 successive calls to id property with same object must return the
         # same value.
         vm1 = VM(self.config, 'x86_64')
-        self.assertEquals(vm1.vmid, vm1.vmid)
+        self.assertEqual(vm1.vmid, vm1.vmid)
         vm2 = VM(self.config, 'aarch64')
-        self.assertEquals(vm2.vmid, vm2.vmid)
+        self.assertEqual(vm2.vmid, vm2.vmid)
         # Verify vm1 and vm2 ID are different due because of their different
         # architecture.
-        self.assertNotEquals(vm1.vmid, vm2.vmid)
+        self.assertNotEqual(vm1.vmid, vm2.vmid)
         # Get another vm object with the same architecture (and user/version)
         # than vm1 and check it has the same ID.
         vm3 = VM(self.config, 'x86_64')
-        self.assertEquals(vm1.vmid, vm3.vmid)
+        self.assertEqual(vm1.vmid, vm3.vmid)
         # Change version for vm3 and check ID is now different of vm1.
         self.config.set('version', '2.0')
         vm3 = VM(self.config, 'x86_64')
-        self.assertNotEquals(vm1.vmid, vm3.vmid)
+        self.assertNotEqual(vm1.vmid, vm3.vmid)
 
     def test_default_port(self):
         """Check VM default port uniqueness and range conformity"""
@@ -137,13 +137,13 @@ class VMTest(RiftTestCase):
         port_range = {'min': 2000,  'max': 3000}
         # Verify vm1 and vm2 default are different because of their different
         # architecture.
-        self.assertNotEquals(
+        self.assertNotEqual(
             vm1.default_port(port_range),
             vm2.default_port(port_range)
         )
         # Verify vm1 and vm3 have the same default port because they share the
         # same combination of user/arch/version.
-        self.assertEquals(
+        self.assertEqual(
             vm1.default_port(port_range),
             vm3.default_port(port_range)
         )
@@ -218,11 +218,10 @@ class VMTest(RiftTestCase):
         """
         Check drive command line generation for virtiofs
         """
-        vm = VM(self.config, None)
+        vm = VM(self.config, platform.machine())
         # Test virtiofs configuration without any repos
         vm.shared_fs_type = 'virtiofs'
         vm._project_dir = '/somewhere/else'
-        vm.arch = platform.processor()
         args, helper_args = vm._make_drive_cmd()
         virtiofs_same_arch = ['-object',
                               f'memory-backend-file,id=mem,size={str(vm.memory)}M,'
@@ -287,8 +286,7 @@ class VMTest(RiftTestCase):
         """
         Check qemu args generator
         """
-        vm = VM(self.config, None)
-        vm.arch = platform.processor()
+        vm = VM(self.config, platform.machine())
         vm.consolesock = '/console'
         image_path = '/my_image'
         # Test without seed iso path
@@ -399,14 +397,14 @@ class VMBuildTest(RiftProjectTestCase):
         self._check_qemuimg()
         vm = VM(self.config, 'x86_64')
         vm.build(self.valid_url, False, False, vm._image)
-        self.assertEquals(os.path.exists(vm._image), True)
+        self.assertEqual(os.path.exists(vm._image), True)
 
     def test_build_ok_copymode(self):
         """Test VM build OK with copymode enabled"""
         vm = VM(self.config, 'x86_64')
         vm.copymode = 1
         vm.build(self.valid_url, False, False, vm._image)
-        self.assertEquals(os.path.exists(vm._image), True)
+        self.assertEqual(os.path.exists(vm._image), True)
 
     @patch('rift.VM.input')
     def test_build_overwrite(self, mock_input):
@@ -417,7 +415,7 @@ class VMBuildTest(RiftProjectTestCase):
         open(vm._image, 'w').close()
         mock_input.side_effect = 'yes'
         vm.build(self.valid_url, False, False, vm._image)
-        self.assertEquals(os.path.exists(vm._image), True)
+        self.assertEqual(os.path.exists(vm._image), True)
         mock_input.assert_called_once()
 
     def test_build_with_build_script(self):
@@ -427,7 +425,7 @@ class VMBuildTest(RiftProjectTestCase):
         with open(vm.build_post_script, 'w') as fh:
             fh.write("#!/bin/bash\n/bin/true\n")
         vm.build(self.valid_url, False, False, vm._image)
-        self.assertEquals(os.path.exists(vm._image), True)
+        self.assertEqual(os.path.exists(vm._image), True)
 
     def test_build_with_build_script_error(self):
         """Test VM build with build script error"""

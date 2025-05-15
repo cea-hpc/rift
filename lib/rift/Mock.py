@@ -78,7 +78,7 @@ class Mock():
             repo_ctx = {
                 'name': repo.name or 'repo%s' % idx,
                 'priority': prio,
-                'url': repo.url,
+                'url': repo.generic_url(self._arch),
                 }
             if repo.module_hotfixes:
                 repo_ctx['module_hotfixes'] = repo.module_hotfixes

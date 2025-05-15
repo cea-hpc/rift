@@ -42,7 +42,7 @@ class MockTest(RiftProjectTestCase):
         repos_ctx = context['repos'][0]
         self.assertEqual(repos_ctx['name'], 'tmp')
         self.assertEqual(repos_ctx['priority'], 999)
-        self.assertEqual(repos_ctx['url'], 'file:///tmp/{}'.format(arch))
+        self.assertEqual(repos_ctx['url'], 'file:///tmp/$basearch')
         self.assertEqual(repos_ctx['module_hotfixes'], True)
         self.assertEqual(repos_ctx['excludepkgs'], 'somepkg')
         self.assertEqual(repos_ctx['proxy'], 'myproxy')

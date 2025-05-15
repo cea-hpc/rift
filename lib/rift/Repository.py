@@ -77,6 +77,13 @@ class ConsumableRepository():
             return self.url[len(self.FILE_SCHEME):]
         return self.url
 
+    def generic_url(self, arch):
+        """
+        Return the URL with all occurrences of the given architecture replaced
+        by generic $basearch placeholder.
+        """
+        return self.url.replace(arch, "$basearch")
+
     def exists(self):
         """
         Return true if path the local (aka. file) consumable repository actually

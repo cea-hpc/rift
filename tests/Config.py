@@ -402,10 +402,10 @@ class ConfigTest(RiftTestCase):
         self.assertTrue('os' in repos)
         self.assertTrue('update' in repos)
         self.assertTrue('extra' in repos)
-        self.assertEquals(repos['os']['url'], 'https://os/url/file2')
+        self.assertEqual(repos['os']['url'], 'https://os/url/file2')
         self.assertTrue('module_hotfixes' in repos['os'])
-        self.assertEquals(repos['update']['url'], 'https://update/url/file2')
-        self.assertEquals(repos['extra']['url'], 'https://extra/url/file1')
+        self.assertEqual(repos['update']['url'], 'https://update/url/file2')
+        self.assertEqual(repos['extra']['url'], 'https://extra/url/file1')
 
     def test_load_port_partial_port_range(self):
         """Load partial port range dict"""
@@ -1056,8 +1056,8 @@ class ConfigTestSyntax(RiftTestCase):
         param0 = config.get('param0')
         self.assertTrue('key1' in param0)
         self.assertTrue('key2' in param0)
-        self.assertEquals(param0['key1'], 'value2')
-        self.assertEquals(param0['key2'], 1)
+        self.assertEqual(param0['key1'], 'value2')
+        self.assertEqual(param0['key2'], 1)
 
     def test_load_record(self):
         """Load record without content"""
@@ -1242,9 +1242,9 @@ class ConfigTestSyntax(RiftTestCase):
         self.assertTrue('value1' in record0)
         self.assertTrue('value2' in record0)
         self.assertTrue('value3' in record0)
-        self.assertEquals(record0['value1'], 1)
-        self.assertEquals(record0['value2'], 20)
-        self.assertEquals(record0['value3'], 3)
+        self.assertEqual(record0['value1'], 1)
+        self.assertEqual(record0['value2'], 20)
+        self.assertEqual(record0['value3'], 3)
 
 
 class ProjectConfigTest(RiftTestCase):

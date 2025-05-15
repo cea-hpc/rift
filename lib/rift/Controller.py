@@ -52,7 +52,7 @@ from rift.Gerrit import Review
 from rift.Mock import Mock
 from rift.Package import Package, Test
 from rift.Repository import LocalRepository, ProjectArchRepositories
-from rift.RPM import RPM, Spec, RPMLINT_CONFIG
+from rift.RPM import RPM, Spec, RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2
 from rift.TempDir import TempDir
 from rift.TestResults import TestCase, TestResults
 from rift.TextTable import TextTable
@@ -1285,7 +1285,7 @@ def _patched_file_updated_package(patched_file, config, modules, staff):
         logging.info('Detected spec file')
 
     # rpmlint config file
-    elif names == [RPMLINT_CONFIG]:
+    elif names in [RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2]:
         logging.debug('Detecting rpmlint config file')
 
     # sources/

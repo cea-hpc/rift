@@ -998,15 +998,15 @@ class ControllerArgumentsTest(RiftTestCase):
 
         args = ['vm', '--arch', 'x86_64']
         opts = parser.parse_args(args)
-        self.assertEquals(opts.command, 'vm')
+        self.assertEqual(opts.command, 'vm')
 
         args = ['vm', 'connect']
         opts = parser.parse_args(args)
-        self.assertEquals(opts.vm_cmd, 'connect')
+        self.assertEqual(opts.vm_cmd, 'connect')
 
         args = ['vm', '--arch', 'x86_64', 'connect']
         opts = parser.parse_args(args)
-        self.assertEquals(opts.vm_cmd, 'connect')
+        self.assertEqual(opts.vm_cmd, 'connect')
 
         args = ['vm', 'build']
         # This must fail due to missing image URL
@@ -1015,8 +1015,8 @@ class ControllerArgumentsTest(RiftTestCase):
 
         args = ['vm', 'build', 'http://image']
         opts = parser.parse_args(args)
-        self.assertEquals(opts.vm_cmd, 'build')
-        self.assertEquals(opts.url, 'http://image')
+        self.assertEqual(opts.vm_cmd, 'build')
+        self.assertEqual(opts.url, 'http://image')
         self.assertFalse(opts.force)
 
         args = ['vm', 'build', 'http://image', '--force']
@@ -1031,11 +1031,11 @@ class ControllerArgumentsTest(RiftTestCase):
 
         args = ['vm', 'build', 'http://image', '-o', OUTPUT_IMG]
         opts = parser.parse_args(args)
-        self.assertEquals(opts.output, OUTPUT_IMG)
+        self.assertEqual(opts.output, OUTPUT_IMG)
 
         args = ['vm', 'build', 'http://image', '--output', OUTPUT_IMG]
         opts = parser.parse_args(args)
-        self.assertEquals(opts.output, OUTPUT_IMG)
+        self.assertEqual(opts.output, OUTPUT_IMG)
 
         # This must fail due to missing output filename
         args = ['vm', 'build', 'http://image', '--output']

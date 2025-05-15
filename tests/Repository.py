@@ -330,6 +330,13 @@ class ConsumableRepositoryTest(RiftTestCase):
         ):
             repo.exists()
 
+    def test_generic_url(self):
+        directory = '/some/where/there'
+        repo =  ConsumableRepository('http:/{}'.format(directory))
+        self.assertEqual(repo.generic_url('x86_64'), 'http:/{}'.format(directory))
+        repo =  ConsumableRepository('http://some/where/x86_64')
+        self.assertEqual(repo.generic_url('x86_64'), 'http://some/where/$basearch')
+
 class ProjectArchRepositoriesTest(RiftTestCase):
     """
     Tests class for ProjectArchRepositories

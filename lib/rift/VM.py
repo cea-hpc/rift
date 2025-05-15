@@ -41,7 +41,6 @@ import sys
 import time
 import datetime
 import shlex
-import pipes
 import platform
 import logging
 import tempfile
@@ -74,7 +73,7 @@ def is_virtiofs_qemu(virtiofsd=_DEFAULT_VIRTIOFSD):
     This function checks if virtiofsd is from qemu package or a standalone rust
     version
     """
-    output = ""
+    output = b''
     try:
         output = check_output(f"{virtiofsd} --version",
                               stderr=STDOUT,
@@ -568,7 +567,7 @@ class VM():
         cmd = ''
         for func, code in funcs.items():
             cmd += '%s() { %s;}; export -f %s; ' % (func, code, func)
-        cmd += pipes.quote(test.command)
+        cmd += shlex.quote(test.command)
 
         logging.debug("Running command outside VM: %s", cmd)
         popen = Popen(cmd, shell=True) #, stdout=PIPE, stderr=STDOUT)

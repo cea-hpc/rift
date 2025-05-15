@@ -1,0 +1,35 @@
+---
+name: Pylint
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch: {}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install python and pip
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install python3-pip
+
+    # Install latest version of Pylint
+    - name: Install pylint
+      run: |
+        pip install pylint
+
+    # Install rift dependencies to avoid E0401 errors.
+    - name: Install rift dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install python3-rpm python3-dnf python3-yaml python3-jinja2
+
+    - name: Analysing the code with pylint
+      run: |
+        pylint lib/rift

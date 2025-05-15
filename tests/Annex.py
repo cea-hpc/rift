@@ -205,7 +205,8 @@ class AnnexTest(RiftTestCase):
         for filename, size, insertion_time, names in self.annex.list():
             self.assertEqual(get_digest_from_path(self.source.name), filename)
             self.assertEqual(source_size, size)
-            self.assertEqual(source_insertion_time, insertion_time)
+            # As tests can take time to run, accept less or equal 1 second shift
+            self.assertAlmostEqual(source_insertion_time, insertion_time, delta=1)
             self.assertTrue(os.path.basename(self.source.name) in names.keys())
 
     def test_push(self):
