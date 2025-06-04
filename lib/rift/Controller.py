@@ -58,19 +58,8 @@ from rift.TestResults import TestCase, TestResults
 from rift.TextTable import TextTable
 from rift.VM import VM
 from rift.sync import RepoSyncFactory
+from rift.utils import message, banner
 
-
-def message(msg):
-    """
-    helper function to print a log message
-    """
-    print(f"> {msg}")
-
-def banner(title):
-    """
-    helper function to print a banner
-    """
-    print(f"** {title} **")
 
 def make_parser():
     """Create command line parser"""

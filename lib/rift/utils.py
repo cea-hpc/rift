@@ -38,6 +38,18 @@ import urllib
 
 from rift import RiftError
 
+def message(msg):
+    """
+    helper function to print a log message
+    """
+    print(f"> {msg}")
+
+def banner(title):
+    """
+    helper function to print a banner
+    """
+    print(f"** {title} **")
+
 def download_file(url, output):
     """
     Download file pointed by url and save it in output path. Convert
