@@ -232,8 +232,7 @@ class RiftProjectTestCase(RiftTestCase):
         ]:
             if os.path.exists(path):
                 os.unlink(path)
-        os.rmdir(self.packagesdir)
-        os.rmdir(self.projdir)
+        shutil.rmtree(self.projdir)
 
     def update_project_conf(self):
         """Update project YAML configuration file with new Config options."""

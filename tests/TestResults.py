@@ -5,7 +5,7 @@ import textwrap
 import xml.etree.ElementTree as ET
 from io import BytesIO
 
-from TestUtils import RiftTestCase
+from .TestUtils import RiftTestCase
 from rift.TestResults import TestResults, TestCase
 
 class TestResultsTest(RiftTestCase):

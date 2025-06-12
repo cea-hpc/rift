@@ -11,9 +11,10 @@ import textwrap
 
 from rift.Annex import *
 from rift.Config import Config, Staff, Modules
-from rift.Package import _SOURCES_DIR, _DOC_FILES, _META_FILE, _TESTS_DIR, Package
+from rift.package import ProjectPackages
+from rift.package.rpm import PackageRPM
 
-from TestUtils import make_temp_file, make_temp_filename, make_temp_dir, RiftTestCase
+from .TestUtils import make_temp_file, make_temp_filename, make_temp_dir, gen_rpm_spec, RiftTestCase
 
 _TEST_ANNEX_PATH = '/tmp/rift-test-annex'
 
@@ -27,7 +28,6 @@ class AnnexTest(RiftTestCase):
         # Create a minimal project configuration
         self.config = Config()
         self.config.project_dir = '/tmp/rift-working-repo'
-
         # Create the working repo
         self.working_repo = '/tmp/rift-working-repo'
         os.mkdir(self.working_repo)
@@ -70,11 +70,18 @@ class AnnexTest(RiftTestCase):
            reason: Missing package
            origin: Company
         """))
-
-        self.package = Package('foo-pkg', self.config, self.staff, self.modules)
-        self.package.load(infopath = self.package_infos.name)
-        self.package.check_info()
+        self.package = PackageRPM('foo-pkg', self.config, self.staff, self.modules)
+        self.package.load_info(infopath = self.package_infos.name)
         self.package.write()
+        with open(self.package.buildfile, "w") as fh:
+            fh.write(
+                gen_rpm_spec(
+                    name='foo-pkg',
+                    version="1.0",
+                    release="1",
+                    arch="x86_64",
+                )
+            )
 
     def tearDown(self):
         # Remove the Annex and the working repo created for the tests
@@ -262,7 +269,7 @@ class AnnexTest(RiftTestCase):
         self.annex.push(orphaned_file.name)
 
         # Backup the annex
-        annex_backup = self.annex.backup(Package.list(self.config, self.staff, self.modules))
+        annex_backup = self.annex.backup(ProjectPackages.list(self.config, self.staff, self.modules))
 
         # Get the files present in the annex backup
         with tarfile.open(annex_backup, 'r') as backup:

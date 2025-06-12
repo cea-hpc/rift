@@ -8,7 +8,7 @@ import urllib
 from unittest.mock import patch, Mock, PropertyMock
 
 import platform
-from TestUtils import (
+from .TestUtils import (
     RiftTestCase,
     RiftProjectTestCase,
     make_temp_dir,

@@ -40,7 +40,7 @@ import textwrap
 import logging
 import re
 
-from rift.Package import Package
+from rift.package import ProjectPackages
 from rift.RPM import Spec
 from rift import RiftError
 
@@ -52,7 +52,7 @@ class PackageDependencyNode:
     def __init__(self, package):
         self.package = package
         # parse spec file subpackages and build requires
-        spec = Spec(package.specfile)
+        spec = Spec(package.buildfile)
         self.subpackages = spec.provides
         # Parse buildrequires string in spec file to discard explicit versions
         # enforcement.
@@ -386,18 +386,11 @@ class PackagesDependencyGraph:
             # package with warning if unable to load.
             try:
                 package.load()
-            except FileNotFoundError as err:
+            except (RiftError, FileNotFoundError) as err:
                 logging.warning("Skipping package '%s' unable to load: %s",
                                 package.name, err)
                 continue
-            try:
-                self._insert(package)
-            except RiftError as err:
-                logging.warning(
-                    "Skipping package '%s' unable to insert in graph: %s",
-                    package.name, err
-                )
-                continue
+            self._insert(package)
         toc = time.perf_counter()
         logging.debug("Graph built in %0.4f seconds", toc - tic)
         logging.debug("Graph size: %d", len(self.nodes))
@@ -409,5 +402,5 @@ class PackagesDependencyGraph:
         if list is not provided.
         """
         graph = cls()
-        graph.build(Package.list(config, staff, modules))
+        graph.build(ProjectPackages.list(config, staff, modules))
         return graph
