@@ -56,7 +56,7 @@ _DOC_FILES = ['README', 'README.md', 'README.rst', 'README.txt']
 
 
 # Rift supported package formats
-RIFT_SUPPORTED_FORMATS = ('rpm',)
+RIFT_SUPPORTED_FORMATS = ('rpm', 'oci')
 
 
 class Package(ABC):

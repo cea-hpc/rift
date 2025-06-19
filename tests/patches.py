@@ -40,8 +40,8 @@ from rift.patches import get_packages_from_patch
 
 class PatchTest(RiftProjectTestCase):
 
-    def test_package_modified(self):
-        """ Test detect modified package in patch"""
+    def test_package_rpm_modified(self):
+        """ Test detect modified RPM package in patch"""
         self.make_pkg('pkg')
         patch = make_temp_file(
             textwrap.dedent("""
@@ -75,8 +75,100 @@ class PatchTest(RiftProjectTestCase):
             self.assertEqual(updated[0].name, 'pkg')
             self.assertEqual(updated[0].format, 'rpm')
 
-    def test_package_removed(self):
-        """ Test detect removed package in patch"""
+    def test_package_oci_modified(self):
+        """ Test detect modified OCI package in patch"""
+        self.make_pkg('pkg')
+        patch = make_temp_file(
+            textwrap.dedent("""
+                diff --git a/packages/pkg/Containerfile b/packages/pkg/Containerfile
+                index d9c407c7..b3c1dc24 100644
+                --- a/packages/pkg/Containerfile
+                +++ b/packages/pkg/Containerfile
+                @@ -2,4 +2,5 @@ FROM rust:latest as builder
+                 WORKDIR pkg
+                 COPY . .
+                 RUN cargo install --path .
+                +RUN echo add build step
+                 CMD ["pkg"]
+                diff --git a/packages/pkg/info.yaml b/packages/pkg/info.yaml
+                index 9322a291..8436b250 100644
+                --- a/packages/pkg/info.yaml
+                +++ b/packages/pkg/info.yaml
+                @@ -6,4 +6,4 @@ package:
+                     reason: Missing feature
+                     oci:
+                         version: 1.0
+                -        release: 1
+                +        release: 2
+                """))
+        with open(patch.name) as p:
+            (updated, removed) = get_packages_from_patch(
+                p, self.config, self.modules, self.staff
+            )
+            self.assertEqual(len(updated), 1)
+            self.assertEqual(len(removed), 0)
+            self.assertEqual(updated[0].name, 'pkg')
+            self.assertEqual(updated[0].format, 'oci')
+
+    def test_package_multiformats_modified(self):
+        """ Test detect modified multiformats package in patch"""
+        self.make_pkg('pkg')
+        patch = make_temp_file(
+            textwrap.dedent("""
+                diff --git a/packages/pkg/Containerfile b/packages/pkg/Containerfile
+                index d9c407c7..b3c1dc24 100644
+                --- a/packages/pkg/Containerfile
+                +++ b/packages/pkg/Containerfile
+                @@ -2,4 +2,5 @@ FROM rust:latest as builder
+                 WORKDIR pkg
+                 COPY . .
+                 RUN cargo install --path .
+                +RUN echo add build step
+                 CMD ["pkg"]
+                diff --git a/packages/pkg/info.yaml b/packages/pkg/info.yaml
+                index 9322a291..8436b250 100644
+                --- a/packages/pkg/info.yaml
+                +++ b/packages/pkg/info.yaml
+                @@ -6,4 +6,4 @@ package:
+                     reason: Missing feature
+                     oci:
+                         version: 1.0
+                -        release: 1
+                +        release: 2
+                diff --git a/packages/pkg/pkg.spec b/packages/pkg/pkg.spec
+                index d1a0d0e7..b3e36379 100644
+                --- a/packages/pkg/pkg.spec
+                +++ b/packages/pkg/pkg.spec
+                @@ -1,6 +1,6 @@
+                 Name:    pkg
+                 Version:        1.0
+                -Release:        1
+                +Release:        2
+                 Summary:        A package
+                 Group:          System Environment/Base
+                 License:        GPL
+                @@ -14,6 +14,7 @@ Provides:       pkg-provide
+                 A package
+                 %prep
+                 %build
+                +echo add build step
+                 # Nothing to build
+                 %install
+                 # Nothing to install
+                """))
+        with open(patch.name) as p:
+            (updated, removed) = get_packages_from_patch(
+                p, self.config, self.modules, self.staff
+            )
+            self.assertEqual(len(updated), 2)
+            self.assertEqual(len(removed), 0)
+            for package in updated:
+                self.assertEqual(package.name, 'pkg')
+            self.assertCountEqual(
+                [package.format for package in updated], ['rpm', 'oci'])
+
+    def test_package_rpm_removed(self):
+        """ Test detect removed RPM package in patch"""
         pkgname = 'pkg'
         pkgvers = 1.0
         pkgsrc = os.path.join('packages', pkgname, 'sources',
@@ -144,6 +236,144 @@ class PatchTest(RiftProjectTestCase):
             self.assertEqual(removed[0].name, 'pkg')
             self.assertEqual(removed[0].format, '_virtual')
 
+    def test_package_oci_removed(self):
+        """ Test detect removed OCI package in patch"""
+        pkgname = 'pkg'
+        pkgvers = 1.0
+        pkgsrc = os.path.join('packages', pkgname, 'sources',
+                              '{0}-{1}.tar.gz'.format(pkgname, pkgvers))
+        patch = make_temp_file(
+            textwrap.dedent("""
+                diff --git a/packages/pkg/Containerfile b/packages/pkg/Containerfile
+                deleted file mode 100644
+                index b3c1dc24..00000000
+                --- a/packages/pkg/Containerfile
+                +++ /dev/null
+                @@ -1,6 +0,0 @@
+                -FROM rust:latest as builder
+                -WORKDIR pkg
+                -COPY . .
+                -RUN cargo install --path .
+                -RUN echo add build step
+                -CMD ["pkg"]
+                diff --git a/packages/pkg/info.yaml b/packages/pkg/info.yaml
+                deleted file mode 100644
+                index 8436b250..00000000
+                --- a/packages/pkg/info.yaml
+                +++ /dev/null
+                @@ -1,9 +0,0 @@
+                -package:
+                -    maintainers:
+                -        - Myself
+                -    module: Great module
+                -    origin: Vendor
+                -    reason: Missing feature
+                -    oci:
+                -        version: 1.0
+                -        release: 1
+                diff --git a/{0} b/{0}
+                deleted file mode 100644
+                index 43bf48d..0000000
+                --- a/{0}
+                +++ /dev/null
+                @@ -1 +0,0 @@
+                -ACACACACACACACAC
+                \ No newline at end of file
+                """.format(pkgsrc)))
+
+        with open(patch.name) as p:
+            (updated, removed) = get_packages_from_patch(
+                p, self.config, self.modules, self.staff
+            )
+            self.assertEqual(len(updated), 0)
+            self.assertEqual(len(removed), 1)
+            self.assertEqual(removed[0].name, 'pkg')
+            self.assertEqual(removed[0].format, '_virtual')
+
+    def test_package_multiformats_removed(self):
+        """ Test detect removed multiformats package in patch"""
+        pkgname = 'pkg'
+        pkgvers = 1.0
+        pkgsrc = os.path.join('packages', pkgname, 'sources',
+                              '{0}-{1}.tar.gz'.format(pkgname, pkgvers))
+        patch = make_temp_file(
+            textwrap.dedent("""
+                diff --git a/packages/pkg/Containerfile b/packages/pkg/Containerfile
+                deleted file mode 100644
+                index b3c1dc24..00000000
+                --- a/packages/pkg/Containerfile
+                +++ /dev/null
+                @@ -1,6 +0,0 @@
+                -FROM rust:latest as builder
+                -WORKDIR pkg
+                -COPY . .
+                -RUN cargo install --path .
+                -RUN echo add build step
+                -CMD ["pkg"]
+                diff --git a/packages/pkg/info.yaml b/packages/pkg/info.yaml
+                deleted file mode 100644
+                index 8436b250..00000000
+                --- a/packages/pkg/info.yaml
+                +++ /dev/null
+                @@ -1,9 +0,0 @@
+                -package:
+                -    maintainers:
+                -        - Myself
+                -    module: Great module
+                -    origin: Vendor
+                -    reason: Missing feature
+                -    oci:
+                -        version: 1.0
+                -        release: 2
+                diff --git a/packages/pkg/pkg.spec b/packages/pkg/pkg.spec
+                deleted file mode 100644
+                index b3e36379..00000000
+                --- a/packages/pkg/pkg.spec
+                +++ /dev/null
+                @@ -1,24 +0,0 @@
+                -Name:    pkg
+                -Version:        1.0
+                -Release:        2
+                -Summary:        A package
+                -Group:          System Environment/Base
+                -License:        GPL
+                -URL:            http://nowhere.com/projects/%{{name}}/
+                -Source0:        %{{name}}-%{{version}}.tar.gz
+                -BuildArch:      noarch
+                -BuildRequires:  br-package
+                -Requires:       another-package
+                -Provides:       pkg-provide
+                -%description
+                -A package
+                -%prep
+                -%build
+                -# Nothing to build
+                -%install
+                -# Nothing to install
+                -%files
+                -# No files
+                -%changelog
+                -* Tue Feb 26 2019 Myself <buddy@somewhere.org> - 1.0-1
+                -- Update to 1.0 release
+                diff --git a/{0} b/{0}
+                deleted file mode 100644
+                index 43bf48d..0000000
+                --- a/{0}
+                +++ /dev/null
+                @@ -1 +0,0 @@
+                -ACACACACACACACAC
+                \ No newline at end of file
+                """.format(pkgsrc)))
+
+        with open(patch.name) as p:
+            (updated, removed) = get_packages_from_patch(
+                p, self.config, self.modules, self.staff
+            )
+            self.assertEqual(len(updated), 0)
+            self.assertEqual(len(removed), 1)
+            self.assertEqual(removed[0].name, 'pkg')
+            self.assertEqual(removed[0].format, '_virtual')
+
     def test_tests_directory(self):
         """ Test if package tests directory structure is fine """
         patch = make_temp_file(
@@ -166,10 +396,11 @@ class PatchTest(RiftProjectTestCase):
             (updated, removed) = get_packages_from_patch(
                 f, self.config, self.modules, self.staff
             )
-            self.assertEqual(len(updated), 1)
+            self.assertEqual(len(updated), 2)
             self.assertEqual(len(removed), 0)
-            self.assertEqual(updated[0].name, 'pkg')
-            self.assertEqual(updated[0].format, 'rpm')
+            for package in updated:
+                self.assertEqual(package.name, 'pkg')
+            self.assertCountEqual([package.format for package in updated], ['rpm', 'oci'])
 
     def test_invalid_file(self):
         """Test invalid project file is detected in patch"""
@@ -370,11 +601,11 @@ class PatchTest(RiftProjectTestCase):
                     f, self.config, self.modules, self.staff
                 )
 
-    def test_rename_package(self):
-        """ Test if renaming a package trigger a build """
+    def test_rename_rpm_package(self):
+        """ Test if renaming RPM package trigger a build """
         pkgname = 'pkgnew'
         pkgvers = 1.0
-        self.make_pkg(name=pkgname, version=pkgvers)
+        self.make_pkg(name=pkgname, version=pkgvers, formats=['rpm'])
         patch = make_temp_file(
             textwrap.dedent("""
                 diff --git a/packages/pkg/pkg.spec b/packages/pkgnew/pkgnew.spec
@@ -391,7 +622,7 @@ class PatchTest(RiftProjectTestCase):
                 rename to packages/pkgnew/sources/pkgnew-1.0.tar.gz
                 """))
         # For this patch, get_packages_from_patch() must return an updated
-        # package named pkgnew.
+        # RPM package named pkgnew.
         with open(patch.name, 'r') as p:
             (updated, removed) = get_packages_from_patch(
                 p, config=self.config, modules=self.modules, staff=self.staff
@@ -401,11 +632,78 @@ class PatchTest(RiftProjectTestCase):
         self.assertEqual(updated[0].name, 'pkgnew')
         self.assertEqual(updated[0].format, 'rpm')
 
-    def test_rename_and_update_package(self):
-        """ Test if renaming and updating a package trigger a build """
+    def test_rename_oci_package(self):
+        """ Test if renaming OCI package trigger a build """
+        pkgname = 'pkgnew'
+        pkgvers = 1.0
+        self.make_pkg(name=pkgname, version=pkgvers, formats=['oci'])
+        patch = make_temp_file(
+            textwrap.dedent("""
+                diff --git a/packages/pkg/Containerfile b/packages/pkgnew/Containerfile
+                similarity index 100%
+                rename from packages/pkg/Containerfile
+                rename to packages/pkgnew/Containerfile
+                diff --git a/packages/pkg/info.yaml b/packages/pkgnew/info.yaml
+                similarity index 100%
+                rename from packages/pkg/info.yaml
+                rename to packages/pkgnew/info.yaml
+                diff --git a/packages/pkg/sources/pkg-1.0.tar.gz b/packages/pkgnew/sources/pkg-1.0.tar.gz
+                similarity index 100%
+                rename from packages/pkg/sources/pkg-1.0.tar.gz
+                rename to packages/pkgnew/sources/pkg-1.0.tar.gz
+                """))
+        # For this patch, get_packages_from_patch() must return an updated
+        # OCI package named pkgnew.
+        with open(patch.name, 'r') as p:
+            (updated, removed) = get_packages_from_patch(
+                p, config=self.config, modules=self.modules, staff=self.staff
+            )
+        self.assertEqual(len(updated), 1)
+        self.assertEqual(len(removed), 0)
+        self.assertEqual(updated[0].name, 'pkgnew')
+        self.assertEqual(updated[0].format, 'oci')
+
+    def test_rename_multiformats_package(self):
+        """ Test if renaming multiformats package trigger a build """
         pkgname = 'pkgnew'
         pkgvers = 1.0
         self.make_pkg(name=pkgname, version=pkgvers)
+        patch = make_temp_file(
+            textwrap.dedent("""
+                diff --git a/packages/pkg/Containerfile b/packages/pkgnew/Containerfile
+                similarity index 100%
+                rename from packages/pkg/Containerfile
+                rename to packages/pkgnew/Containerfile
+                diff --git a/packages/pkg/info.yaml b/packages/pkgnew/info.yaml
+                similarity index 100%
+                rename from packages/pkg/info.yaml
+                rename to packages/pkgnew/info.yaml
+                diff --git a/packages/pkg/pkg.spec b/packages/pkgnew/pkgnew.spec
+                similarity index 100%
+                rename from packages/pkg/pkg.spec
+                rename to packages/pkgnew/pkgnew.spec
+                diff --git a/packages/pkg/sources/pkg-1.0.tar.gz b/packages/pkgnew/sources/pkg-1.0.tar.gz
+                similarity index 100%
+                rename from packages/pkg/sources/pkg-1.0.tar.gz
+                rename to packages/pkgnew/sources/pkg-1.0.tar.gz
+                """))
+        # For this patch, get_packages_from_patch() must return updated RPM and
+        # OCI packages named pkgnew.
+        with open(patch.name, 'r') as p:
+            (updated, removed) = get_packages_from_patch(
+                p, config=self.config, modules=self.modules, staff=self.staff
+            )
+        self.assertEqual(len(updated), 2)
+        self.assertEqual(len(removed), 0)
+        for package in updated:
+            self.assertEqual(package.name, 'pkgnew')
+        self.assertCountEqual([package.format for package in updated], ['rpm', 'oci'])
+
+    def test_rename_and_update_rpm_package(self):
+        """ Test if renaming and updating RPM package trigger a build """
+        pkgname = 'pkgnew'
+        pkgvers = 1.0
+        self.make_pkg(name=pkgname, version=pkgvers, formats=['rpm'])
         patch = make_temp_file(
             textwrap.dedent("""
                 commit f8c1a88ea96adfccddab0bf43c0a90f05ab26dc5 (HEAD -> playground)
@@ -449,3 +747,100 @@ class PatchTest(RiftProjectTestCase):
         self.assertEqual(len(removed), 0)
         self.assertEqual(updated[0].name, 'pkgnew')
         self.assertEqual(updated[0].format, 'rpm')
+
+    def test_rename_and_update_oci_package(self):
+        """ Test if renaming and updating OCI package trigger a build """
+        pkgname = 'pkgnew'
+        pkgvers = 1.0
+        self.make_pkg(name=pkgname, version=pkgvers, formats=['oci'])
+        patch = make_temp_file(
+            textwrap.dedent("""
+                diff --git a/packages/pkg/Containerfile b/packages/pkgnew/Containerfile
+                similarity index 78%
+                rename from packages/pkg/Containerfile
+                rename to packages/pkgnew/Containerfile
+                index d9c407c7..b3c1dc24 100644
+                --- a/packages/pkg/Containerfile
+                +++ b/packages/pkgnew/Containerfile
+                @@ -2,4 +2,5 @@ FROM rust:latest as builder
+                 WORKDIR pkg
+                 COPY . .
+                 RUN cargo install --path .
+                +RUN echo add build step
+                 CMD ["pkg"]
+                diff --git a/packages/pkg/info.yaml b/packages/pkgnew/info.yaml
+                similarity index 100%
+                rename from packages/pkg/info.yaml
+                rename to packages/pkgnew/info.yaml
+                diff --git a/packages/pkg/sources/pkg-1.0.tar.gz b/packages/pkgnew/sources/pkg-1.0.tar.gz
+                similarity index 100%
+                rename from packages/pkg/sources/pkg-1.0.tar.gz
+                rename to packages/pkgnew/sources/pkg-1.0.tar.gz
+                """))
+        # For this patch, get_packages_from_patch() must return an updated
+        # package named pkgnew.
+        with open(patch.name, 'r') as p:
+            (updated, removed) = get_packages_from_patch(
+                p, config=self.config, modules=self.modules, staff=self.staff
+            )
+        self.assertEqual(len(updated), 1)
+        self.assertEqual(len(removed), 0)
+        self.assertEqual(updated[0].name, 'pkgnew')
+        self.assertEqual(updated[0].format, 'oci')
+
+    def test_rename_and_update_multiformats_package(self):
+        """ Test if renaming and updating multiformats package trigger a build """
+        pkgname = 'pkgnew'
+        pkgvers = 1.0
+        self.make_pkg(name=pkgname, version=pkgvers, formats=['rpm', 'oci'])
+        patch = make_temp_file(
+            textwrap.dedent("""
+                diff --git a/packages/pkg/Containerfile b/packages/pkgnew/Containerfile
+                similarity index 78%
+                rename from packages/pkg/Containerfile
+                rename to packages/pkgnew/Containerfile
+                index d9c407c7..b3c1dc24 100644
+                --- a/packages/pkg/Containerfile
+                +++ b/packages/pkgnew/Containerfile
+                @@ -2,4 +2,5 @@ FROM rust:latest as builder
+                 WORKDIR pkg
+                 COPY . .
+                 RUN cargo install --path .
+                +RUN echo add build step
+                 CMD ["pkg"]
+                diff --git a/packages/pkg/info.yaml b/packages/pkgnew/info.yaml
+                similarity index 100%
+                rename from packages/pkg/info.yaml
+                rename to packages/pkgnew/info.yaml
+                diff --git a/packages/pkg/pkg.spec b/packages/pkgnew/pkgnew.spec
+                similarity index 96%
+                rename from packages/pkg/pkg.spec
+                rename to packages/pkgnew/pkgnew.spec
+                index 64f8a618..b3e36379 100644
+                --- a/packages/pkg/pkg.spec
+                +++ b/packages/pkgnew/pkgnew.spec
+                @@ -14,6 +14,7 @@ Provides:       pkg-provide
+                 A package
+                 %prep
+                 %build
+                +echo add build step
+                 # Nothing to build
+                 %install
+                 # Nothing to install
+                diff --git a/packages/pkg/sources/pkg-1.0.tar.gz b/packages/pkgnew/sources/pkg-1.0.tar.gz
+                similarity index 100%
+                rename from packages/pkg/sources/pkg-1.0.tar.gz
+                rename to packages/pkgnew/sources/pkg-1.0.tar.gz
+                """))
+        # For this patch, get_packages_from_patch() must return an updated
+        # package named pkgnew.
+        with open(patch.name, 'r') as p:
+            (updated, removed) = get_packages_from_patch(
+                p, config=self.config, modules=self.modules, staff=self.staff
+            )
+        self.assertEqual(len(updated), 2)
+        self.assertEqual(len(removed), 0)
+        for package in updated:
+            self.assertEqual(package.name, 'pkgnew')
+        self.assertCountEqual(
+            [package.format for package in updated], ['rpm', 'oci'])
