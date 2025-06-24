@@ -52,7 +52,7 @@ _DOC_FILES = ['README', 'README.md', 'README.rst', 'README.txt']
 
 
 # Rift supported package formats
-RIFT_SUPPORTED_FORMATS = ('rpm',)
+RIFT_SUPPORTED_FORMATS = ('_virtual', 'rpm',)
 
 
 class Package(ABC):
@@ -86,7 +86,9 @@ class Package(ABC):
         self.sourcesdir = os.path.join(self.dir, _SOURCES_DIR)
         self.testsdir = os.path.join(self.dir, _TESTS_DIR)
         self.metafile = os.path.join(self.dir, _META_FILE)
-        self.buildfile = os.path.join(self.dir, buildfile)
+        self.buildfile = None
+        if buildfile:
+            self.buildfile = os.path.join(self.dir, buildfile)
         self.docfiles = []
         for doc in _DOC_FILES:
             self.docfiles.append(os.path.join(self.dir, doc))

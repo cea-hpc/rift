@@ -34,6 +34,7 @@
 
 import os
 
+from rift.package._virtual import PackageVirtual
 from rift.package.rpm import PackageRPM
 
 class ProjectPackages:
@@ -54,8 +55,16 @@ class ProjectPackages:
                      if os.path.isdir(os.path.join(pkgdir, path))]
 
         for name in names:
-            yield PackageRPM(name, config, staff, modules)
+            yield ProjectPackages.get(name, config, staff, modules)
 
     @staticmethod
     def get(name, config, staff, modules):
+        """
+        Return PackageBase child object corresponding to the given package name.
+        If package directory does not exist, return PackageVirtual object, else
+        return PackageRPM object.
+        """
+        pkgdir = os.path.join(config.project_path(config.get('packages_dir')), name)
+        if not os.path.isdir(pkgdir):
+            return PackageVirtual(name, config, staff, modules)
         return PackageRPM(name, config, staff, modules)
