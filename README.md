@@ -1,5 +1,7 @@
 # Rift
 
+CECI EST UN TEST GERRITHUB
+
 Rift is a tool to manage RPM packages development effectively during their
 complete lifecycle. It provides commands to perform the following actions:
 
