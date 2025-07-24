@@ -1038,15 +1038,15 @@ def action_query(args, config):
                         key=attrgetter('name'))
 
     tbl = TextTable()
-    tbl.fmt = args.fmt or '%name %module %maintainers %version %release '\
-                            '%modulemanager'
+    tbl.fmt = args.fmt or '%name %module %maintainers %format %version '\
+                            '%release %modulemanager'
     tbl.show_header = args.headers
     tbl.color = True
 
-    supported_keys = set(('name', 'module', 'origin', 'reason', 'tests',
-                            'version', 'arch', 'release', 'changelogname',
-                            'changelogtime', 'maintainers', 'modulemanager',
-                            'buildrequires'))
+    supported_keys = set(('name', 'module', 'origin', 'reason', 'format',
+                            'tests', 'version', 'arch', 'release',
+                            'changelogname', 'changelogtime', 'maintainers',
+                            'modulemanager', 'buildrequires'))
     diff_keys = set(tbl.pattern_fields()) - supported_keys
     if diff_keys:
         raise RiftError(f"Unknown placeholder(s): {', '.join(diff_keys)} "
@@ -1070,6 +1070,7 @@ def action_query(args, config):
                     'module': pkg.module,
                     'origin': pkg.origin,
                     'reason': pkg.reason,
+                    'format': pkg.format,
                     'tests': str(len(list(pkg.tests()))),
                     'version': spec.version,
                     'arch': spec.arch,

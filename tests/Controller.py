@@ -190,7 +190,6 @@ class ControllerProjectActionQueryTest(RiftProjectTestCase):
     """
     Tests class for Controller action query
     """
-
     def test_action_query(self):
         """simple 'rift query' is ok """
         self.assertEqual(main(['query']), 0)
@@ -213,12 +212,12 @@ class ControllerProjectActionQueryTest(RiftProjectTestCase):
         self.make_pkg(name="pkg2", version='2.1', release='3')
         self.assertEqual(main(['query']), 0)
         self.assertIn(
-            "NAME MODULE       MAINTAINERS VERSION RELEASE MODULEMANAGER",
+            "NAME MODULE       MAINTAINERS FORMAT VERSION RELEASE MODULEMANAGER",
             mock_stdout.getvalue())
         self.assertIn(textwrap.dedent("""
-            ---- ------       ----------- ------- ------- -------------
-            pkg1 Great module Myself      1.0     1       buddy@somewhere.org
-            pkg2 Great module Myself      2.1     3       buddy@somewhere.org
+            ---- ------       ----------- ------ ------- ------- -------------
+            pkg1 Great module Myself      rpm    1.0     1       buddy@somewhere.org
+            pkg2 Great module Myself      rpm    2.1     3       buddy@somewhere.org
             """),
             mock_stdout.getvalue())
 
@@ -229,18 +228,18 @@ class ControllerProjectActionQueryTest(RiftProjectTestCase):
         self.assertEqual(
             main([
                 'query', '--format',
-                '%name %module %origin %reason %tests %version %arch %release '
+                '%name %module %origin %reason %format %tests %version %arch %release '
                 '%changelogname %changelogtime %maintainers %modulemanager '
                 '%buildrequires']), 0)
         self.assertIn(
-            "NAME MODULE       ORIGIN REASON          TESTS VERSION ARCH   "
-            "RELEASE CHANGELOGNAME                      CHANGELOGTIME "
+            "NAME MODULE       ORIGIN REASON          FORMAT TESTS VERSION "
+            "ARCH   RELEASE CHANGELOGNAME                      CHANGELOGTIME "
             "MAINTAINERS MODULEMANAGER       BUILDREQUIRES",
             mock_stdout.getvalue())
         self.assertIn(textwrap.dedent("""
-            ---- ------       ------ ------          ----- ------- ----   ------- -------------                      ------------- ----------- -------------       -------------
-            pkg1 Great module Vendor Missing feature 0     1.0     noarch 1       Myself <buddy@somewhere.org> 1.0-1 2019-02-26    Myself      buddy@somewhere.org br-package
-            pkg2 Great module Vendor Missing feature 0     2.1     noarch 3       Myself <buddy@somewhere.org> 2.1-3 2019-02-26    Myself      buddy@somewhere.org br-package
+            ---- ------       ------ ------          ------ ----- ------- ----   ------- -------------                      ------------- ----------- -------------       -------------
+            pkg1 Great module Vendor Missing feature rpm    0     1.0     noarch 1       Myself <buddy@somewhere.org> 1.0-1 2019-02-26    Myself      buddy@somewhere.org br-package
+            pkg2 Great module Vendor Missing feature rpm    0     2.1     noarch 3       Myself <buddy@somewhere.org> 2.1-3 2019-02-26    Myself      buddy@somewhere.org br-package
             """),
             mock_stdout.getvalue())
 
