@@ -33,13 +33,11 @@
 Controler.py:
     Core package to manage rift actions
 """
-import re
 import os
 import argparse
 import logging
 from operator import attrgetter
 import time
-import textwrap
 # Since pylint can not found rpm.error, disable this check
 from rpm import error as RpmError # pylint: disable=no-name-in-module
 from unidiff import parse_unidiff
@@ -931,34 +929,15 @@ def action_changelog(args, config):
     pkg = ProjectPackages.get(args.package, config, staff, modules)
     pkg.load()
 
-    # Check maintainer is present in staff of raise error
-    if args.maintainer not in staff:
-        raise RiftError(
-            f"Unknown maintainer {args.maintainer}, cannot be found in staff"
+    pkg = ProjectPackages.get(args.package, config, staff, modules)
+    pkg.load()
+    try:
+        pkg.add_changelog_entry(args.maintainer, args.comment, args.bump)
+    except NotImplementedError:
+        logging.info(
+            "Skipping package format %s which does not support changelog",
+            pkg.format
         )
-
-    # Compute author string
-    author = f"{args.maintainer} <{staff.get(args.maintainer)['email']}>"
-
-    # Format comment.
-    # Grab bullet, insert one if not found.
-    bullet = "-"
-    match = re.search(r'^([^\s\w])\s', args.comment, re.UNICODE)
-    if match:
-        bullet = match.group(1)
-    else:
-        args.comment = bullet + " " + args.comment
-
-    if args.comment.find("\n") == -1:
-        wrapopts = {"subsequent_indent": (len(bullet) + 1) * " ",
-                    "break_long_words": False,
-                    "break_on_hyphens": False}
-        args.comment = textwrap.fill(args.comment, 80, **wrapopts)
-
-    logging.info("Adding changelog record for '%s'", author)
-    Spec(pkg.buildfile,
-            config=config).add_changelog_entry(author, args.comment,
-                                            bump=getattr(args, 'bump', False))
 
     return 0
 

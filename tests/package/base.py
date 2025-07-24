@@ -104,6 +104,14 @@ class PackageTest(RiftProjectTestCase):
         self.assertEqual(actionable_pkg.config, self.config)
         self.assertEqual(actionable_pkg.arch, 'x86_64')
 
+    def test_add_changelog_entry(self):
+        """ Test Package add changelog entry (not implemented) """
+        pkg = PackageTestingConcrete(
+            'pkg', self.config, self.staff, self.modules, 'rpm'
+        )
+        with self.assertRaises(NotImplementedError):
+            pkg.add_changelog_entry("Myself", "Package modification", False)
+
 
 class ActionableArchPackageTest(RiftProjectTestCase):
 

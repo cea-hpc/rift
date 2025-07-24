@@ -147,6 +147,88 @@ class PackageRPMTest(RiftProjectTestCase):
             r'Unused source file\(s\): unused-1.0.tar.gz'):
             pkg.check()
 
+    def test_add_changelog_entry(self):
+        """ Test PackageRPM add changelog entry"""
+        pkgname = 'pkg'
+        pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
+        pkgfile = make_temp_file(textwrap.dedent("""
+            package:
+                maintainers:
+                - Myself
+                module: Great module
+                reason: Missing package
+                origin: Company
+            """))
+        spec_file = make_temp_file(
+            gen_rpm_spec(
+                name=pkgname,
+                version="1.0",
+                release="1",
+                arch="x86_64",
+                exclusive_arch="x86_64",
+            )
+        )
+        pkg.buildfile = spec_file.name
+        pkg.load(infopath = pkgfile.name)
+        pkg.add_changelog_entry("Myself", "Package modification", False)
+        pkg.spec.load()
+        self.assertEqual(pkg.spec.changelog_name, "Myself <buddy@somewhere.org> - 1.0-1")
+
+    def test_add_changelog_entry_bump(self):
+        """ Test PackageRPM add changelog entry with release bump"""
+        pkgname = 'pkg'
+        pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
+        pkgfile = make_temp_file(textwrap.dedent("""
+            package:
+                maintainers:
+                - Myself
+                module: Great module
+                reason: Missing package
+                origin: Company
+            """))
+        spec_file = make_temp_file(
+            gen_rpm_spec(
+                name=pkgname,
+                version="1.0",
+                release="1",
+                arch="x86_64",
+                exclusive_arch="x86_64",
+            )
+        )
+        pkg.buildfile = spec_file.name
+        pkg.load(infopath = pkgfile.name)
+        pkg.add_changelog_entry("Myself", "Package modification", True)
+        pkg.spec.load()
+        self.assertEqual(pkg.spec.changelog_name, "Myself <buddy@somewhere.org> - 1.0-2")
+
+    def test_add_changelog_entry_unknown_maintainer(self):
+        """ Test PackageRPM add changelog entry with unknown maintainer """
+        pkgname = 'pkg'
+        pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
+        pkgfile = make_temp_file(textwrap.dedent("""
+            package:
+                maintainers:
+                - Myself
+                module: Great module
+                reason: Missing package
+                origin: Company
+            """))
+        spec_file = make_temp_file(
+            gen_rpm_spec(
+                name=pkgname,
+                version="1.0",
+                release="1",
+                arch="x86_64",
+                exclusive_arch="x86_64",
+            )
+        )
+        pkg.buildfile = spec_file.name
+        pkg.load(infopath = pkgfile.name)
+        with self.assertRaisesRegex(
+            RiftError, "Unknown maintainer Unknown, cannot be found in staff"
+        ):
+            pkg.add_changelog_entry("Unknown", "Package modification", False)
+
     def test_supports_arch_w_exclusive_arch(self):
         """ Test PackageRPM supports_arch() method with ExclusiveArch"""
         pkgname = 'pkg'
