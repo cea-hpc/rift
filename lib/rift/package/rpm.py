@@ -82,10 +82,17 @@ class PackageRPM(Package):
             self.ignore_rpms = data.get('ignore_rpms', [])
 
     def load(self, infopath=None):
-        """Load package metadata, check its content and load RPM spec file."""
+        """Load package metadata, check its content and load RPM spec file with
+        its main attributes."""
         # load infos.yaml with parent class
         super().load(infopath)
         self.spec = Spec(self.buildfile, config=self._config)
+        self.version = self.spec.version
+        self.release = self.spec.release
+        self.arch = self.spec.arch
+        self.changelog_name = self.spec.changelog_name
+        self.changelog_time = self.spec.changelog_time
+        self.buildrequires = self.spec.buildrequires
 
     def check(self):
         # Check generic package metadata

@@ -93,6 +93,14 @@ class Package(ABC):
 
         self.sources = set()
 
+        # Optionally set in load() by concrete children classes.
+        self.version = None
+        self.release = None
+        self.arch = None
+        self.changelog_name = None
+        self.changelog_time = None
+        self.buildrequires = None
+
     def check(self):
         """Load package and check info."""
         message('Validate package info...')

@@ -1056,27 +1056,27 @@ def action_query(args, config):
         logging.debug('Loading package %s', pkg.name)
         try:
             pkg.load()
-            spec = Spec(config=config)
-            if args.spec:
-                spec.filepath = pkg.buildfile
-                spec.load()
         except RiftError as exp:
             logging.error("%s: %s", pkg.name, str(exp))
             continue
 
-        date = str(time.strftime("%Y-%m-%d", time.localtime(spec.changelog_time)))
+        # Represent changelog time if defined on package.
+        if pkg.changelog_time:
+            date = str(time.strftime("%Y-%m-%d", time.localtime(pkg.changelog_time)))
+        else:
+            date = None
         modulemanager = staff.get(modules.get(pkg.module).get('manager')[0])
         tbl.append({'name': pkg.name,
                     'module': pkg.module,
                     'origin': pkg.origin,
                     'reason': pkg.reason,
                     'tests': str(len(list(pkg.tests()))),
-                    'version': spec.version,
-                    'arch': spec.arch,
-                    'release': spec.release,
-                    'changelogname': spec.changelog_name,
+                    'version': pkg.version,
+                    'arch': pkg.arch,
+                    'release': pkg.release,
+                    'changelogname': pkg.changelog_name,
                     'changelogtime': date,
-                    'buildrequires': spec.buildrequires,
+                    'buildrequires': pkg.buildrequires,
                     'modulemanager': modulemanager['email'],
                     'maintainers': ', '.join(pkg.maintainers)})
     print(tbl)
