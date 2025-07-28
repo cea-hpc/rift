@@ -10,6 +10,8 @@ from rift.package.rpm import PackageRPM, ActionableArchPackageRPM
 from rift.run import RunResult
 from rift.TestResults import TestResults
 from rift.Config import _DEFAULT_VARIANT
+from rift.Gerrit import Review
+
 from ..TestUtils import RiftProjectTestCase, make_temp_file, gen_rpm_spec
 
 
@@ -299,6 +301,63 @@ class PackageRPMTest(RiftProjectTestCase):
         pkg.load(infopath = pkgfile.name)
         self.assertTrue(pkg.supports_arch('x86_64'))
         self.assertTrue(pkg.supports_arch('aarch64'))
+
+    def test_analyze(self):
+        """ Test PackageRPM analyze success """
+        pkgname = 'pkg'
+        pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
+        pkgfile = make_temp_file(textwrap.dedent("""
+            package:
+                maintainers:
+                - Myself
+                module: Great module
+                reason: Missing package
+                origin: Company
+            """))
+        spec_file = make_temp_file(
+            gen_rpm_spec(
+                name=pkgname,
+                version="1.0",
+                release="1",
+                arch="x86_64",
+            ),
+            suffix='.spec'
+        )
+        pkg.buildfile = spec_file.name
+        pkg.load(infopath = pkgfile.name)
+        review = Mock(spec=Review)
+        pkg.analyze(review, pkg.dir)
+        review.invalidate.assert_not_called()
+
+    def test_analyze_invalidate(self):
+        """ Test PackageRPM analyze failure """
+        pkgname = 'pkg'
+        pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
+        pkgfile = make_temp_file(textwrap.dedent("""
+            package:
+                maintainers:
+                - Myself
+                module: Great module
+                reason: Missing package
+                origin: Company
+            """))
+        # Use $$RPM_SOURCE_DIR and $RPM_BUILD_ROOT in build steps in order to
+        # produce error in both rpmlint v1 and v2.
+        spec_file = make_temp_file(
+            gen_rpm_spec(
+                name=pkgname,
+                version="1.0",
+                release="1",
+                arch="x86_64",
+                buildsteps="$RPM_SOURCE_DIR\n$RPM_BUILD_ROOT",
+            ),
+            suffix='.spec'
+        )
+        pkg.buildfile = spec_file.name
+        pkg.load(infopath = pkgfile.name)
+        review = Mock(spec=Review)
+        pkg.analyze(review, pkg.dir)
+        review.invalidate.assert_called_once()
 
     def test_for_arch(self):
         """ Test PackageRPM for_arch() returns ActionableArchPackageRPM object. """

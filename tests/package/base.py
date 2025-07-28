@@ -12,6 +12,7 @@ from rift.package._base import (
     ActionableArchPackage,
 )
 from ..TestUtils import RiftProjectTestCase
+from rift.Gerrit import Review
 
 
 class PackageTestingConcrete(Package):
@@ -111,6 +112,14 @@ class PackageTest(RiftProjectTestCase):
         )
         with self.assertRaises(NotImplementedError):
             pkg.add_changelog_entry("Myself", "Package modification", False)
+
+    def test_analyze(self):
+        """ Test Package analyze (not implemented) """
+        pkg = PackageTestingConcrete(
+            'pkg', self.config, self.staff, self.modules, 'rpm'
+        )
+        with self.assertRaises(NotImplementedError):
+            pkg.analyze(Review(), pkg.dir)
 
 
 class ActionableArchPackageTest(RiftProjectTestCase):

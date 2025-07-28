@@ -99,7 +99,9 @@ Source0:        https://nowhere.com/sources/%{name}-%{version}.tar.gz
 {% if exclusive_arch %}
 ExclusiveArch:  {{ exclusive_arch }}
 {% endif -%}
+{% if arch == 'noarch' -%}
 BuildArch:      {{ arch }}
+{% endif -%}
 {% for build_require in build_requires | default(['br-package']) %}
 BuildRequires:  {{ build_require }}
 {% endfor %}
@@ -399,9 +401,10 @@ def make_temp_filename():
     """Return a temporary name for a file."""
     return (tempfile.mkstemp(prefix='rift-test-'))[1]
 
-def make_temp_file(text, delete=True):
+def make_temp_file(text, delete=True, suffix=None):
     """ Create a temporary file with the provided text."""
-    tmp = tempfile.NamedTemporaryFile(prefix='rift-test-', delete=delete)
+    tmp = tempfile.NamedTemporaryFile(prefix='rift-test-', delete=delete,
+                                      suffix=suffix)
     tmp.write(text.encode())
     tmp.flush()
     return tmp

@@ -858,10 +858,15 @@ def action_gerrit(args, config, staff, modules):
             pkg = ProjectPackages.get(names[1], config, staff, modules)
             if (filepath == os.path.relpath(pkg.buildfile) and
                 not patchedfile.is_deleted_file):
-                Spec(pkg.buildfile, config=config).analyze(review, pkg.dir)
+                pkg.load()
+                try:
+                    pkg.analyze(review, pkg.dir)
+                except NotImplementedError:
+                    logging.info("Skipping package format %s which does not "
+                                 "support static analysis", pkg.format)
 
     # Push review
-    review.msg_header = 'rpmlint analysis'
+    review.msg_header = 'rift static analysis'
     review.push(config, args.change, args.patchset)
 
 def action_sync(args, config):

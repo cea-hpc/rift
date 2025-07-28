@@ -148,6 +148,10 @@ class PackageRPM(Package):
         assert(len(self.variants))  # Cannot be called with empty variants list.
         return len(self.variants) > 1 or self.variants[0] != _DEFAULT_VARIANT
 
+    def analyze(self, review, configdir):
+        assert self.spec is not None
+        self.spec.analyze(review, configdir)
+
     def supports_arch(self, arch):
         """
         Returns True if provided architecture is listed in package spec file's
