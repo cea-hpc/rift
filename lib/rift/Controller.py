@@ -677,7 +677,7 @@ def vm_build(vm, args, config):
             "Both --deploy and -o,--output options cannot be used together"
         )
     if args.deploy:
-        output = config.get('vm_image')
+        output = config.get('vm').get('image')
     else:
         output = args.output
     message(f"Building new vm image {output}")
