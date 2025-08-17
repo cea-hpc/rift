@@ -119,6 +119,18 @@ def _validate_patched_file(patched_file, config, modules, staff):
         logging.debug('Ignoring project config file: %s', filepath)
         return False
 
+    if filepath == '.gitlab-ci.yml':
+        logging.debug('Ignoring gitlab ci file: %s', filepath)
+        return False
+
+    if filepath == 'CODEOWNERS':
+        logging.debug('Ignoring gitlab ci file: %s', filepath)
+        return False
+
+    if names[0] == "gitlab-ci":
+        logging.debug("Ignoring gitlab ci file: %s" % filepath)
+        return False
+
     if patched_file.binary:
         raise RiftError(f"Binary file detected: {filepath}")
 

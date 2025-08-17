@@ -475,38 +475,12 @@ class Spec():
             if popen.returncode != 0:
                 raise RiftError(stderr or 'rpmlint reported errors')
 
-    def analyze(self, review, configdir=None):
-        """Run `rpmlint' for this specfile and fill provided `review'."""
-        cmd, env = self._check(configdir)
-        with Popen(cmd, stdout=PIPE, stderr=PIPE, env=env, universal_newlines=True) as popen:
-            stdout, stderr = popen.communicate()
-            if popen.returncode not in (0, 64, 66):
-                raise RiftError(stderr or f"rpmlint returned {popen.returncode}")
-
-        for line in stdout.splitlines():
-            if line.startswith(self.filepath + ':'):
-                line = line[len(self.filepath + ':'):]
-                try:
-                    linenbr = None
-                    code, txt = line.split(':', 1)
-                    if code.isdigit():
-                        linenbr = int(code)
-                        code, txt = txt.split(':', 1)
-                    review.add_comment(self.filepath, linenbr,
-                                       code.strip(), txt.strip())
-                except (ValueError, KeyError):
-                    pass
-
-        if popen.returncode != 0:
-            review.invalidate()
-
     def supports_arch(self, arch):
         """
         Returns True is package spec file does not restrict ExclusiveArch or if
         the arch in argument is explicitely set in package ExclusiveArch.
         """
         return not self.exclusive_archs or arch in self.exclusive_archs
-
 
 class Variable():
 
