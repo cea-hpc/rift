@@ -425,7 +425,6 @@ class VM():
                 repos.append(f"proxy={repo.proxy}\n")
 
         # Build the full command line
-
         def joinl(items):
             """
             Join list of strings with new line character. This inner function is
@@ -434,33 +433,34 @@ class VM():
             """
             return "\n".join(items)
 
+
+        # Construct the command to write fstab entries
+        fstab_cmd = joinl([f'echo "{line}" >> /etc/fstab' for line in fstab])
+
         cmd = textwrap.dedent(f"""
             # Static host resolution
             echo '{self.address} {self.NAME}'  >> /etc/hosts
-
+            
             echo '{userline}' >> /etc/passwd
             echo '{groupline}' >> /etc/group
-
+            
+            # Mount shared fs (9p, virtiofs,...)
             mkdir {' '.join(mkdirs)}
-            cat <<__EOF__ >>/etc/fstab
-            {joinl(fstab)}
-            __EOF__
+            {fstab_cmd}
             mount -t {self.shared_fs_type} -a
 
+            # Uses repos from the Rift configuration
             /bin/rm -f /etc/yum.repos.d/*.repo
-
-            cat <<__EOC__ >/etc/yum.repos.d/rift.repo
-            {joinl(repos)}
-            __EOC__
+            echo "{joinl(repos)}" > /etc/yum.repos.d/rift.repo
 
             if [ -x /usr/bin/dnf ] ; then
                 dnf -d1 makecache
             else
                 yum -d1 makecache fast
             fi
-
-            """)
+        """)
         self.cmd(cmd)
+
 
     def cmd(self, command=None, options=('-T',), **kwargs):
         """Run specified command inside this VM"""
