@@ -433,14 +433,13 @@ class VM():
             """
             return "\n".join(items)
 
-
         # Construct the command to write fstab entries
         fstab_cmd = joinl([f'echo "{line}" >> /etc/fstab' for line in fstab])
 
         cmd = textwrap.dedent(f"""
             # Static host resolution
             echo '{self.address} {self.NAME}'  >> /etc/hosts
-            
+
             echo '{userline}' >> /etc/passwd
             echo '{groupline}' >> /etc/group
             
@@ -460,7 +459,6 @@ class VM():
             fi
         """)
         self.cmd(cmd)
-
 
     def cmd(self, command=None, options=('-T',), **kwargs):
         """Run specified command inside this VM"""
