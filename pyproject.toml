@@ -8,7 +8,7 @@ addopts = "-v --cov=rift --cov-report=term-missing"
 
 [tool.pylint.main]
 # Specify a score threshold under which the program will exit with error.
-fail-under = 9.74
+fail-under = 9.80
 
 # Minimum Python version to use for version dependent checks. Will default to the
 # version used to run pylint.
