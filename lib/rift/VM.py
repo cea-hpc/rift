@@ -405,7 +405,7 @@ class VM():
             if repo.is_file():
                 mkdirs.append(f"/rift.{repo.name}")
                 fstab.append(f"{repo.name} /rift.{repo.name} {self.shared_fs_type} "
-                             "{options} 0 0")
+                             f"{options} 0 0")
                 url = f"file:///rift.{repo.name}/"
             else:
                 url = repo.url
