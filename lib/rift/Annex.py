@@ -90,7 +90,7 @@ def is_binary(filepath, blocksize=65536):
 
 def hashfile(filepath, iosize=65536):
     """Compute a digest of filepath content."""
-    hasher = hashlib.md5()
+    hasher = hashlib.sha3_256()
     with open(filepath, 'rb') as srcfile:
         buf = srcfile.read(iosize)
         while len(buf) > 0:
@@ -123,10 +123,20 @@ class Annex():
         identifier.
         """
         meta = os.stat(filepath)
+        
+        # MD5
         if meta.st_size == 32:
+            logging.warning("Using deprecated hash algorithm (MD5)")
             with open(filepath, encoding='utf-8') as fh:
                 identifier = fh.read(32)
             return all(byte in string.hexdigits for byte in identifier)
+        
+        # SHA3 256
+        elif meta.st_size == 64:
+            with open(filepath, encoding='utf-8') as fh:
+                identifier = fh.read(64)
+            return all(byte in string.hexdigits for byte in identifier)
+    
         return False
 
     def get(self, identifier, destpath):
