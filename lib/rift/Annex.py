@@ -236,13 +236,29 @@ class Annex():
             if not filename.endswith('.info'):
                 info = self._load_metadata(filename)
                 names = info.get('filenames', [])
-                for annexed_file in names.values():
-                    insertion_time = annexed_file['date']
-                    insertion_time = datetime.datetime.strptime(insertion_time, "%c").timestamp()
+                for annexed_file, details in names.items():
+                    insertion_time = details['date']
 
-                #The file size must come from the filesystem
-                meta = os.stat(os.path.join(self.path, filename))
-                yield filename, meta.st_size, insertion_time, names
+                    # Handle different date formats (old method)
+                    if isinstance(insertion_time, str):
+                        for fmt in ('%a %b %d %H:%M:%S %Y', '%a %d %b %Y %H:%M:%S %p %Z'):
+                            try:
+                                insertion_time = datetime.datetime.strptime(insertion_time, fmt).timestamp()
+                                break
+                            except ValueError:
+                                continue
+                        else:
+                            raise ValueError(f"Invalid date format in metadata: {insertion_time}")
+                        
+                    # UNIX timestamp
+                    elif isinstance(insertion_time, (int, float)):
+                        insertion_time = insertion_time
+                    else:
+                        raise ValueError("Invalid date format in metadata")
+
+                    # The file size must come from the filesystem
+                    meta = os.stat(os.path.join(self.path, filename))
+                    yield filename, meta.st_size, insertion_time, [annexed_file]
 
     def push(self, filepath):
         """
@@ -264,21 +280,21 @@ class Annex():
         destinfo = None
         if os.path.exists(destpath):
             destinfo = os.stat(destpath)
-        if destinfo and destinfo.st_size == originfo.st_size and \
-          filename in metadata.get('filenames', {}):
-            logging.debug('%s is already into annex, skipping it', filename)
+            if destinfo and destinfo.st_size == originfo.st_size and \
+            filename in metadata.get('filenames', {}):
+                logging.debug('%s is already into annex, skipping it', filename)
+                return
 
-        else:
-            # Update them and write them back
-            fileset = metadata.setdefault('filenames', {})
-            fileset.setdefault(filename, {})
-            fileset[filename]['date'] = time.strftime("%c")
-            self._save_metadata(digest, metadata)
+        # Update them and write them back
+        fileset = metadata.setdefault('filenames', {})
+        fileset.setdefault(filename, {})
+        fileset[filename]['date'] = time.time()  # Unix timestamp
+        self._save_metadata(digest, metadata)
 
-            # Move binary file to annex
-            logging.debug('Importing %s into annex (%s)', filepath, digest)
-            shutil.copyfile(filepath, destpath)
-            os.chmod(destpath, self.WMODE)
+        # Move binary file to annex
+        logging.debug('Importing %s into annex (%s)', filepath, digest)
+        shutil.copyfile(filepath, destpath)
+        os.chmod(destpath, self.WMODE)
 
         # Verify permission are correct before copying
         os.chmod(filepath, self.RMODE)
