@@ -44,10 +44,10 @@ config_opts['chroot_setup_cmd'] = (
     'rpm-sign byacc ctags diffstat intltool patchutils pesign source-highlight '
     'cmake rpmdevtools rpmlint libtirpc-devel kernel-rpm-macros'
 )
-config_opts['yum.conf'] = """
+config_opts['dnf.conf'] = """
 [main]
-cachedir=/var/cache/yum
-debuglevel=1
+keepcache=1
+debuglevel=2
 reposdir=/dev/null
 logfile=/var/log/yum.log
 retries=20
@@ -56,8 +56,14 @@ gpgcheck=0
 assumeyes=1
 syslog_ident=mock
 syslog_device=
-plugins=1
-best=False
+metadata_expire=0
+mdpolicy=group:primary
+best=1
+install_weak_deps=0
+protected_packages=
+module_platform_id=platform:el8
+user_agent={{ user_agent }}
+
 
 {% for repo in repos %}
 [{{ repo.name }}]
