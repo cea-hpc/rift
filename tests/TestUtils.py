@@ -23,28 +23,14 @@ from rift.Config import Config, Staff, Modules
 from rift.Mock import Mock
 
 MOCK_CONF = '''\
-config_opts.setdefault('plugin_conf', {})
-config_opts['plugin_conf']['ccache_enable'] = False
-config_opts['root'] = '{{ name }}'
-config_opts['target_arch'] = '{{ arch }}'
-config_opts['legal_host_arches'] = ('{{ arch }}',)
-config_opts['chroot_setup_cmd'] = 'install centos-release @base @development'
-config_opts['dist'] = 'el8'
+config_opts['chroot_setup_cmd'] = 'install tar gcc-c++ redhat-rpm-config redhat-release which xz sed make bzip2 gzip gcc coreutils unzip diffutils cpio bash gawk rpm-build info patch util-linux findutils grep'
+config_opts['dist'] = 'el8.alma'  # only useful for --resultdir variable subst
 config_opts['releasever'] = '8'
-config_opts['priorities.conf'] = "[main]\\nenabled = 1\\n"
 config_opts['package_manager'] = 'dnf'
-config_opts['bootstrap_image'] = 'centos8'
-#config_opts['use_bootstrap_image'] = False
-config_opts['isolation'] = 'simple'
-config_opts['chroot_setup_cmd'] = (
-    'install tar gcc-c++ redhat-rpm-config redhat-release which xz sed make '
-    'bzip2 gzip gcc coreutils unzip shadow-utils diffutils cpio bash gawk '
-    'rpm-build info patch util-linux findutils grep autoconf automake libtool '
-    'binutils bison flex gdb glibc-devel pkgconf pkgconf-m4 pkgconf-pkg-config '
-    'rpm-sign byacc ctags diffstat intltool patchutils pesign source-highlight '
-    'cmake rpmdevtools rpmlint libtirpc-devel kernel-rpm-macros'
-)
+config_opts['extra_chroot_dirs'] = [ '/run/lock', ]
+config_opts['bootstrap_image'] = 'quay.io/almalinuxorg/almalinux:8'
 config_opts['dnf.conf'] = """
+
 [main]
 keepcache=1
 debuglevel=2
