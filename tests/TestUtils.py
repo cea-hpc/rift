@@ -33,7 +33,8 @@ config_opts['dist'] = 'el8'
 config_opts['releasever'] = '8'
 config_opts['priorities.conf'] = "[main]\\nenabled = 1\\n"
 config_opts['package_manager'] = 'dnf'
-config_opts['use_bootstrap_image'] = False
+config_opts['bootstrap_image'] = 'centos8'
+#config_opts['use_bootstrap_image'] = False
 config_opts['isolation'] = 'simple'
 config_opts['chroot_setup_cmd'] = (
     'install tar gcc-c++ redhat-rpm-config redhat-release which xz sed make '

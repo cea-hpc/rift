@@ -82,7 +82,7 @@ class ConsumableRepository():
         Return the URL with all occurrences of the given architecture replaced
         by generic $basearch placeholder.
         """
-        return self.url.replace(arch, "$basearch")
+        return self.url.replace(arch, "$arch")
 
     def exists(self):
         """
