@@ -406,8 +406,8 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
     """
     Tests class for ActionableArchPackageRPM
     """
-    def setup_package(self, variants=None):
-        self.make_pkg(variants=variants)
+    def setup_package(self, variants=None, dummy_test=True):
+        self.make_pkg(variants=variants, dummy_test=dummy_test)
         _pkg = PackageRPM('pkg', self.config, self.staff, self.modules)
         _pkg.load()
         self.pkg = ActionableArchPackageRPM(_pkg, 'x86_64')
@@ -504,7 +504,7 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         mock_vm_obj = mock_vm.return_value
         mock_vm_obj.running.return_value = False
         mock_vm_obj.run_test.return_value = RunResult(0, None, None)
-        self.setup_package()
+        self.setup_package(dummy_test=False)
         results = self.pkg.test()
         self.assertIsInstance(results, TestResults)
         self.assertEqual(len(results), 1)
@@ -541,15 +541,11 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
             staging.create()
             results = self.pkg.test(staging=staging)
         self.assertIsInstance(results, TestResults)
-        self.assertEqual(len(results), 1)
+        self.assertEqual(len(results), 2)
         self.assertEqual(results.global_result, True)
         # Check VM initialized with staging extra repository
         mock_vm.assert_called_once_with(
             self.config, 'x86_64', extra_repos=[staging.consumables['x86_64']]
-        )
-        # Check VM run_test() called once for basic test
-        mock_vm_obj.run_test.assert_called_with(
-            mock_basic_test.return_value, _DEFAULT_VARIANT
         )
         # Check VM is stopped after the tests
         mock_vm_obj.stop.assert_called_once()
@@ -577,8 +573,9 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         self.setup_package(variants=variants)
         results = self.pkg.test()
         self.assertIsInstance(results, TestResults)
-        # There should be one test result per variant, ie. 2 results
-        self.assertEqual(len(results), 2)
+        # There should be 2 tests result per variant (autotest + dummy testing
+        # test), ie. 4 results
+        self.assertEqual(len(results), 4)
         self.assertEqual(results.global_result, True)
         # Check VM run_test() called for basic test on all variants
         for variant in variants:
@@ -612,7 +609,7 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         self.setup_package()
         results = self.pkg.test()
         self.assertIsInstance(results, TestResults)
-        self.assertEqual(len(results), 1)
+        self.assertEqual(len(results), 2)
         self.assertEqual(results.global_result, False)
 
     @patch('rift.package.rpm.time.sleep')
@@ -622,7 +619,7 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         # mock time.sleep() to avoid waiting sleep timeout when VM is stopped
         mock_vm_obj = mock_vm.return_value
         mock_vm_obj.running.return_value = False
-        self.setup_package()
+        self.setup_package(dummy_test=False)
         results = self.pkg.test(noauto=True)
         # Check empty TestResults
         self.assertIsInstance(results, TestResults)

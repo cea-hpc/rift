@@ -240,8 +240,8 @@ class ControllerProjectActionQueryTest(RiftProjectTestCase):
             mock_stdout.getvalue())
         self.assertIn(textwrap.dedent("""
             ---- ------       ------ ------          ------ ----- ------- ----   ------- -------------                      ------------- ----------- -------------       -------------
-            pkg1 Great module Vendor Missing feature rpm    0     1.0     noarch 1       Myself <buddy@somewhere.org> 1.0-1 2019-02-26    Myself      buddy@somewhere.org br-package
-            pkg2 Great module Vendor Missing feature rpm    0     2.1     noarch 3       Myself <buddy@somewhere.org> 2.1-3 2019-02-26    Myself      buddy@somewhere.org br-package
+            pkg1 Great module Vendor Missing feature rpm    1     1.0     noarch 1       Myself <buddy@somewhere.org> 1.0-1 2019-02-26    Myself      buddy@somewhere.org br-package
+            pkg2 Great module Vendor Missing feature rpm    1     2.1     noarch 3       Myself <buddy@somewhere.org> 2.1-3 2019-02-26    Myself      buddy@somewhere.org br-package
             """),
             mock_stdout.getvalue())
 
