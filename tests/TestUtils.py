@@ -11,6 +11,9 @@ import logging
 import tempfile
 import unittest
 import os
+import tarfile
+import time
+import io
 from collections import OrderedDict
 
 import shutil
@@ -293,6 +296,7 @@ class RiftProjectTestCase(RiftTestCase):
         subpackages=[],
         variants=None,
         dummy_test=True,
+        src_top_dir=None,
     ):
         # By default, make package in RPM format
         if formats is None:
@@ -300,6 +304,9 @@ class RiftProjectTestCase(RiftTestCase):
         # Check provide package formats are supported
         for _format in formats:
             assert(_format in ['rpm'])
+        # Set default source top dir name
+        if src_top_dir is None:
+            src_top_dir = f"{name}-{version}"
         # ./packages/pkg
         self.pkgdirs[name] = os.path.join(self.packagesdir, name)
         os.mkdir(self.pkgdirs[name])
@@ -360,8 +367,21 @@ class RiftProjectTestCase(RiftTestCase):
         # ./packages/pkg/sources/pkg-version.tar.gz
         self.pkgsrc[name] = os.path.join(srcdir,
                                          "{0}-{1}.tar.gz".format(name, version))
-        with open(self.pkgsrc[name], "w") as src:
-            src.write("ACACACACACACACAC")
+        with tarfile.open(self.pkgsrc[name], "w:gz") as tar:
+            # Add folder in archive
+            dir_info = tarfile.TarInfo(name=f"{src_top_dir}/")
+            dir_info.type = tarfile.DIRTYPE
+            dir_info.mode = 0o755
+            dir_info.mtime = int(time.time())
+            tar.addfile(dir_info)
+
+            # Add dummy source file in archive folder
+            data = b"# dummy source code\n"
+            file_info = tarfile.TarInfo(name=f"{src_top_dir}/source.sh")
+            file_info.size = len(data)
+            file_info.mode = 0o644
+            file_info.mtime = int(time.time())
+            tar.addfile(file_info, io.BytesIO(data))
 
         if dummy_test:
             # ./tests
