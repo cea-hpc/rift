@@ -744,7 +744,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         # Make ActionableArchPackageRPM.test() return results with one failure.
         test_results = TestResults()
         test_results.add_failure(
-            TestCase('fake', 'pkg', _DEFAULT_VARIANT, 'x86_64'), 0, None, None
+            TestCase('fake', 'pkg', _DEFAULT_VARIANT, 'x86_64', 'rpm'), 0, None, None
         )
         mock_act_arch_pkg_rpm.test.return_value = test_results
 
@@ -1198,7 +1198,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         # Make ActionableArchPackageRPM.test() return results with one failure.
         test_results = TestResults()
         test_results.add_failure(
-            TestCase('fake', 'pkg', _DEFAULT_VARIANT, 'x86_64'), 0, None, None
+            TestCase('fake', 'pkg', _DEFAULT_VARIANT, 'x86_64', 'rpm'), 0, None, None
         )
         mock_act_arch_pkg_rpm.test.return_value = test_results
 
@@ -1367,7 +1367,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         # Make ActionableArchPackageRPM.test() return results with one failure.
         test_results = TestResults()
         test_results.add_failure(
-            TestCase('fake', 'pkg', _DEFAULT_VARIANT, 'x86_64'), 0, None, None
+            TestCase('fake', 'pkg', _DEFAULT_VARIANT, 'x86_64', 'rpm'), 0, None, None
         )
         mock_act_arch_pkg_rpm.test.return_value = test_results
 
