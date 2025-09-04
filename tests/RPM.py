@@ -66,7 +66,7 @@ class SpecTest(RiftTestCase):
         self.assertEqual(spec.exclusive_archs, [])
         self.assertEqual(spec.arch, self.arch)
         self.assertTrue("{0}-{1}.tar.gz".format(self.name, self.version) in spec.sources)
-        self.assertEqual(len(spec.lines), 36)
+        self.assertEqual(len(spec.lines), 42)
 
     def test_init_fails(self):
         """ Test Spec instanciation with error """
