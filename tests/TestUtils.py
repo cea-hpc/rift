@@ -194,7 +194,9 @@ class RiftProjectTestCase(RiftTestCase):
         for src in self.pkgsrc.values():
             os.unlink(src)
         for pkgdir in self.pkgdirs.values():
-            os.unlink(os.path.join(pkgdir, 'info.yaml'))
+            info_path = os.path.join(pkgdir, 'info.yaml')
+            if os.path.exists(info_path):
+                os.unlink(info_path)
             os.rmdir(os.path.join(pkgdir, 'sources'))
             os.rmdir(pkgdir)
         # Remove potentially generated files for VM related tests
@@ -259,6 +261,8 @@ class RiftProjectTestCase(RiftTestCase):
                     metadata.get('reason', 'Missing feature')
                 )
             )
+            if 'depends' in metadata:
+                nfo.write("    depends: {}\n".format(metadata.get('depends')))
 
         # ./packages/pkg/pkg.spec
         self.pkgspecs[name] = os.path.join(self.pkgdirs[name],

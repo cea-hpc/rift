@@ -61,11 +61,14 @@ class SpecTest(RiftTestCase):
     def test_init(self):
         """ Test Spec instanciation """
         spec = Spec(self.spec)
-        self.assertTrue(self.name in spec.pkgnames)
+        self.assertIn(self.name, spec.pkgnames)
         self.assertEqual(len(spec.pkgnames), 1)
+        self.assertIn(self.name, spec.provides)
+        self.assertIn(f"{self.name}-provide", spec.provides)
+        self.assertEqual(len(spec.provides), 2)
         self.assertEqual(spec.exclusive_archs, [])
         self.assertEqual(spec.arch, self.arch)
-        self.assertTrue("{0}-{1}.tar.gz".format(self.name, self.version) in spec.sources)
+        self.assertIn("{0}-{1}.tar.gz".format(self.name, self.version), spec.sources)
         self.assertEqual(len(spec.lines), 36)
 
     def test_init_fails(self):

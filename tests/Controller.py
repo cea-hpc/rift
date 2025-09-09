@@ -11,13 +11,14 @@ from io import StringIO
 
 from unidiff import parse_unidiff
 from TestUtils import (
-    make_temp_file, make_temp_dir, RiftTestCase, RiftProjectTestCase
+    make_temp_file, make_temp_dir, RiftTestCase, RiftProjectTestCase, SubPackage
 )
 
 from VM import GLOBAL_CACHE, VALID_IMAGE_URL, PROXY
 from rift.Controller import (
     main,
     get_packages_from_patch,
+    get_packages_to_build,
     remove_packages,
     make_parser,
 )
@@ -981,6 +982,149 @@ rename to packages/pkgnew/sources/pkgnew-1.0.tar.gz
             "/tmp/rift/output, parent directory /tmp/rift does not exist."
         ):
             main(['sync'])
+
+    @patch('rift.Controller.PackagesDependencyGraph')
+    def test_build_graph(self, mock_graph_class):
+        """ Test build generates graph of packages dependencies with dependency tracking enabled. """
+        # Enable dependency tracking in configuration
+        self.config.set('dependency_tracking', True)
+        self.update_project_conf()
+        main(['build', 'pkg'])
+        mock_graph_class.from_project.assert_called_once()
+
+    @patch('rift.Controller.Package')
+    @patch('rift.Controller.PackagesDependencyGraph')
+    def test_build_graph_tracking_disabled(self, mock_graph_class, mock_package_class):
+        """ Test build does not build graph of packages dependencies with dependency tracking disabled. """
+        # Return empty list of packages with Package.list() to avoid actual
+        # build iterations.
+        mock_package_class.list.return_value = []
+        # By default, dependency tracking is disabled
+        main(['build', 'pkg'])
+        mock_graph_class.from_project.assert_not_called()
+
+    @patch('rift.Controller.Package')
+    @patch('rift.Controller.PackagesDependencyGraph')
+    def test_build_graph_skip_deps(self, mock_graph_class, mock_package_class):
+        """ Test build --skip-deps does not build graph of packages dependencies. """
+        # Return empty list of packages with Package.list() to avoid actual
+        # build iterations.
+        mock_package_class.list.return_value = []
+        # Enable dependency tracking in configuration
+        self.config.set('dependency_tracking', True)
+        self.update_project_conf()
+        main(['build', '--skip-deps', 'pkg'])
+        mock_graph_class.from_project.assert_not_called()
+
+    @patch('rift.Controller.PackagesDependencyGraph')
+    def test_validate_graph(self, mock_graph_class):
+        """ Test validate generates graph of packages dependencies with dependency tracking enabled. """
+        # Enable dependency tracking in configuration
+        self.config.set('dependency_tracking', True)
+        self.update_project_conf()
+        main(['validate', 'pkg'])
+        mock_graph_class.from_project.assert_called_once()
+
+    @patch('rift.Controller.Package')
+    @patch('rift.Controller.PackagesDependencyGraph')
+    def test_validate_graph_tracking_disabled(self, mock_graph_class, mock_package_class):
+        """ Test validate does not build graph of packages dependencies with dependency tracking disabled. """
+        # Return empty list of packages with Package.list() to avoid actual
+        # build iterations.
+        mock_package_class.list.return_value = []
+        # By default, dependency tracking is disabled
+        main(['validate', 'pkg'])
+        mock_graph_class.from_project.assert_not_called()
+
+    @patch('rift.Controller.Package')
+    @patch('rift.Controller.PackagesDependencyGraph')
+    def test_validate_graph_skip_deps(self, mock_graph_class, mock_package_class):
+        """ Test validate --skip-deps does not build graph of packages dependencies. """
+        # Return empty list of packages with Package.list() to avoid actual
+        # build iterations.
+        mock_package_class.list.return_value = []
+        self.config.set('dependency_tracking', True)
+        self.update_project_conf()
+        main(['validate', '--skip-deps', 'pkg'])
+        mock_graph_class.from_project.assert_not_called()
+
+    def test_get_packages_to_build_tracking_disabled(self):
+        """ Test get_packages_to_build() with tracking disabled (by default) returns user provided packages. """
+        args = Mock()
+        args.skip_deps = False
+        args.packages = ['pkg']
+        pkgs = get_packages_to_build(
+            self.config, self.staff, self.modules, args
+        )
+        self.assertEqual([pkg.name for pkg in pkgs], ['pkg'])
+
+    def test_get_packages_to_build_skip_deps(self):
+        """ Test get_packages_to_build() with skip deps (tracking enabled) returns user provided packages. """
+        self.config.set('dependency_tracking', True)
+        args = Mock()
+        args.skip_deps = True
+        args.packages = ['pkg']
+        pkgs = get_packages_to_build(
+            self.config, self.staff, self.modules, args
+        )
+        self.assertEqual([pkg.name for pkg in pkgs], ['pkg'])
+
+    def test_get_packages_to_build_no_package(self):
+        """ Test get_packages_to_build() (tracking enabled, w/o skip deps) returns empty with unexisting package. """
+        self.config.set('dependency_tracking', True)
+        args = Mock()
+        args.skip_deps = False
+        args.packages = ['pkg']
+        pkgs = get_packages_to_build(
+            self.config, self.staff, self.modules, args
+        )
+        # Package 'pkg' does not exist in project directory, graph solving must
+        # return an empty list.
+        self.assertEqual(pkgs, [])
+
+    def test_get_packages_to_build_package_order(self):
+        """ Test get_packages_to_build() returns correctly ordered list of reverse dependencies. """
+        self.make_pkg(
+            name='libone',
+            build_requires=['libtwo-devel'],
+            subpackages=[
+                SubPackage('libone-bin'),
+                SubPackage('libone-devel')
+            ]
+        )
+        self.make_pkg(
+            name='libtwo',
+            subpackages=[
+                SubPackage('libtwo-bin'),
+                SubPackage('libtwo-devel')
+            ]
+        )
+        self.make_pkg(
+            name='my-software',
+            build_requires=['libone-devel, libtwo-devel']
+        )
+        # Enable tracking, disable --skip-deps
+        self.config.set('dependency_tracking', True)
+        args = Mock()
+        args.skip_deps = False
+        args.packages = ['libone']
+        pkgs = get_packages_to_build(
+            self.config, self.staff, self.modules, args
+        )
+        self.assertEqual(
+            [pkg.name for pkg in pkgs], ['libone', 'my-software']
+        )
+        args.skip_deps = False
+        args.packages = ['libone', 'libtwo']
+        pkgs = get_packages_to_build(
+            self.config, self.staff, self.modules, args
+        )
+        # Package libone must be present after libtwo and my-software must be
+        # present after both libtwo and libone in the order list of build
+        # requirements.
+        self.assertEqual(
+            [pkg.name for pkg in pkgs], ['libtwo', 'libone', 'my-software']
+        )
 
 
 class ControllerArgumentsTest(RiftTestCase):
