@@ -156,6 +156,7 @@ Description for package {{ name }} variant %{variant}
 """
 
 SubPackage = namedtuple("SubPackage", ["name"])
+PackageTestDef = namedtuple("PackageTestDef", ["name", "local"])
 
 
 class RiftTestCase(unittest.TestCase):
@@ -225,6 +226,7 @@ class RiftProjectTestCase(RiftTestCase):
         self.pkgdirs = {}
         self.buildfiles = {}
         self.pkgsrc = {}
+        self.tests = {}
         # Load project/staff/modules
         self.config = Config()
         self.config.load()
@@ -254,7 +256,8 @@ class RiftProjectTestCase(RiftTestCase):
                 os.unlink(info_path)
             os.rmdir(os.path.join(pkgdir, 'sources'))
             if os.path.exists(os.path.join(pkgdir, 'tests')):
-                os.unlink(os.path.join(pkgdir, 'tests', '0_test.sh'))
+                for test in os.listdir(os.path.join(pkgdir, 'tests')):
+                    os.unlink(os.path.join(pkgdir, 'tests', test))
                 os.rmdir(os.path.join(pkgdir, 'tests'))
             os.rmdir(pkgdir)
         # Remove potentially generated files for VM related tests
@@ -295,8 +298,8 @@ class RiftProjectTestCase(RiftTestCase):
         requires=['another-package'],
         subpackages=[],
         variants=None,
-        dummy_test=True,
         src_top_dir=None,
+        tests=None,
     ):
         # By default, make package in RPM format
         if formats is None:
@@ -383,15 +386,27 @@ class RiftProjectTestCase(RiftTestCase):
             file_info.mtime = int(time.time())
             tar.addfile(file_info, io.BytesIO(data))
 
-        if dummy_test:
-            # ./tests
-            testsdir = os.path.join(self.pkgdirs[name], 'tests')
+        # Add dummy test ./tests/0_test.sh by default
+        if tests is None:
+            tests = [
+                PackageTestDef(name='0_test.sh', local=False)
+            ]
+
+        # ./tests
+        testsdir = os.path.join(self.pkgdirs[name], 'tests')
+
+        # If at least one test is present, create tests directory
+        if tests:
             os.mkdir(testsdir)
 
-            # ./tests/0_test.sh
-            test_file = os.path.join(testsdir, "0_test.sh")
+        # Create defined tests files
+        for test in tests:
+            test_file = os.path.join(testsdir, test.name)
             with open(test_file, "w") as fh:
-                fh.write("#!/bin/sh\ntrue")
+                fh.write('#!/bin/sh\n')
+                if test.local:
+                    fh.write('# *** RIFT LOCAL ***\n')
+                fh.write('true')
 
     def clean_mock_environments(self):
         """Remove mock build environments."""

@@ -13,7 +13,7 @@ from rift.TestResults import TestResults
 from rift.Config import _DEFAULT_VARIANT
 from rift.Gerrit import Review
 
-from ..TestUtils import RiftProjectTestCase, make_temp_file, gen_rpm_spec
+from ..TestUtils import RiftProjectTestCase, PackageTestDef, make_temp_file, gen_rpm_spec
 
 
 class PackageRPMTest(RiftProjectTestCase):
@@ -405,8 +405,8 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
     """
     Tests class for ActionableArchPackageRPM
     """
-    def setup_package(self, variants=None, dummy_test=True):
-        self.make_pkg(variants=variants, dummy_test=dummy_test)
+    def setup_package(self, variants=None, tests=None):
+        self.make_pkg(variants=variants, tests=tests)
         _pkg = PackageRPM('pkg', self.config, self.staff, self.modules)
         _pkg.load()
         self.pkg = ActionableArchPackageRPM(_pkg, 'x86_64')
@@ -500,7 +500,7 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         mock_vm_obj = mock_vm.return_value
         mock_vm_obj.running.return_value = False
         mock_vm_obj.run_test.return_value = RunResult(0, None, None)
-        self.setup_package(dummy_test=False)
+        self.setup_package(tests=[])
         results = self.pkg.test()
         self.assertIsInstance(results, TestResults)
         self.assertEqual(len(results), 1)
@@ -612,7 +612,7 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         # mock time.sleep() to avoid waiting sleep timeout when VM is stopped
         mock_vm_obj = mock_vm.return_value
         mock_vm_obj.running.return_value = False
-        self.setup_package(dummy_test=False)
+        self.setup_package(tests=[])
         results = self.pkg.test(noauto=True)
         # Check empty TestResults
         self.assertIsInstance(results, TestResults)
