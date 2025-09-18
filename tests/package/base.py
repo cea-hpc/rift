@@ -113,6 +113,18 @@ class PackageTest(RiftProjectTestCase):
         self.assertEqual(actionable_pkg.config, self.config)
         self.assertEqual(actionable_pkg.arch, 'x86_64')
 
+    def test_tests(self):
+        """ Test Package tests method """
+        self.make_pkg()
+        pkg = PackageTestingConcrete(
+            'pkg', self.config, self.staff, self.modules, 'rpm'
+        )
+        pkg.load()
+        tests = [test for test in pkg.tests()]
+        self.assertEqual(len(tests), 1)
+        self.assertIsInstance(tests[0], Test)
+        self.assertEqual(tests[0].name, '0_test')
+
     def test_subpackages(self):
         """ Test Package subpackages (dummy implementation) """
         pkg = PackageTestingConcrete(
