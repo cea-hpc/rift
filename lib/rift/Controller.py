@@ -285,6 +285,9 @@ def make_parser():
                         help='maintainer name from staff.yaml')
     subprs.add_argument('--bump', dest='bump', action='store_true',
                         help='also bump the release number')
+    subprs.add_argument('-F', '--formats', nargs='+',
+                        choices=RIFT_SUPPORTED_FORMATS,
+                        help='restrict command to specific package formats')
 
     # GitLab review
     subprs = subparsers.add_parser('gitlab', add_help=False,
@@ -1057,6 +1060,16 @@ def action_changelog(args, config):
     pkgs = ProjectPackages.get(args.package, config, staff, modules)
     package_found = False
     for pkg in pkgs:
+
+        # Skip package if format is not selected by user
+        if args.formats and pkg.format not in args.formats:
+            logging.info(
+                "Skipping changelog update on %s package %s due to restriction "
+                "on package formats",
+                pkg.format, pkg.name
+            )
+            continue
+
         pkg.load()
         try:
             pkg.add_changelog_entry(args.maintainer, args.comment, args.bump)
