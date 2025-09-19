@@ -40,6 +40,41 @@ from rift.patches import get_packages_from_patch
 
 class PatchTest(RiftProjectTestCase):
 
+    def test_package_modified(self):
+        """ Test detect modified package in patch"""
+        self.make_pkg('pkg')
+        patch = make_temp_file(
+            textwrap.dedent("""
+                diff --git a/packages/pkg/pkg.spec b/packages/pkg/pkg.spec
+                index d1a0d0e7..b3e36379 100644
+                --- a/packages/pkg/pkg.spec
+                +++ b/packages/pkg/pkg.spec
+                @@ -1,6 +1,6 @@
+                 Name:    pkg
+                 Version:        1.0
+                -Release:        1
+                +Release:        2
+                 Summary:        A package
+                 Group:          System Environment/Base
+                 License:        GPL
+                @@ -14,6 +14,7 @@ Provides:       pkg-provide
+                 A package
+                 %prep
+                 %build
+                +echo add build step
+                 # Nothing to build
+                 %install
+                 # Nothing to install
+                """))
+        with open(patch.name) as p:
+            (updated, removed) = get_packages_from_patch(
+                p, self.config, self.modules, self.staff
+            )
+            self.assertEqual(len(updated), 1)
+            self.assertEqual(len(removed), 0)
+            self.assertEqual(updated[0].name, 'pkg')
+            self.assertEqual(updated[0].format, 'rpm')
+
     def test_package_removed(self):
         """ Test detect removed package in patch"""
         pkgname = 'pkg'
