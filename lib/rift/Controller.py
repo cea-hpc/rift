@@ -178,6 +178,9 @@ def make_parser():
                         help='publish built package to repository')
     subprs.add_argument('-S', '--skip-deps', action='store_true',
                         help='Skip automatic validation of reverse dependencies')
+    subprs.add_argument('-F', '--formats', nargs='+',
+                        choices=RIFT_SUPPORTED_FORMATS,
+                        help='restrict validation to specific package formats')
 
     # Validate diff
     subprs = subparsers.add_parser('validdiff')
@@ -449,6 +452,15 @@ def validate_pkgs(config, args, pkgs, arch):
     results = TestResults()
 
     for pkg in pkgs:
+        # Skip package if format is not selected by user
+        if args.formats and pkg.format not in args.formats:
+            logging.info(
+                "Skipping validation of %s package %s due to restriction on "
+                "package formats",
+                pkg.format, pkg.name
+            )
+            continue
+
         # Load package and report possible failure
         case = TestCase('build', pkg.name, _DEFAULT_VARIANT, arch, pkg.format)
         now = time.time()

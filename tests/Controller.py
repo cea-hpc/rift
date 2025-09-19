@@ -1144,6 +1144,59 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
             cm.output
         )
 
+    @patch('rift.Controller.StagingRepository')
+    @patch('rift.package._project.PackageRPM', autospec=PackageRPM)
+    def test_action_validate_formats(self, mock_pkg_rpm, mock_staging_repo_cls):
+
+        # Declare supported archs.
+        self.config.set('arch', ['x86_64', 'aarch64'])
+        self.update_project_conf()
+
+        # Create fake package without build requirement
+        self.make_pkg(build_requires=[])
+
+        # Get PackageRPM instances mock
+        mock_pkg_rpm_objs = mock_pkg_rpm.return_value
+        # Initialize PackageRPM object attributes
+        PackageRPM.__init__(
+            mock_pkg_rpm_objs, 'pkg', self.config, self.staff, self.modules)
+        # Make PackageRPM.supports_arch() return True for all archs
+        mock_pkg_rpm_objs.supports_arch.return_value = True
+        # Mock ActionableArchPackageRPM objects
+        mock_act_arch_pkg_rpm = Mock(spec=ActionableArchPackageRPM)
+        mock_pkg_rpm_objs.for_arch.return_value = mock_act_arch_pkg_rpm
+        # MakeActionableArchPackageRPM.test() return empty but successful test
+        # results.
+        mock_act_arch_pkg_rpm.test.return_value = TestResults()
+        # Mock StagingRepository object.
+        mock_staging_repo = Mock()
+        mock_staging_repo_cls.return_value = mock_staging_repo
+
+        # Run validate on pkg
+        self.assertEqual(main(['validate', 'pkg', '--formats', 'rpm']), 0)
+
+        # Check RPM package supports_arch() method is called for all supported
+        # archs.
+        for arch in self.config.get('arch'):
+            mock_pkg_rpm_objs.supports_arch.assert_any_call(arch)
+
+        # Check RPM package check() method is called for all supported arch
+        # (ie. twice).
+        mock_pkg_rpm_objs.check.assert_has_calls([call(), call()])
+
+        # Check actionable RPM package build(), publish(staging), test() and
+        # clean() methods are called for all supported arch (ie. twice).
+        mock_act_arch_pkg_rpm.build.assert_has_calls(
+            [call(sign=False, staging=mock_staging_repo),
+             call(sign=False, staging=mock_staging_repo)])
+        mock_act_arch_pkg_rpm.publish.assert_has_calls(
+            [call(staging=mock_staging_repo), call(staging=mock_staging_repo)])
+        mock_act_arch_pkg_rpm.test.assert_has_calls(
+            [call(noauto=False, staging=mock_staging_repo, noquit=False),
+             call(noauto=False, staging=mock_staging_repo, noquit=False)])
+        mock_act_arch_pkg_rpm.clean.assert_has_calls(
+            [call(noquit=False), call(noquit=False)])
+
     @patch('rift.package._project.PackageRPM', autospec=PackageRPM)
     def test_action_validate_load_failure(self, mock_pkg_rpm):
 
@@ -2254,6 +2307,22 @@ class ControllerArgumentsTest(RiftTestCase):
         self.assertCountEqual(opts.formats, ['rpm'])
 
         args = ['test', '--formats', 'fail']
+        with self.assertRaises(SystemExit):
+            opts = parser.parse_args(args)
+
+    def test_parse_args_validate(self):
+        """ Test validate command options parsing """
+        parser = make_parser()
+
+        args = ['validate']
+        opts = parser.parse_args(args)
+        self.assertIsNone(opts.formats)
+
+        args = ['validate', '--formats', 'rpm']
+        opts = parser.parse_args(args)
+        self.assertCountEqual(opts.formats, ['rpm'])
+
+        args = ['validate', '--formats', 'fail']
         with self.assertRaises(SystemExit):
             opts = parser.parse_args(args)
 
