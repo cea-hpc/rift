@@ -299,6 +299,9 @@ def make_parser():
                                    help='Make Gerrit automatic review')
     subprs.add_argument('--change', help="Gerrit Change-Id", required=True)
     subprs.add_argument('--patchset', help="Gerrit patchset ID", required=True)
+    subprs.add_argument('-F', '--formats', nargs='+',
+                        choices=RIFT_SUPPORTED_FORMATS,
+                        help='restrict command to specific package formats')
     subprs.add_argument('patch', metavar='PATCH', type=argparse.FileType('r'))
 
     # sync
@@ -976,6 +979,14 @@ def action_gerrit(args, config, staff, modules):
         if names[0] == config.get('packages_dir'):
             pkgs = ProjectPackages.get(names[1], config, staff, modules)
             for pkg in pkgs:
+                # Skip package if format is not selected by user
+                if args.formats and pkg.format not in args.formats:
+                    logging.info(
+                        "Skipping gerrit review on %s package %s due to "
+                        "restriction on package formats",
+                        pkg.format, pkg.name
+                    )
+                    continue
                 if (filepath == os.path.relpath(pkg.buildfile) and
                     not patchedfile.is_deleted_file):
                     pkg.load()
