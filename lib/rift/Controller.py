@@ -942,7 +942,8 @@ def action_gerrit(args, config, staff, modules):
         names = filepath.split(os.path.sep)
         if names[0] == config.get('packages_dir'):
             pkg = Package(names[1], config, staff, modules)
-            if filepath == pkg.specfile and not patchedfile.is_deleted_file:
+            if (filepath == os.path.relpath(pkg.specfile) and
+                not patchedfile.is_deleted_file):
                 Spec(pkg.specfile, config=config).analyze(review, pkg.dir)
 
     # Push review
