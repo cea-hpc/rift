@@ -33,6 +33,7 @@
 
 import os
 import getpass
+import logging
 
 from rift import RiftError
 from rift.run import run_command
@@ -102,3 +103,67 @@ class ContainerRuntime:
             f"oci-archive:{path}:{self.tag(actionable_pkg)}"
         ]
         return run_command(cmd)
+
+
+class ContainerFile:
+    """Handle Containerfile with checks and review analysis."""
+    def __init__(self, config, path):
+        self.config = config
+        self.path = path
+        if not os.path.exists(self.path):
+            raise RiftError(f"Unable to find Containerfile {self.path}")
+
+    @property
+    def linter(self):
+        """Return linter path or executable name in configuration."""
+        return self.config.get('containers').get('linter')
+
+    def _check(self, configdir):
+        cmd = [self.linter, self.path]
+
+        if configdir:
+            pkg_config = os.path.join(configdir, 'hadolint.yaml')
+            if os.path.exists(pkg_config):
+                cmd[1:1] = ['--config', pkg_config]
+
+        logging.debug('Running hadolint: %s', ' '.join(cmd))
+        return run_command(cmd, capture_output=True, merge_out_err=True)
+
+    def check(self, pkg=None):
+        """
+        Check Containerfile content using container checker tool.
+        """
+        try:
+            result = self._check(pkg.dir if pkg else None)
+        except FileNotFoundError:
+            logging.error(
+                "Unable to find Containerfile linter executable '%s'", self.linter
+            )
+        else:
+            if result.returncode:
+                raise RiftError(f"Containerfile check error: {result.out}")
+
+    def analyze(self, review, configdir):
+        """Analyze Containerfile"""
+        try:
+            result = self._check(configdir)
+        except FileNotFoundError as err:
+            raise RiftError(
+                f"Unable to find Containerfile linter executable '{self.linter}'"
+            ) from err
+
+        if result.returncode not in (0, 1):
+            raise RiftError(f"hadolint returned {result.returncode}: {result.out}")
+
+        for line in result.out.splitlines():
+            if line.startswith(self.path + ':'):
+                line = line[len(self.path + ':'):]
+                try:
+                    (linenbr, code, _, txt) = line.split(' ', 3)
+                    review.add_comment(self.path, linenbr,
+                                       code.strip(), txt.strip())
+                except (ValueError, KeyError):
+                    pass
+
+        if result.returncode:
+            review.invalidate()

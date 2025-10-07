@@ -44,7 +44,7 @@ from rift.Config import _DEFAULT_VARIANT
 from rift.package._base import Package, ActionableArchPackage
 from rift.annex import Annex
 from rift.TestResults import TestCase, TestResults
-from rift.container import ContainerRuntime
+from rift.container import ContainerRuntime, ContainerFile
 from rift.utils import message, banner
 
 class PackageOCI(Package):
@@ -52,6 +52,7 @@ class PackageOCI(Package):
 
     def __init__(self, name, config, staff, modules):
         super().__init__(name, config, staff, modules, 'oci', 'Containerfile')
+        self.containerfile = None
         self.version = None
         self.release = None
         self.main_source = None
@@ -91,6 +92,21 @@ class PackageOCI(Package):
         if not self.release:
             raise RiftError("Unable to load oci release from metadata")
 
+    def load(self, infopath=None):
+        """Load package metadata, check its content and load Containerfile."""
+        # load infos.yaml with parent class
+        super().load(infopath)
+        self.containerfile = ContainerFile(self._config, self.buildfile)
+
+    def check(self):
+        # Check generic package metadata
+        super().check()
+
+        # Check Containerfile
+        assert self.containerfile is not None
+        message('Validate Containerfile...')
+        self.containerfile.check()
+
     def subpackages(self):
         """Returns list with container name."""
         # Containerfile do not really provide subpackages, then just return name
@@ -108,8 +124,9 @@ class PackageOCI(Package):
         raise NotImplementedError
 
     def analyze(self, review, configdir):
-        """Not supported for OCI packages."""
-        raise NotImplementedError
+        """Analyze Containerfile and update review accordingly."""
+        assert self.containerfile is not None
+        self.containerfile.analyze(review, configdir)
 
     def supports_arch(self, arch):
         """
