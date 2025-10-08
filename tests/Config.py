@@ -17,7 +17,7 @@ from rift.Config import Staff, Modules, Config, _DEFAULT_PKG_DIR, \
                          _DEFAULT_QEMU_CMD, _DEFAULT_REPO_CMD, \
                          _DEFAULT_SHARED_FS_TYPE, _DEFAULT_VIRTIOFSD, \
                          _DEFAULT_SYNC_METHOD, _DEFAULT_SYNC_INCLUDE, \
-                         _DEFAULT_SYNC_EXCLUDE, \
+                         _DEFAULT_SYNC_EXCLUDE, _DEFAULT_DEPENDENCY_TRACKING, \
                          RiftDeprecatedConfWarning
 
 class ConfigTest(RiftTestCase):
@@ -49,6 +49,8 @@ class ConfigTest(RiftTestCase):
         # Default external tools path
         self.assertEqual(config.get('qemu'), _DEFAULT_QEMU_CMD)
         self.assertEqual(config.get('createrepo'), _DEFAULT_REPO_CMD)
+        self.assertEqual(config.get('dependency_tracking'),
+                         _DEFAULT_DEPENDENCY_TRACKING)
 
         # Default gpg settings
         self.assertEqual(config.get('gpg'), None)

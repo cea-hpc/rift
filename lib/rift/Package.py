@@ -69,6 +69,7 @@ class Package():
         self.origin = None
         self.ignore_rpms = None
         self.rpmnames = None
+        self.depends = None
 
         # Static paths
         pkgdir = os.path.join(self._config.get('packages_dir'), self.name)
@@ -163,6 +164,13 @@ class Package():
             self.ignore_rpms = [data.get('ignore_rpms')]
         else:
             self.ignore_rpms = data.get('ignore_rpms', [])
+
+        depends = data.get('depends')
+        if depends is not None:
+            if isinstance(depends, str):
+                self.depends = [depends]
+            else:
+                self.depends = depends
 
         self.check_info()
 

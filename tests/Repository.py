@@ -397,6 +397,18 @@ class ProjectArchRepositoriesTest(RiftTestCase):
         self.assertEqual(repos.all[1], repos.supplementaries[0])
         shutil.rmtree(working_repo_path)
 
+    def test_extra(self):
+        """Test extra repository"""
+        repos = ProjectArchRepositories(
+            self.config,
+            'x86_64',
+            extra=ConsumableRepository('/nowhere', name='hello'),
+        )
+        self.assertEqual(len(repos.supplementaries), 1)
+        self.assertEqual(len(repos.all), 1)
+        self.assertEqual(repos.supplementaries[0].name, 'hello')
+        self.assertEqual(repos.supplementaries[0].url, '/nowhere')
+
     def test_can_publish(self):
         """Test ProjectArchRepositories.can_publish() method"""
         working_repo_path = make_temp_dir()

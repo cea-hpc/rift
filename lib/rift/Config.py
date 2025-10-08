@@ -86,6 +86,7 @@ _DEFAULT_VIRTIOFSD = '/usr/libexec/virtiofsd'
 _DEFAULT_SYNC_METHOD = 'dnf'
 _DEFAULT_SYNC_INCLUDE = []
 _DEFAULT_SYNC_EXCLUDE = []
+_DEFAULT_DEPENDENCY_TRACKING = False
 
 class Config():
     """
@@ -301,6 +302,10 @@ class Config():
             'values': ['9p', 'virtiofs'],
         },
         'sync_output': {},
+        'dependency_tracking': {
+            'check': 'bool',
+            'default': _DEFAULT_DEPENDENCY_TRACKING,
+        },
         # XXX?: 'mock.name' ?
         # XXX?: 'mock.template' ?
     }

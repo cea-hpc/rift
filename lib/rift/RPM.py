@@ -40,6 +40,7 @@ import re
 import shutil
 from subprocess import Popen, PIPE, STDOUT, run, CalledProcessError
 import time
+import itertools
 
 import rpm
 
@@ -213,6 +214,7 @@ class Spec():
         self.filepath = filepath
         self.srpmname = None
         self.pkgnames = []
+        self.provides = []
         self.sources = []
         self.basename = None
         self.version = None
@@ -265,6 +267,12 @@ class Spec():
         except ValueError as exp:
             raise RiftError(f"{self.filepath}: {exp}") from exp
         self.pkgnames = [_header_values(pkg.header['name']) for pkg in spec.packages]
+        # Global unique list of provides. Here dict.fromkeys() is used to remove
+        # duplicates as an alternative to set() for the sake of preserving order.
+        self.provides = list(dict.fromkeys(
+            itertools.chain(
+                *[_header_values(pkg.header['provides'])
+                  for pkg in spec.packages])))
         hdr = spec.sourceHeader
         self.srpmname = hdr.sprintf('%{NAME}-%{VERSION}-%{RELEASE}.src.rpm')
         self.basename = hdr.sprintf('%{NAME}')
