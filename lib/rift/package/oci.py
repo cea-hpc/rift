@@ -44,7 +44,7 @@ from rift.Config import _DEFAULT_VARIANT
 from rift.package._base import Package, ActionableArchPackage
 from rift.annex import Annex
 from rift.TestResults import TestCase, TestResults
-from rift.container import ContainerRuntime, ContainerFile
+from rift.container import ContainerRuntime, ContainerFile, ContainerArchive
 from rift.utils import message, banner
 
 class PackageOCI(Package):
@@ -165,16 +165,6 @@ class ActionableArchPackageOCI(ActionableArchPackage):
 
     def build(self, **kwargs):
         """Build container image of an OCI package."""
-        # Unfortunately, podman does not support signatures on OCI images, only
-        # on images pushed in remote registries. Warn signature is skipped when
-        # requested.
-        if kwargs.get('sign', False):
-            logging.warning(
-                "Signing OCI container image is not supported, skipping %s OCI "
-                "package signature",
-                self.name
-            )
-
         sources_topdir = self._setup_sources()
         message(f"Building container image '{self.name}' on "
                 f"architecture {self.arch}")
@@ -297,6 +287,15 @@ class ActionableArchPackageOCI(ActionableArchPackage):
 
         message("Publishing container image...")
         self.repos.ensure_created()
-        archive_path = os.path.join(self.repos.path,
-            f"{self.name}_{self.package.version}-{self.package.release}.{self.arch}.tar")
-        self.runtime.archive(self, archive_path)
+        container_archive = ContainerArchive(
+            self.config,
+            os.path.join(
+                self.repos.path,
+                f"{self.name}_{self.package.version}-{self.package.release}.{self.arch}.tar"
+            )
+        )
+        self.runtime.archive(self, container_archive)
+        if kwargs.get('sign', False):
+            logging.info(
+                "Signing OCI archive %s with GPG key", container_archive.path)
+            container_archive.sign()

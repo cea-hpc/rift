@@ -317,18 +317,6 @@ class ActionableArchPackageOCITest(RiftProjectTestCase):
         mock_container_runtime.return_value.build.assert_not_called()
 
     @patch('rift.package.oci.ContainerRuntime')
-    def test_build_sign_warn(self, mock_container_runtime):
-        self.setup_package()
-        self.pkg.package.load()
-        with self.assertLogs(level='WARNING') as log:
-            self.pkg.build(sign=True)
-        self.assertIn(
-            'WARNING:root:Signing OCI container image is not supported, '
-            'skipping pkg OCI package signature',
-            log.output
-        )
-
-    @patch('rift.package.oci.ContainerRuntime')
     def test_test_success(self, mock_container_runtime):
         self.setup_package()
         self.pkg.run_local_test = Mock(return_value=RunResult(0, None, None))
@@ -365,23 +353,37 @@ class ActionableArchPackageOCITest(RiftProjectTestCase):
         self.assertIsInstance(results, TestResults)
         self.assertEqual(results.global_result, False)
 
+    @patch('rift.package.oci.ContainerArchive')
     @patch('rift.package.oci.ContainerRuntime')
-    def test_publish(self, mock_container_runtime):
+    def test_publish(self, mock_container_runtime, mock_container_archive):
         self.setup_package()
         self.pkg.repos = Mock(spec=ArchRepositoriesOCI)
         self.pkg.repos.path = '/oci'
         self.pkg.publish()
         self.pkg.repos.ensure_created.assert_called_once()
-        mock_container_runtime.return_value.archive.assert_called_once_with(
-            self.pkg, '/oci/pkg_1.0-1.x86_64.tar')
+        mock_container_runtime.return_value.archive.assert_called_once()
+        mock_container_archive.return_value.sign.assert_not_called()
 
+    @patch('rift.package.oci.ContainerArchive')
     @patch('rift.package.oci.ContainerRuntime')
-    def test_publish_staging(self, mock_container_runtime):
+    def test_publish_staging(self, mock_container_runtime, mock_container_archive):
         self.setup_package()
         self.pkg.repos = Mock(spec=ArchRepositoriesOCI)
         self.pkg.publish(staging=True)
         self.pkg.repos.ensure_created.assert_not_called()
         mock_container_runtime.return_value.archive.assert_not_called()
+        mock_container_archive.return_value.sign.assert_not_called()
+
+    @patch('rift.package.oci.ContainerArchive')
+    @patch('rift.package.oci.ContainerRuntime')
+    def test_publish_sign(self, mock_container_runtime, mock_container_archive):
+        self.setup_package()
+        self.pkg.repos = Mock(spec=ArchRepositoriesOCI)
+        self.pkg.repos.path = '/oci'
+        self.pkg.publish(sign=True)
+        self.pkg.repos.ensure_created.assert_called_once()
+        mock_container_runtime.return_value.archive.assert_called_once()
+        mock_container_archive.return_value.sign.assert_called_once()
 
     def test_clean(self):
         self.setup_package()

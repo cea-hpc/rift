@@ -91,7 +91,7 @@ class ContainerRuntime:
         ]
         return run_command(cmd, capture_output=True)
 
-    def archive(self, actionable_pkg, path):
+    def archive(self, actionable_pkg, container_archive):
         """
         Execute command to export the provided OCI actionable package container
         image as OCI archive in the provided path.
@@ -100,9 +100,77 @@ class ContainerRuntime:
             self.config.get('containers').get('command'),
             '--root', self.rootdir,
             'push', self.tag(actionable_pkg),
-            f"oci-archive:{path}:{self.tag(actionable_pkg)}"
+            f"oci-archive:{container_archive.path}:{self.tag(actionable_pkg)}"
         ]
         return run_command(cmd)
+
+
+class ContainerArchive:
+    """Handle OCI container archive and their cryptographic signatures."""
+
+    def __init__(self, config, path):
+        self.config = config
+        self.path = path
+
+    @property
+    def signature(self):
+        """Return path to container archive detached signature file."""
+        return f"{self.path}.gpg"
+
+    def sign(self):
+        """
+        Cryptographically sign OCI archive with GPG key. Raise RiftError if GPG
+        parameters are missing in project configuration or GPG key is not found.
+        """
+        # GPG parameters not defined in project config, raise RiftError.
+        if self.config is None or self.config.get('gpg') is None:
+            raise RiftError(
+                "Unable to retrieve GPG configuration, unable to sign OCI "
+                f"archive {self.path}",
+            )
+
+        gpg = self.config.get('gpg')
+        keyring = os.path.expanduser(gpg.get('keyring'))
+
+        # Check gpg_keyring path exists or raise error
+        if not os.path.exists(keyring):
+            raise RiftError(
+                f"GPG keyring path {keyring} does not exist, unable to sign "
+                f"OCI archive {self.path}"
+            )
+
+        gpg_passphrase_args = []
+
+        # If passphrase is defined, add the passphrase to gpg command
+        # parameters and make it non-interactive.
+        if gpg.get('passphrase') is not None:
+            gpg_passphrase_args = [
+                '--batch',
+                '--passphrase',
+                gpg.get('passphrase'),
+                '--pinentry-mode',
+                'loopback',
+            ]
+
+        cmd = [
+            'gpg',
+            '--detach-sign',
+            '--output',
+            self.signature,
+            '--default-key',
+            gpg.get('key'),
+            self.path,
+        ]
+
+        cmd[2:2] = gpg_passphrase_args
+        print(cmd)
+        # Run gpg command and raise error in case of failure.
+        proc = run_command(cmd, capture_output=True, merge_out_err=True, env={'GNUPGHOME': keyring})
+        if proc.returncode:
+            raise RiftError(
+                f"Error with signing OCI archive {self.path} command: "
+                f"{proc.out}"
+            )
 
 
 class ContainerFile:
