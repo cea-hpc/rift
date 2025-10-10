@@ -2,16 +2,20 @@
 # Copyright (C) 2026 CEA
 #
 from unittest.mock import patch, Mock
+import subprocess
+import shutil
+import os
 
 from .TestUtils import (
     RiftProjectTestCase,
     command_available,
     make_temp_file,
+    make_temp_tar,
     gen_containerfile,
     EXPECTED_HADOLINT_EXEC
 )
 
-from rift.container import ContainerRuntime, ContainerFile
+from rift.container import ContainerRuntime, ContainerFile, ContainerArchive
 from rift.package.oci import PackageOCI
 from rift.run import RunResult
 from rift.Gerrit import Review
@@ -91,11 +95,181 @@ class ContainerRuntimeTest(RiftProjectTestCase):
         archive_result = RunResult(0, 'ok', None)
         mock_run_command.return_value = archive_result
         self.assertEqual(
-            container.archive(actionable_package, '/path/to/container.tar'),
+            container.archive(
+                actionable_package,
+                ContainerArchive(self.config, '/path/to/container.tar')
+            ),
             archive_result)
         mock_run_command.assert_called_once_with(
             ['podman', '--root', container.rootdir, 'push', 'pkg:1.0-1-x86_64',
              'oci-archive:/path/to/container.tar:pkg:1.0-1-x86_64'])
+
+
+class ContainerArchiveTest(RiftProjectTestCase):
+
+    def setUp(self):
+        super().setUp()
+        # Initialize ContainerArchive with temporary tarball
+        self.container_archive = ContainerArchive(self.config, make_temp_tar())
+
+    def tearDown(self):
+        super().tearDown()
+        os.unlink(self.container_archive.path)
+        if os.path.exists(self.container_archive.signature):
+            os.unlink(self.container_archive.signature)
+
+    def test_sign_no_conf(self):
+        """ContainerArchive.sign() fail with nonexistent keyring."""
+        with self.assertRaisesRegex(
+            RiftError,
+            r"^Unable to retrieve GPG configuration, unable to sign OCI "
+            r"archive .*\.tar$"
+        ):
+            self.container_archive.sign()
+        self.assertFalse(os.path.exists(self.container_archive.signature))
+
+    def test_sign_no_keyring(self):
+        """ContainerArchive.sign() fail with nonexistent keyring."""
+        self.config.options.update(
+            {
+                'gpg': {
+                  'keyring': '/path/to/nonexistent/keyring',
+                  'key': 'rift',
+                }
+            }
+        )
+        self.config._check()
+        with self.assertRaisesRegex(
+            RiftError,
+            r"^GPG keyring path /path/to/nonexistent/keyring does not exist, "
+            r"unable to sign OCI archive .*\.tar$"
+        ):
+            self.container_archive.sign()
+        self.assertFalse(os.path.exists(self.container_archive.signature))
+
+    def sign_copy(self, gpg_passphrase, conf_passphrase=None, preset_passphrase=None):
+        """
+        Generate keyring with provided gpg passphrase, update configuration with
+        generated keyring, copy unsigned rpm_pkg, sign it, verify signature and
+        cleanup everything.
+        """
+        gpg_home = os.path.join(self.projdir, '.gnupg')
+
+        # Launch the agent with --allow-preset-passphrase to accept passphrase
+        # provided non-interactively by gpg-preset-passphrase.
+        cmd = [
+          'gpg-agent',
+          '--homedir',
+          gpg_home,
+          '--allow-preset-passphrase',
+          '--daemon',
+        ]
+        subprocess.run(cmd)
+
+        # Generate keyring
+        gpg_key = 'rift'
+        cmd = [
+            'gpg',
+            '--homedir',
+            gpg_home,
+            '--batch',
+            '--passphrase',
+            gpg_passphrase or '',
+            '--quick-generate-key',
+            gpg_key,
+        ]
+        subprocess.run(cmd)
+
+        # If preset passphrase is provided, add it to the agent
+        # non-interactively with gpg-preset-passphrase.
+        if preset_passphrase:
+            # First find keygrip
+            keygrip = None
+            cmd = [
+                'gpg',
+                '--homedir',
+                gpg_home,
+                '--fingerprint',
+                '--with-keygrip',
+                '--with-colons',
+                gpg_key
+            ]
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE)
+            for line in proc.stdout.decode().split('\n'):
+                if line.startswith('grp'):
+                    keygrip = line.split(':')[9]
+                    break
+            # Run gpg-preset-passphrase to add passphrase in agent
+            cmd = ['/usr/libexec/gpg-preset-passphrase', '--preset', keygrip]
+            subprocess.run(
+                cmd,
+                env={'GNUPGHOME': gpg_home},
+                input=preset_passphrase.encode()
+            )
+
+        # Update project configuration with generated key
+        self.config.options.update(
+            {
+                'gpg': {
+                    'keyring': gpg_home,
+                    'key': gpg_key,
+                }
+            }
+        )
+
+        if conf_passphrase is not None:
+            self.config.options['gpg']['passphrase'] = conf_passphrase
+        self.config._check()
+
+        try:
+            self.container_archive.sign()
+
+        finally:
+            # Kill GPG agent launched for the test
+            cmd = ['gpgconf', '--homedir', gpg_home, '--kill', 'gpg-agent']
+            subprocess.run(cmd)
+
+            # Remove temporary GPG home with generated key
+            shutil.rmtree(gpg_home)
+
+    def test_sign(self):
+        """Container archive signature."""
+        self.sign_copy('TOPSECRET', 'TOPSECRET')
+        self.assertTrue(os.path.exists(self.container_archive.signature))
+
+    def test_sign_wrong_passphrase(self):
+        """
+        Container archive signature raises RiftError with wrong passphrase.
+        """
+        with self.assertRaisesRegex(
+            RiftError,
+            "^Error with signing OCI archive .*"
+        ):
+            self.sign_copy('TOPSECRET', 'WRONG_PASSPHRASE')
+        self.assertFalse(os.path.exists(self.container_archive.signature))
+
+    def test_sign_passphrase_agent_not_interactive(self):
+        """
+        Container archive signature with passphrase in agent not interactive.
+        """
+        # When the key is encrypted with passphrase, the passphrase is not set
+        # in Rift configuration but loaded in GPG agent, Rift must sign the
+        # package without making the agent launch pinentry to ask for the
+        # passphrase interactively.
+        self.sign_copy('TOPSECRET', preset_passphrase='TOPSECRET')
+        self.assertTrue(os.path.exists(self.container_archive.signature))
+
+    def test_sign_empty_passphrase_not_interactive(self):
+        """
+        Container archive signature with empty passphrase no interactive
+        passphrase.
+        """
+        # When the key is NOT encrypted with passphrase, Rift must sign the
+        # package without making the agent launch pinentry to ask for the
+        # passphrase interactively.
+        self.sign_copy(None)
+        self.assertTrue(os.path.exists(self.container_archive.signature))
+
 
 class ContainerFileTest(RiftProjectTestCase):
     """Tests class for ContainerFile"""
