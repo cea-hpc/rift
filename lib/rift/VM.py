@@ -123,7 +123,8 @@ class VM():
         self.version = config.get('version', '0')
         self.arch = arch
 
-        self._image = config.get('vm_image', arch=arch)
+        vm_config = config.get('vm', arch=arch)
+        self._image = vm_config.get('image')
         self._project_dir = config.project_dir
 
         if extra_repos is None:
@@ -131,17 +132,17 @@ class VM():
 
         self._repos = ProjectArchRepositories(config, arch).all + extra_repos
 
-        self.address = config.get('vm_address')
-        self.port = self.default_port(config.get('vm_port_range'))
-        self.cpus = config.get('vm_cpus', 1)
-        self.memory = config.get('vm_memory')
+        self.address = vm_config.get('address')
+        self.port = self.default_port(vm_config.get('port_range'))
+        self.cpus = vm_config.get('cpus', 1)
+        self.memory = vm_config.get('memory')
         self.qemu = config.get('qemu', arch=arch)
 
         # default emulated cpu architecture
         if self.arch == 'aarch64':
-            self.cpu_type = config.get('vm_cpu', 'cortex-a72')
+            self.cpu_type = vm_config.get('cpu', 'cortex-a72')
         else:
-            self.cpu_type = config.get('vm_cpu', 'host')
+            self.cpu_type = vm_config.get('cpu', 'host')
 
         # Specific aarch64 options
         self.arch_efi_bios = config.get('arch_efi_bios', ARCH_EFI_BIOS)
@@ -156,21 +157,21 @@ class VM():
 
 
         self.tmpmode = tmpmode
-        self.copymode = config.get('vm_image_copy')
+        self.copymode = vm_config.get('image_copy')
         self._vm = None
         self._helpers = []
         self._tmpimg = None
         self.consolesock = f"/tmp/rift-vm-console-{self.vmid}.sock"
         self.proxy = config.get('proxy')
         self.no_proxy = config.get('no_proxy')
-        self.additional_rpms = config.get('vm_additional_rpms')
+        self.additional_rpms = vm_config.get('additional_rpms')
         self.cloud_init_tpl = config.project_path(
-            config.get('vm_cloud_init_tpl')
+            vm_config.get('cloud_init_tpl')
         )
         self.build_post_script = config.project_path(
-            config.get('vm_build_post_script')
+            vm_config.get('build_post_script')
         )
-        self.images_cache = config.get('vm_images_cache')
+        self.images_cache = vm_config.get('images_cache')
 
     @property
     def vmid(self):

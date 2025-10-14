@@ -271,17 +271,17 @@ class ControllerProjectTest(RiftProjectTestCase):
         mock_vm_class.assert_called()
 
         mock_vm_objects.build.assert_called_once_with(
-            'http://image', False, False, self.config.get('vm_image')
+            'http://image', False, False, self.config.get('vm').get('image')
         )
         mock_vm_objects.build.reset_mock()
         main(['vm', 'build', 'http://image', '--deploy', '--force'])
         mock_vm_objects.build.assert_called_once_with(
-            'http://image', True, False, self.config.get('vm_image')
+            'http://image', True, False, self.config.get('vm').get('image')
         )
         mock_vm_objects.build.reset_mock()
         main(['vm', 'build', 'http://image', '--deploy', '--keep'])
         mock_vm_objects.build.assert_called_once_with(
-            'http://image', False, True, self.config.get('vm_image')
+            'http://image', False, True, self.config.get('vm').get('image')
         )
         mock_vm_objects.build.reset_mock()
         main(
@@ -315,12 +315,12 @@ class ControllerProjectTest(RiftProjectTestCase):
         self.skipTest("Too much instability")
         if not os.path.exists("/usr/bin/qemu-img"):
             self.skipTest("qemu-img is not available")
-        self.config.options['vm_images_cache'] = GLOBAL_CACHE
+        self.config.options['vm']['images_cache'] = GLOBAL_CACHE
         # Reduce memory size from default 8GB to 2GB because it is sufficient to
         # run this VM and it largely reduces storage required by virtiofs memory
         # backend file which is the same size as the VM memory, thus reducing
         # the risk to fill up small partitions when running the tests.
-        self.config.options['vm_memory'] = 2048
+        self.config.options['vm']['memory'] = 2048
         self.config.options['proxy'] = PROXY
         self.config.options['repos'] = {
             'os': {

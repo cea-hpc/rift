@@ -79,13 +79,18 @@ class VMTest(RiftTestCase):
 
         # custom
         self.config.set('arch', ['aarch64'])
-        self.config.set('vm_cpu', 'custom')
-        self.config.set('vm_cpus', 32)
-        self.config.set('vm_memory', vm_custom_memory)
+        self.config.set(
+            'vm',
+            {
+                'cpu': 'custom',
+                'cpus': 32,
+                'memory': vm_custom_memory,
+                'image_copy': 1,
+                'address': '192.168.0.5',
+                'image': '/my_image',
+            }
+        )
         self.config.set('arch_efi_bios', '/my_bios')
-        self.config.set('vm_image_copy', 1)
-        self.config.set('vm_address', '192.168.0.5')
-        self.config.set('vm_image', '/my_image')
         self.config.set('qemu', '/my_custom_qemu')
 
         vm = VM(self.config, 'aarch64')
@@ -340,7 +345,7 @@ class VMBuildTest(RiftProjectTestCase):
         super().setUp()
         # Override some configuration parameters defined in dummy config from
         # RiftProjectTestCase.
-        self.config.options['vm_images_cache'] = GLOBAL_CACHE
+        self.config.options['vm']['images_cache'] = GLOBAL_CACHE
         self.config.options['proxy'] = PROXY
         self.wrong_url = 'https://127.0.0.1/fail'
         self.valid_url = VALID_IMAGE_URL['x86_64']

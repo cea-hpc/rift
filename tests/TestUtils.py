@@ -33,7 +33,7 @@ config_opts['dist'] = 'el8'
 config_opts['releasever'] = '8'
 config_opts['priorities.conf'] = "[main]\\nenabled = 1\\n"
 config_opts['package_manager'] = 'dnf'
-config_opts['bootstrap_image'] = 'centos:8'
+config_opts['use_bootstrap_image'] = False
 config_opts['isolation'] = 'simple'
 config_opts['chroot_setup_cmd'] = (
     'install tar gcc-c++ redhat-rpm-config redhat-release which xz sed make '
@@ -162,7 +162,8 @@ class RiftProjectTestCase(RiftTestCase):
         self.projectconf = os.path.join(self.projdir, Config._DEFAULT_FILES[0])
         with open(self.projectconf, "w") as conf:
             conf.write("annex:           %s\n" % self.annexdir)
-            conf.write("vm_image:        test.img\n")
+            conf.write("vm:\n")
+            conf.write("  image:         test.img\n")
             conf.write("repos:           {}\n")
         os.chdir(self.projdir)
         # Dict of created packages
@@ -198,9 +199,13 @@ class RiftProjectTestCase(RiftTestCase):
             os.rmdir(pkgdir)
         # Remove potentially generated files for VM related tests
         for path in [
-            self.config.project_path(self.config.get('vm_cloud_init_tpl')),
-            self.config.project_path(self.config.get('vm_build_post_script')),
-            self.config.project_path(self.config.get('vm_image')),
+            self.config.project_path(
+                self.config.get('vm').get('cloud_init_tpl')
+            ),
+            self.config.project_path(
+                self.config.get('vm').get('build_post_script')
+            ),
+            self.config.project_path(self.config.get('vm').get('image')),
         ]:
             if os.path.exists(path):
                 os.unlink(path)
@@ -318,7 +323,9 @@ class RiftProjectTestCase(RiftTestCase):
                 'template',
                 'cloud-init.tpl',
             ),
-            self.config.project_path(self.config.get('vm_cloud_init_tpl')),
+            self.config.project_path(
+                self.config.get('vm').get('cloud_init_tpl')
+            ),
         )
 
     def copy_build_post_script(self):
@@ -330,13 +337,15 @@ class RiftProjectTestCase(RiftTestCase):
                 'template',
                 'build-post.sh',
             ),
-            self.config.project_path(self.config.get('vm_build_post_script')),
+            self.config.project_path(
+                self.config.get('vm').get('build_post_script')
+            ),
         )
 
     def ensure_vm_images_cache_dir(self):
         """Ensure VM images cache directory exists."""
         cache_dir =  self.config.project_path(
-            self.config.get('vm_images_cache')
+            self.config.get('vm').get('images_cache')
         )
         if not os.path.exists(cache_dir):
             os.mkdir(cache_dir)

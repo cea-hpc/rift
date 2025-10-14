@@ -172,7 +172,7 @@ class Mock():
             cmd,
             live_output=logging.getLogger().isEnabledFor(logging.INFO),
             capture_output=True,
-            merged_capture=True,
+            merge_out_err=True,
             cwd='/'
         )
         if proc.returncode != 0:

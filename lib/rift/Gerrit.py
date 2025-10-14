@@ -80,15 +80,20 @@ class Review():
     def push(self, config, changeid, revid):
         """Send REST request to Gerrit server from config"""
         auth_methods = ('digest', 'basic')
-        realm = config.get('gerrit_realm')
-        server = config.get('gerrit_server')
-        username = config.get('gerrit_username')
-        password = config.get('gerrit_password')
-        auth_method = config.get('gerrit_auth_method', 'basic')
+
+        gerrit_config = config.get('gerrit')
+        if gerrit_config is None:
+            raise RiftError("Gerrit configuration is not defined")
+
+        realm = gerrit_config.get('realm')
+        server = gerrit_config.get('server')
+        username = gerrit_config.get('username')
+        password = gerrit_config.get('password')
+        auth_method = gerrit_config.get('auth_method', 'basic')
 
         if realm is None:
             raise RiftError("Gerrit realm is not defined")
-        if server is None and config.get('gerrit_url') is None:
+        if server is None and gerrit_config.get('url') is None:
             raise RiftError("Gerrit url is not defined")
         if username is None:
             raise RiftError("Gerrit username is not defined")
@@ -98,7 +103,7 @@ class Review():
             raise RiftError(f"Gerrit auth_method is not correct (supported {auth_methods})")
 
         # Set a default url if only gerrit_server was defined
-        url = config.get('gerrit_url', f"https://{server}")
+        url = gerrit_config.get('url', f"https://{server}")
 
         # FIXME: Don't check certificate
         ctx = ssl.create_default_context()

@@ -35,6 +35,9 @@ Config:
 """
 import errno
 import os
+import warnings
+import logging
+
 import yaml
 
 from rift import DeclError
@@ -55,6 +58,9 @@ class OrderedLoader(yaml.SafeLoader):
 def _construct_mapping(loader, node):
     loader.flatten_mapping(node)
     return OrderedDict(loader.construct_pairs(node))
+
+class RiftDeprecatedConfWarning(FutureWarning):
+    """Warning emitted when deprecated configuration parameter is loaded."""
 
 OrderedLoader.add_constructor(
     yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
@@ -175,55 +181,114 @@ class Config():
                 }
             }
         },
-        'vm_image':    {
-            'required': True,
-            # XXX?: default value?
-        },
-        'vm_image_copy':    {
-            'check':    'digit',
-            'default': 0,
-        },
-        'vm_port_range': {
+        'vm': {
             'check':    'dict',
+            'required': True,
             'syntax': {
-                'min': {
-                    'check': 'digit',
-                    'default': _DEFAULT_VM_PORT_RANGE_MIN,
+                'image':    {
+                    'required': True,
+                    # XXX?: default value?
                 },
-                'max': {
-                    'check': 'digit',
-                    'default': _DEFAULT_VM_PORT_RANGE_MAX,
-                }
+                'image_copy':    {
+                    'check':    'digit',
+                    'default': 0,
+                },
+                'port_range': {
+                    'check':    'dict',
+                    'syntax': {
+                        'min': {
+                            'check': 'digit',
+                            'default': _DEFAULT_VM_PORT_RANGE_MIN,
+                        },
+                        'max': {
+                            'check': 'digit',
+                            'default': _DEFAULT_VM_PORT_RANGE_MAX,
+                        }
+                    }
+                },
+                'cpu': {},
+                'cpus': {
+                    'check':    'digit',
+                    'default':  _DEFAULT_VM_CPUS,
+                },
+                'memory': {
+                    'check':    'digit',
+                    'default':   _DEFAULT_VM_MEMORY,
+                },
+                'address': {
+                    'default':  _DEFAULT_VM_ADDRESS,
+                },
+                'images_cache': {},
+                'additional_rpms': {
+                    'check':    'list',
+                    'default':  _DEFAULT_VM_ADDITIONAL_RPMS,
+                },
+                'cloud_init_tpl': {
+                    'default': _DEFAULT_VM_CLOUD_INIT_TPL,
+                },
+                'build_post_script': {
+                    'default': _DEFAULT_VM_BUILD_POST_SCRIPT,
+                },
             }
         },
-        'vm_cpu': {},
+        'vm_image':    {
+            'deprecated': 'vm.image'
+        },
+        'vm_image_copy':    {
+            'deprecated': 'vm.image_copy'
+        },
+        'vm_port_range': {
+            'deprecated': 'vm.port_range'
+        },
+        'vm_cpu': {
+            'deprecated': 'vm.cpu'
+        },
         'vm_cpus': {
-            'check':    'digit',
-            'default':  _DEFAULT_VM_CPUS,
+            'deprecated': 'vm.cpus'
         },
         'vm_memory': {
-            'check':    'digit',
-            'default':   _DEFAULT_VM_MEMORY,
+            'deprecated': 'vm.memory'
         },
         'vm_address': {
-            'default':  _DEFAULT_VM_ADDRESS,
+            'deprecated': 'vm.address'
         },
-        'vm_images_cache': {},
+        'vm_images_cache': {
+            'deprecated': 'vm.images_cache'
+        },
         'vm_additional_rpms': {
-            'check':    'list',
-            'default':  _DEFAULT_VM_ADDITIONAL_RPMS,
+            'deprecated': 'vm.additional_rpms'
         },
         'vm_cloud_init_tpl': {
-            'default': _DEFAULT_VM_CLOUD_INIT_TPL,
+            'deprecated': 'vm.cloud_init_tpl'
         },
         'vm_build_post_script': {
-            'default': _DEFAULT_VM_BUILD_POST_SCRIPT,
+            'deprecated': 'vm.build_post_script'
         },
-        'gerrit_realm': {},
-        'gerrit_server': {},
-        'gerrit_url': {},
-        'gerrit_username': {},
-        'gerrit_password': {},
+        'gerrit': {
+            'check': 'dict',
+            'syntax': {
+                'realm': {},
+                'server': {},
+                'url': {},
+                'username': {},
+                'password': {},
+            }
+        },
+        'gerrit_realm': {
+            'deprecated': 'gerrit.realm'
+        },
+        'gerrit_server': {
+            'deprecated': 'gerrit.server'
+        },
+        'gerrit_url': {
+            'deprecated': 'gerrit.url'
+        },
+        'gerrit_username': {
+            'deprecated': 'gerrit.username'
+        },
+        'gerrit_password': {
+            'deprecated': 'gerrit.password'
+        },
         'rpm_macros': {
             'check':    'dict',
         },
@@ -444,6 +509,12 @@ class Config():
         if key not in self.SYNTAX:
             raise DeclError(f"Unknown '{key}' key")
 
+        # Check not deprecated
+        replacement = self.SYNTAX[key].get('deprecated')
+        if replacement:
+            raise DeclError(f"Parameter {key} is deprecated, use "
+                            f"{' > '.join(replacement.split('.'))} instead")
+
         options = self._arch_options(arch)
         value = self._key_value(
             self.SYNTAX[key],
@@ -522,8 +593,8 @@ class Config():
             raise DeclError(f"Unknown {key} keys: {', '.join(unknown_keys)}")
 
         # Iterate over the keys defined in syntax. If the subvalue or default
-        # value is defined, set it or raise error if required.
-        for subkey, subkey_format in syntax.items():
+        # value is defined, set it.
+        for subkey in syntax.keys():
             subkey_value = value.get(subkey,
                                      Config._syntax_default(syntax, subkey))
             if subkey_value is not None:
@@ -533,12 +604,7 @@ class Config():
                     subkey_value,
                     syntax[subkey].get('check', 'string')
                 )
-            elif subkey_format.get('required', False):
-                raise DeclError(
-                    f"Key {subkey} is required in dict parameter {key}"
-                )
 
-        # Set the key in options dict eventually.
         return result
 
     def _record_value(self, syntax, value):
@@ -556,6 +622,73 @@ class Config():
             )
         return result
 
+    @staticmethod
+    def _get_replacement_dict_key(data, replacement):
+        """
+        Return a 2-tuple with the dict that contains the replacement parameter
+        and the key of this parameter in this dict.
+        """
+        sub = data
+        replacement_items = replacement.split('.')
+        # Browse in data dict depth until last replacement item.
+        for index, item in enumerate(replacement_items, start=1):
+            if index < len(replacement_items):
+                if item not in sub:
+                    sub[item] = {}
+                sub = sub[item]
+            else:
+                return sub, item
+        return None
+
+    def _move_deprecated_param(self, data, param, value):
+        """
+        If the given parameter is deprecated, move its value to its replacement
+        parameter.
+        """
+        # Leave if parameter not found in syntax, the error is managed in set()
+        # method eventually.
+        if param not in self.SYNTAX:
+            return
+        # Check presence of deprecated attribute and leave if not defined.
+        replacement = self.SYNTAX[param].get("deprecated")
+        if replacement is None:
+            return
+        # Warn user with FutureWarning.
+        warnings.warn(f"Configuration parameter {param} is deprecated, use "
+                      f"{' > '.join(replacement.split('.'))} instead",
+                      RiftDeprecatedConfWarning)
+        # Get position of replacement parameter.
+        sub, item = Config._get_replacement_dict_key(data, replacement)
+        # If both new and deprecated parameter are defined, emit warning log to
+        # explain deprecated parameter is ignored. Else, move deprecated
+        # parameter to its new place.
+        if item in sub:
+            logging.warning("Both deprecated parameter %s and new parameter "
+                            "%s are declared in configuration, deprecated "
+                            "parameter %s is ignored",
+                            param, replacement, param)
+        else:
+            sub[item] = value
+        del data[param]
+
+    def _move_deprecated(self, data):
+        """
+        Iterate over data dict to check for deprecated parameters and move them
+        to their replacements.
+        """
+        # Load generic options (ie. not architecture specific)
+        for param, value in data.copy().items():
+            # Skip architecture specific options
+            if param in self.get('arch'):
+                continue
+            self._move_deprecated_param(data, param, value)
+
+        # Load architecture specific options
+        for arch in self.get('arch'):
+            if arch in data and isinstance(data[arch], dict):
+                for param, value in data.copy()[arch].items():
+                    self._move_deprecated_param(data[arch], param, value)
+
     def update(self, data):
         """
         Update config content with data dict, checking data content respect
@@ -565,6 +698,9 @@ class Config():
         if 'arch' in data:
             self.set('arch', data['arch'])
             del data['arch']
+
+        # Look for deprecated parameters, and update dict with new parameters.
+        self._move_deprecated(data)
 
         # Load generic options (ie. not architecture specific)
         for key, value in data.items():
@@ -585,22 +721,45 @@ class Config():
                     self.set(key, value, arch=arch)
 
     def _check(self):
-        """Checks for mandatory options."""
-        for key, value in self.SYNTAX.items():
+        """Checks for required options in main syntax recursively."""
+        self._check_syntax(self.SYNTAX, self.options)
+
+    def _check_syntax(self, syntax, options, param='__main__'):
+        """Checks for mandatory options regarding the provided syntax recursively."""
+        for key in syntax:
             if (
-                    value.get('required', False) and
-                    'default' not in value
+                    syntax[key].get('required', False) and
+                    'default' not in syntax[key]
                 ):
                 # Check key is in options or defined in all supported arch
                 # specific options.
                 if (
-                        key not in self.options and
+                        key not in options and
                         not all(
-                            arch in self.options and key in self.options[arch]
+                            arch in options and key in options[arch]
                             for arch in self.get('arch')
                         )
                     ):
-                    raise DeclError(f"'{key}' is not defined")
+                    if param == '__main__':
+                        raise DeclError(f"'{key}' is not defined")
+                    raise DeclError(
+                        f"Key {key} is required in dict parameter {param}"
+                    )
+            # If the parameter is a dict with a syntax, check the value.
+            if (
+                    syntax[key].get('check') == 'dict' and
+                    syntax[key].get('syntax') is not None and key in options
+                ):
+                self._check_syntax(syntax[key]['syntax'], options[key], key)
+            # If the parameter is a record with dict values and a syntax, check
+            # all values.
+            if (
+                    syntax[key].get('check') == 'record' and
+                    syntax[key].get('content') == 'dict' and
+                    syntax[key].get('syntax') is not None and key in options
+                ):
+                for value in options[key].values():
+                    self._check_syntax(syntax[key]['syntax'], value, key)
 
 
 class Staff():

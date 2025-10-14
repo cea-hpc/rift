@@ -137,6 +137,15 @@ class TestResults():
         """
         self.results.append(result)
 
+    def extend(self, other):
+        """
+        Extend TestResults with all TestResult from the other TestResults.
+        """
+        for result in other.results:
+            self.results.append(result)
+            if result.value == 'Failure':
+                self.global_result = False
+
     def junit(self, filename):
         """
         Generate a junit xml file containing all tests results.
