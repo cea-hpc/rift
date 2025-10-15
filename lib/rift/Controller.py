@@ -995,6 +995,58 @@ def action_sync(args, config):
             )
             synchronizer.run()
 
+def action_query(args, config):
+    """Action for 'query' command."""
+    staff, modules = staff_modules(config)
+    pkglist = sorted(Package.list(config, staff, modules, args.packages),
+                        key=attrgetter('name'))
+
+    tbl = TextTable()
+    tbl.fmt = args.fmt or '%name %module %maintainers %version %release '\
+                            '%modulemanager'
+    tbl.show_header = args.headers
+    tbl.color = True
+
+    supported_keys = set(('name', 'module', 'origin', 'reason', 'tests',
+                            'version', 'arch', 'release', 'changelogname',
+                            'changelogtime', 'maintainers', 'modulemanager',
+                            'buildrequires'))
+    diff_keys = set(tbl.pattern_fields()) - supported_keys
+    if diff_keys:
+        raise RiftError(f"Unknown placeholder(s): {', '.join(diff_keys)} "
+                        f"(supported keys are: {', '.join(supported_keys)})")
+
+    for pkg in pkglist:
+        logging.debug('Loading package %s', pkg.name)
+        try:
+            pkg.load()
+            spec = Spec(config=config)
+            if args.spec:
+                spec.filepath = pkg.specfile
+                spec.load()
+        except RiftError as exp:
+            logging.error("%s: %s", pkg.name, str(exp))
+            continue
+
+        date = str(time.strftime("%Y-%m-%d", time.localtime(spec.changelog_time)))
+        modulemanager = staff.get(modules.get(pkg.module).get('manager')[0])
+        tbl.append({'name': pkg.name,
+                    'module': pkg.module,
+                    'origin': pkg.origin,
+                    'reason': pkg.reason,
+                    'tests': str(len(list(pkg.tests()))),
+                    'version': spec.version,
+                    'arch': spec.arch,
+                    'release': spec.release,
+                    'changelogname': spec.changelog_name,
+                    'changelogtime': date,
+                    'buildrequires': spec.buildrequires,
+                    'modulemanager': modulemanager['email'],
+                    'maintainers': ', '.join(pkg.maintainers)})
+    print(tbl)
+
+    return 0
+
 def create_staging_repo(config):
     """
     Create and return staging temporary repository with a 2-tuple containing
@@ -1104,55 +1156,9 @@ def action(config, args):
     elif args.command == 'validdiff':
         return action_validdiff(args, config)
 
+    # QUERY
     elif args.command == 'query':
-
-        staff, modules = staff_modules(config)
-        pkglist = sorted(Package.list(config, staff, modules, args.packages),
-                         key=attrgetter('name'))
-
-        tbl = TextTable()
-        tbl.fmt = args.fmt or '%name %module %maintainers %version %release '\
-                              '%modulemanager'
-        tbl.show_header = args.headers
-        tbl.color = True
-
-        supported_keys = set(('name', 'module', 'origin', 'reason', 'tests',
-                              'version', 'arch', 'release', 'changelogname',
-                              'changelogtime', 'maintainers', 'modulemanager',
-                              'buildrequires'))
-        diff_keys = set(tbl.pattern_fields()) - supported_keys
-        if diff_keys:
-            raise RiftError(f"Unknown placeholder(s): {', '.join(diff_keys)} "
-                            f"(supported keys are: {', '.join(supported_keys)})")
-
-        for pkg in pkglist:
-            logging.debug('Loading package %s', pkg.name)
-            try:
-                pkg.load()
-                spec = Spec(config=config)
-                if args.spec:
-                    spec.filepath = pkg.specfile
-                    spec.load()
-            except RiftError as exp:
-                logging.error("%s: %s", pkg.name, str(exp))
-                continue
-
-            date = str(time.strftime("%Y-%m-%d", time.localtime(spec.changelog_time)))
-            modulemanager = staff.get(modules.get(pkg.module).get('manager')[0])
-            tbl.append({'name': pkg.name,
-                        'module': pkg.module,
-                        'origin': pkg.origin,
-                        'reason': pkg.reason,
-                        'tests': str(len(list(pkg.tests()))),
-                        'version': spec.version,
-                        'arch': spec.arch,
-                        'release': spec.release,
-                        'changelogname': spec.changelog_name,
-                        'changelogtime': date,
-                        'buildrequires': spec.buildrequires,
-                        'modulemanager': modulemanager['email'],
-                        'maintainers': ', '.join(pkg.maintainers)})
-        print(tbl)
+        return action_query(args, config)
 
     elif args.command == 'changelog':
 
