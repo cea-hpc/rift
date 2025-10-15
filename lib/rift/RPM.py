@@ -40,6 +40,7 @@ import re
 import shutil
 from subprocess import Popen, PIPE, STDOUT, run, CalledProcessError
 import time
+import locale
 
 import rpm
 
@@ -364,7 +365,14 @@ class Spec():
         if bump:
             self.bump_release()
 
+        # Temporarily set basic C locale to generate date representation in
+        # changelog.
+        current_locale = locale.getlocale(locale.LC_TIME)
+        locale.setlocale(locale.LC_TIME, 'C')
         date = time.strftime("%a %b %d %Y", time.gmtime())
+        # Immediately restore previous locale.
+        locale.setlocale(locale.LC_TIME, current_locale)
+
         newchangelogentry = f"* {date} {userstring} - {self.evr}\n{comment}\n"
         chlg_match = None
         for i, _ in enumerate(self.lines):
