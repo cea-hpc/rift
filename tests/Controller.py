@@ -20,7 +20,7 @@ from rift.Controller import (
     make_parser,
 )
 from rift.Package import Package
-from rift.RPM import RPM
+from rift.RPM import RPM, Spec
 from rift.run import RunResult
 from rift import RiftError
 
@@ -42,6 +42,145 @@ class ControllerTest(RiftTestCase):
     def test_main_version(self):
         """simple 'rift --version'"""
         self.assert_except(SystemExit, "0", main, ['--version'])
+
+
+class ControllerProjectActionCreateTest(RiftProjectTestCase):
+    """
+    Tests class for Controller action create
+    """
+
+    def test_create_missing_pkg_module_reason(self):
+        """create without package, module or reason fails"""
+        for cmd in (['create', '-m', 'Great module', '-r', 'Good reason'],
+                    ['create', 'pkg', '-r', 'Good reason'],
+                    ['create', 'pkg', '-m', 'Great module']):
+            with self.assertRaisesRegex(SystemExit, "2"):
+                main(cmd)
+
+    def test_create_missing_maintainer(self):
+        """create without maintainer"""
+        with self.assertRaisesRegex(RiftError, "You must specify a maintainer"):
+            main(['create', 'pkg', '-m', 'Great module', '-r', 'Good reason'])
+
+    def test_create(self):
+        """simple create"""
+        main(['create', 'pkg', '-m', 'Great module', '-r', 'Good reason',
+              '--maintainer', 'Myself'])
+        pkg = Package('pkg', self.config, self.staff, self.modules)
+        pkg.load()
+        self.assertEqual(pkg.module, 'Great module')
+        self.assertEqual(pkg.reason, 'Good reason')
+        self.assertCountEqual(pkg.maintainers, ['Myself'])
+        os.unlink(pkg.metafile)
+        os.rmdir(os.path.dirname(pkg.metafile))
+
+    def test_create_unknown_maintainer(self):
+        """create with unknown maintainer fails"""
+        with self.assertRaisesRegex(
+            RiftError, "Maintainer 'Fail' is not defined"):
+            main(['create', 'pkg', '-m', 'Great module', '-r', 'Good reason',
+                  '--maintainer', 'Fail'])
+
+
+class ControllerProjectActionImportTest(RiftProjectTestCase):
+    """
+    Tests class for Controller action import
+    """
+    @property
+    def src_rpm(self):
+        return os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), 'materials', 'pkg-1.0-1.src.rpm'
+        )
+
+    @property
+    def bin_rpm(self):
+        return os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), 'materials', 'pkg-1.0-1.noarch.rpm'
+        )
+
+    def test_import_missing_pkg_module_reason(self):
+        """import without package, module or reason fails"""
+        for cmd in (['import', '-m', 'Great module', '-r', 'Good reason'],
+                    ['import', 'pkg.src.rpm', '-r', 'Good reason'],
+                    ['import', 'pkg.src.rpm', '-m', 'Great module']):
+            with self.assertRaisesRegex(SystemExit, "2"):
+                main(cmd)
+
+    def test_import_missing_maintainer(self):
+        """import without maintainer"""
+        with self.assertRaisesRegex(RiftError, "You must specify a maintainer"):
+            main(['import', self.src_rpm, '-m', 'Great module', '-r', 'Good reason'])
+
+    def test_import_bin_rpm(self):
+        """import binary rpm"""
+        with self.assertRaisesRegex(
+            RiftError,
+            ".*pkg-1.0-1.noarch.rpm is not a source RPM$"):
+            main(['import', self.bin_rpm, '-m', 'Great module',
+                  '-r', 'Good reason', '--maintainer', 'Myself'])
+
+    def test_import(self):
+        """simple import"""
+        main(['import', self.src_rpm, '-m', 'Great module', '-r', 'Good reason',
+              '--maintainer', 'Myself'])
+        pkg = Package('pkg', self.config, self.staff, self.modules)
+        pkg.load()
+        self.assertEqual(pkg.module, 'Great module')
+        self.assertEqual(pkg.reason, 'Good reason')
+        self.assertCountEqual(pkg.maintainers, ['Myself'])
+        spec = Spec(filepath=pkg.specfile)
+        spec.load()
+        self.assertEqual(spec.changelog_name, 'Myself <buddy@somewhere.org> - 1.0-1')
+        self.assertEqual(spec.version, '1.0')
+        self.assertEqual(spec.release, '1')
+        self.assertTrue(os.path.exists(f"{pkg.specfile}.orig"))
+        shutil.rmtree(os.path.dirname(pkg.metafile))
+
+    def test_import_unknown_maintainer(self):
+        """import with unknown maintainer fails"""
+        with self.assertRaisesRegex(
+            RiftError, "Maintainer 'Fail' is not defined"):
+            main(['import', self.src_rpm, '-m', 'Great module',
+                    '-r', 'Good reason', '--maintainer', 'Fail'])
+
+
+class ControllerProjectActionReimportTest(RiftProjectTestCase):
+    """
+    Tests class for Controller actionre import
+    """
+    @property
+    def src_rpm(self):
+        return os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), 'materials', 'pkg-1.0-1.src.rpm'
+        )
+
+    @property
+    def bin_rpm(self):
+        return os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), 'materials', 'pkg-1.0-1.noarch.rpm'
+        )
+
+    def test_reimport_missing_maintainer(self):
+        """reimport without maintainer"""
+        with self.assertRaisesRegex(RiftError, "You must specify a maintainer"):
+            main(['reimport', self.src_rpm, '-m', 'Great module', '-r', 'Good reason'])
+
+    def test_reimport(self):
+        """simple reimport"""
+        self.make_pkg(name='pkg')
+        main(['reimport', self.src_rpm, '--maintainer', 'Myself'])
+        pkg = Package('pkg', self.config, self.staff, self.modules)
+        pkg.load()
+        self.assertEqual(pkg.module, 'Great module')
+        self.assertEqual(pkg.reason, 'Missing feature')
+        self.assertCountEqual(pkg.maintainers, ['Myself'])
+        spec = Spec(filepath=pkg.specfile)
+        spec.load()
+        self.assertEqual(spec.changelog_name, 'Myself <buddy@somewhere.org> - 1.0-1')
+        self.assertEqual(spec.version, '1.0')
+        self.assertEqual(spec.release, '1')
+        self.assertTrue(os.path.exists(f"{pkg.specfile}.orig"))
+        os.unlink(f"{pkg.specfile}.orig")
 
 
 class ControllerProjectTest(RiftProjectTestCase):

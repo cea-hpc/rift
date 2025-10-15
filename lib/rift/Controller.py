@@ -995,6 +995,44 @@ def action_sync(args, config):
             )
             synchronizer.run()
 
+def action_create_import(args, config):
+    """Action for 'create', 'import' and 'reimport' commands."""
+    if args.command == 'create':
+        pkgname = args.name
+    elif args.command in ('import', 'reimport'):
+        rpm = RPM(args.file, config)
+        if not rpm.is_source:
+            raise RiftError(f"{args.file} is not a source RPM")
+        pkgname = rpm.name
+
+    if args.maintainer is None:
+        raise RiftError("You must specify a maintainer")
+
+    pkg = Package(pkgname, config, *staff_modules(config))
+    if args.command == 'reimport':
+        pkg.load()
+
+    if args.module:
+        pkg.module = args.module
+    if args.maintainer not in pkg.maintainers:
+        pkg.maintainers.append(args.maintainer)
+    if args.reason:
+        pkg.reason = args.reason
+    if args.origin:
+        pkg.origin = args.origin
+
+    pkg.check_info()
+    pkg.write()
+
+    if args.command in ('create', 'import'):
+        message(f"Package '{pkg.name}' has been created")
+
+    if args.command in ('import', 'reimport'):
+        rpm.extract_srpm(pkg.dir, pkg.sourcesdir)
+        message(f"Package '{pkg.name}' has been {args.command}ed")
+
+    return 0
+
 def create_staging_repo(config):
     """
     Create and return staging temporary repository with a 2-tuple containing
@@ -1049,40 +1087,7 @@ def action(config, args):
 
     # CREATE/IMPORT/REIMPORT
     if args.command in ['create', 'import', 'reimport']:
-
-        if args.command == 'create':
-            pkgname = args.name
-        elif args.command in ('import', 'reimport'):
-            rpm = RPM(args.file, config)
-            if not rpm.is_source:
-                raise RiftError(f"{args.file} is not a source RPM")
-            pkgname = rpm.name
-
-        if args.maintainer is None:
-            raise RiftError("You must specify a maintainer")
-
-        pkg = Package(pkgname, config, *staff_modules(config))
-        if args.command == 'reimport':
-            pkg.load()
-
-        if args.module:
-            pkg.module = args.module
-        if args.maintainer not in pkg.maintainers:
-            pkg.maintainers.append(args.maintainer)
-        if args.reason:
-            pkg.reason = args.reason
-        if args.origin:
-            pkg.origin = args.origin
-
-        pkg.check_info()
-        pkg.write()
-
-        if args.command in ('create', 'import'):
-            message(f"Package '{pkg.name}' has been created")
-
-        if args.command in ('import', 'reimport'):
-            rpm.extract_srpm(pkg.dir, pkg.sourcesdir)
-            message(f"Package '{pkg.name}' has been {args.command}ed")
+        return action_create_import(args, config)
 
     # BUILD
     elif args.command == 'build':
