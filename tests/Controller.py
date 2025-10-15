@@ -20,7 +20,7 @@ from rift.Controller import (
     make_parser,
 )
 from rift.Package import Package
-from rift.RPM import RPM
+from rift.RPM import RPM, Spec
 from rift.run import RunResult
 from rift import RiftError
 
@@ -651,6 +651,63 @@ class ControllerProjectTest(RiftProjectTestCase):
             "/tmp/rift/output, parent directory /tmp/rift does not exist."
         ):
             main(['sync'])
+
+
+class ControllerProjectActionChangelogTest(RiftProjectTestCase):
+    """
+    Tests class for Controller action changelog
+    """
+
+    def test_action_changelog_without_pkg(self):
+        """changelog without package fails """
+        with self.assertRaisesRegex(SystemExit, "2"):
+            main(['changelog'])
+
+    def test_action_changelog_without_comment(self):
+        """changelog without comment fails """
+        with self.assertRaisesRegex(SystemExit, "2"):
+            main(['changelog', 'pkg'])
+
+    def test_action_changelog_without_maintainer(self):
+        """changelog without maintainer """
+        with self.assertRaisesRegex(RiftError, "You must specify a maintainer"):
+            main(['changelog', 'pkg', '-c', 'basic change'])
+
+    def test_action_changelog_pkg_not_found(self):
+        """changelog package not found"""
+        with self.assertRaisesRegex(
+            RiftError,
+            "Package 'pkg' directory does not exist"):
+            main(['changelog', 'pkg', '-c', 'basic change', '-t', 'Myself'])
+
+    def test_action_changelog(self):
+        """simple changelog"""
+        self.make_pkg()
+        self.assertEqual(
+            main(['changelog', 'pkg', '-c', 'basic change', '-t', 'Myself']), 0)
+        spec = Spec(filepath=self.pkgspecs['pkg'])
+        spec.load()
+        self.assertEqual(spec.changelog_name, 'Myself <buddy@somewhere.org> - 1.0-1')
+        self.assertEqual(spec.version, '1.0')
+        self.assertEqual(spec.release, '1')
+
+    def test_action_changelog_bump(self):
+        """simple changelog with bump"""
+        self.make_pkg()
+        self.assertEqual(
+            main(['changelog', 'pkg', '-c', 'basic change', '-t', 'Myself', '--bump']),
+            0)
+        spec = Spec(filepath=self.pkgspecs['pkg'])
+        spec.load()
+        self.assertEqual(spec.changelog_name, 'Myself <buddy@somewhere.org> - 1.0-2')
+        self.assertEqual(spec.version, '1.0')
+        self.assertEqual(spec.release, '2')
+
+    def test_action_changelog_unknown_maintainer(self):
+        """changelog with unknown maintainer"""
+        self.make_pkg()
+        with self.assertRaises(TypeError):
+            main(['changelog', 'pkg', '-c', 'basic change', '-t', 'Fail'])
 
 
 class ControllerArgumentsTest(RiftTestCase):

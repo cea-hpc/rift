@@ -995,6 +995,38 @@ def action_sync(args, config):
             )
             synchronizer.run()
 
+def action_changelog(args, config):
+    """Action for 'changelog' command."""
+    staff, modules = staff_modules(config)
+    if args.maintainer is None:
+        raise RiftError("You must specify a maintainer")
+
+    pkg = Package(args.package, config, staff, modules)
+    pkg.load()
+
+    author = f"{args.maintainer} <{staff.get(args.maintainer)['email']}>"
+
+    # Format comment.
+    # Grab bullet, insert one if not found.
+    bullet = "-"
+    match = re.search(r'^([^\s\w])\s', args.comment, re.UNICODE)
+    if match:
+        bullet = match.group(1)
+    else:
+        args.comment = bullet + " " + args.comment
+
+    if args.comment.find("\n") == -1:
+        wrapopts = {"subsequent_indent": (len(bullet) + 1) * " ",
+                    "break_long_words": False,
+                    "break_on_hyphens": False}
+        args.comment = textwrap.fill(args.comment, 80, **wrapopts)
+
+    logging.info("Adding changelog record for '%s'", author)
+    Spec(pkg.specfile,
+            config=config).add_changelog_entry(author, args.comment,
+                                            bump=getattr(args, 'bump', False))
+    return 0
+
 def create_staging_repo(config):
     """
     Create and return staging temporary repository with a 2-tuple containing
@@ -1154,36 +1186,9 @@ def action(config, args):
                         'maintainers': ', '.join(pkg.maintainers)})
         print(tbl)
 
+    # CHANGELOG
     elif args.command == 'changelog':
-
-        staff, modules = staff_modules(config)
-        if args.maintainer is None:
-            raise RiftError("You must specify a maintainer")
-
-        pkg = Package(args.package, config, staff, modules)
-        pkg.load()
-
-        author = f"{args.maintainer} <{staff.get(args.maintainer)['email']}>"
-
-        # Format comment.
-        # Grab bullet, insert one if not found.
-        bullet = "-"
-        match = re.search(r'^([^\s\w])\s', args.comment, re.UNICODE)
-        if match:
-            bullet = match.group(1)
-        else:
-            args.comment = bullet + " " + args.comment
-
-        if args.comment.find("\n") == -1:
-            wrapopts = {"subsequent_indent": (len(bullet) + 1) * " ",
-                        "break_long_words": False,
-                        "break_on_hyphens": False}
-            args.comment = textwrap.fill(args.comment, 80, **wrapopts)
-
-        logging.info("Adding changelog record for '%s'", author)
-        Spec(pkg.specfile,
-             config=config).add_changelog_entry(author, args.comment,
-                                                bump=getattr(args, 'bump', False))
+        return action_changelog(args, config)
 
     # GERRIT
     elif args.command == 'gerrit':
