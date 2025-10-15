@@ -539,7 +539,7 @@ def test_pkgs(config, args, pkgs, arch, extra_repos=None):
             results.add_failure(case, time.time() - now, err=str(ex))
             continue
 
-        if not spec.supports_arch(arch):
+        if not pkg.supports_arch(arch) or not spec.supports_arch(arch):
             logging.info(
                 "Skipping test on architecture %s not supported by "
                 "package %s",
@@ -585,7 +585,7 @@ def validate_pkgs(config, args, pkgs, arch):
             results.add_failure(case, time.time() - now, err=str(ex))
             continue  # skip current package
 
-        if not spec.supports_arch(arch):
+        if not pkg.supports_arch(arch) or not spec.supports_arch(arch):
             logging.info(
                 "Skipping validation on architecture %s not supported by "
                 "package %s",
@@ -753,7 +753,7 @@ def build_pkgs(config, args, pkgs, arch):
             results.add_failure(case, time.time() - now, err=str(ex))
             continue  # skip current package
 
-        if not spec.supports_arch(arch):
+        if not pkg.supports_arch(arch) or not spec.supports_arch(arch):
             logging.info(
                 "Skipping build on architecture %s not supported by "
                 "package %s",

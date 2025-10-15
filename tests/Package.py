@@ -62,3 +62,54 @@ package:
         self.assertEqual(pkg.origin, 'Company')
         self.assertEqual(pkg.rpmnames, [ 'pkg', 'pkg-devel' ])
         self.assertEqual(pkg.ignore_rpms, [ 'pkg-debuginfos' ])
+        self.assertCountEqual(pkg.exclude_archs, [])
+
+    def test_load_exclude_archs_str(self):
+        """ Test Package information loading with exclude_archs string """
+        pkgfile = make_temp_file("""
+package:
+  maintainers:
+  - J. Doe
+  module: Tools
+  reason: Missing package
+  origin: Company
+  exclude_archs: x86_64
+        """)
+        pkg = Package('pkg', self.config, self.staff, self.modules)
+        pkg.load(infopath = pkgfile.name)
+        self.assertEqual(pkg.module, 'Tools')
+        self.assertEqual(pkg.maintainers, ['J. Doe'])
+        self.assertEqual(pkg.reason, 'Missing package')
+        self.assertEqual(pkg.origin, 'Company')
+        self.assertCountEqual(pkg.exclude_archs, ['x86_64'])
+
+    def test_load_exclude_archs_list(self):
+        """ Test Package information loading with exclude_archs list """
+        pkgfile = make_temp_file("""
+package:
+  maintainers:
+  - J. Doe
+  module: Tools
+  reason: Missing package
+  origin: Company
+  exclude_archs:
+  - x86_64
+  - aarch64
+        """)
+        pkg = Package('pkg', self.config, self.staff, self.modules)
+        pkg.load(infopath = pkgfile.name)
+        self.assertEqual(pkg.module, 'Tools')
+        self.assertEqual(pkg.maintainers, ['J. Doe'])
+        self.assertEqual(pkg.reason, 'Missing package')
+        self.assertEqual(pkg.origin, 'Company')
+        self.assertCountEqual(pkg.exclude_archs, ['x86_64', 'aarch64'])
+
+    def test_supports_arch(self):
+        """ Test Package.supports_arch() """
+        pkg = Package('pkg', self.config, self.staff, self.modules)
+        pkg.exclude_archs = []
+        self.assertTrue(pkg.supports_arch('x86_64'))
+        self.assertTrue(pkg.supports_arch('aarch64'))
+        pkg.exclude_archs = ['x86_64']
+        self.assertFalse(pkg.supports_arch('x86_64'))
+        self.assertTrue(pkg.supports_arch('aarch64'))
