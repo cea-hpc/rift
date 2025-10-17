@@ -372,17 +372,6 @@ def action_annex(args, config, staff, modules):
         )
         message(f"Annex backup is available here: {output_file}")
 
-def _vm_start(vm):
-    if vm.running():
-        message('VM is already running')
-        return False
-
-    message('Launching VM ...')
-    vm.spawn()
-    vm.ready()
-    vm.prepare()
-    return True
-
 
 class BasicTest(Test):
     """
@@ -477,7 +466,7 @@ def test_one_pkg(config, args, pkg, vm, arch, repos):
     and return results.
     """
     message(f"Preparing {arch} test environment")
-    _vm_start(vm)
+    vm.start()
     if repos.working is None:
         disablestr = '--disablerepo=working'
     else:
@@ -728,7 +717,7 @@ def action_vm(args, config):
         ret = vm.copy(args.source, args.dest)
     elif args.vm_cmd == 'start':
         vm.tmpmode = args.tmpimg
-        if _vm_start(vm):
+        if vm.start():
             message("VM started. Use: rift vm connect")
             ret = 0
     elif args.vm_cmd == 'stop':
