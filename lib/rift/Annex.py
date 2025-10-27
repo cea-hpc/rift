@@ -231,7 +231,7 @@ class Annex():
 
             info = self._load_metadata(filename)
             names = info.get('filenames', [])
-                for annexed_file, details in names.items():
+            for annexed_file, details in names.items():
                 insertion_time = details['date']
 
                 # Handle different date formats (old method)
