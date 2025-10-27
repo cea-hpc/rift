@@ -34,7 +34,6 @@
 Class to manipulate packages and package tests with Rift.
 """
 
-import glob
 import logging
 import os
 import shutil
@@ -170,10 +169,24 @@ class Package():
             self.sources = set(os.listdir(self.sourcesdir))
 
     def tests(self):
-        """An iterator over Test objects for each test files."""
-        testspattern = os.path.join(self.testsdir, '*.sh')
-        for testpath in glob.glob(testspattern):
-            yield Test(testpath)
+        """
+        Return a Test object for each test present
+        in the "tests" directory of a Rift Package.
+        A test is any kind of file which the execution
+        permission.
+        """
+
+        if not os.path.isdir(self.testsdir):
+            logging.info('%s not found, this package has no custom tests', self.testsdir)
+            return
+
+        for filepath in os.scandir(self.testsdir):
+            if os.access(filepath, os.X_OK):
+                logging.info("found '%s' executable file", filepath)
+                yield Test(filepath)
+
+            else:
+                logging.debug(f"'%s' is not executable, not considered as a test", filepath)
 
     def build_srpm(self, mock, sign):
         """
