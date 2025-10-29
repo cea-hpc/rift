@@ -242,9 +242,6 @@ class Annex():
                             break
                         except ValueError:
                             continue
-                else:
-                    raise ValueError(f"Invalid date format in metadata: {insertion_time}")
-
                 # UNIX timestamp
                 elif isinstance(insertion_time, int):
                     insertion_time = insertion_time
