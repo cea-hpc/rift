@@ -238,7 +238,9 @@ class Annex():
                 if isinstance(insertion_time, str):
                     for fmt in ('%a %b %d %H:%M:%S %Y', '%a %d %b %Y %H:%M:%S %p %Z'):
                         try:
-                            insertion_time = datetime.datetime.strptime(insertion_time, fmt).timestamp()
+                            insertion_time = datetime.datetime.strptime(
+                                insertion_time, fmt
+                            ).timestamp()
                             break
                         except ValueError:
                             continue
@@ -246,7 +248,11 @@ class Annex():
                 elif isinstance(insertion_time, int):
                     insertion_time = insertion_time
                 else:
-                    logging.warning("Unknown time format: %s (type %s)", insertion_time, type(insertion_time))
+                    logging.warning(
+                        "Unknown time format: %s (type %s)", 
+                        insertion_time,
+                        type(insertion_time)
+                    )
                     insertion_time = insertion_time
 
                 # The file size must come from the filesystem
