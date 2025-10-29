@@ -192,22 +192,17 @@ class AnnexTest(RiftTestCase):
             self.annex.get_by_path(source_file.name, '/dev/null')
 
     def test_list(self):
-        """ Test list method """
+        """Test the list method"""
 
         source_size = os.stat(self.source.name).st_size
-        source_insertion_time =  datetime.datetime.strptime(time.strftime('%c'), '%c').timestamp()
-        # Get the current time with the %c format and convert it to unix timestamp to
-        # have the same method as annex.list (in terms of precision)
+        source_insertion_time = time.time()
         self.annex.push(self.source.name)
 
-        # Check if the file pointer is present in the annex list output
-        # by checking it's attributes
         for filename, size, insertion_time, names in self.annex.list():
             self.assertEqual(get_digest_from_path(self.source.name), filename)
             self.assertEqual(source_size, size)
-            # As tests can take time to run, accept less or equal 1 second shift
-            self.assertAlmostEqual(source_insertion_time, insertion_time, delta=1)
-            self.assertTrue(os.path.basename(self.source.name) in names.keys())
+            self.assertAlmostEqual(source_insertion_time, insertion_time, delta=1) # delta for potentials delay
+        self.assertTrue(os.path.basename(self.source.name) in names)
 
     def test_push(self):
         """ Test push method """
