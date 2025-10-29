@@ -246,7 +246,8 @@ class Annex():
                 elif isinstance(insertion_time, int):
                     insertion_time = insertion_time
                 else:
-                    raise ValueError(f"Invalid date format in metadata: {type(insertion_time)})")
+                    logging.warning("Unknown time format: %s (type %s)", insertion_time, type(insertion_time))
+                    insertion_time = insertion_time
 
                 # The file size must come from the filesystem
                 meta = os.stat(os.path.join(self.path, filename))

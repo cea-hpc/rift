@@ -336,8 +336,12 @@ def action_annex(args, config, staff, modules):
         print(fmt % ('ID', 'SIZE', 'DATE', 'FILENAMES'))
         print(fmt % ('--', '----', '----', '---------'))
         for filename, size, mtime, names in annex.list():
-            timestr = time.strftime('%x %X', time.localtime(mtime))
-            print(fmt % (filename, size, timestr, ','.join(names)))
+            try:
+                timestr = time.strftime('%x %X', time.localtime(mtime))
+                print(fmt % (filename, size, timestr, ','.join(names)))
+                
+            except TypeError:
+                print(fmt % (filename, size, mtime, ','.join(names)))
 
     elif args.annex_cmd == 'push':
         for srcfile in args.files:
