@@ -125,7 +125,7 @@ class Annex():
         meta = os.stat(filepath)
 
         # MD5 or SHA3 256
-        if meta.st_size == 32 or meta.st_size == 64:
+        if meta.st_size in (32, 64):
             with open(filepath, encoding='utf-8') as fh:
                 identifier = fh.read(meta.st_size)
             return all(byte in string.hexdigits for byte in identifier)
@@ -244,16 +244,12 @@ class Annex():
                             break
                         except ValueError:
                             continue
-                # UNIX timestamp
-                elif isinstance(insertion_time, int):
-                    insertion_time = insertion_time
                 else:
                     logging.warning(
                         "Unknown time format: %s (type %s)", 
                         insertion_time,
                         type(insertion_time)
                     )
-                    insertion_time = insertion_time
 
                 # The file size must come from the filesystem
                 meta = os.stat(os.path.join(self.path, filename))
