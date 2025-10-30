@@ -40,6 +40,7 @@ import logging
 from operator import attrgetter
 import random
 import time
+import datetime
 import textwrap
 # Since pylint can not found rpm.error, disable this check
 from rpm import error as RpmError # pylint: disable=no-name-in-module
@@ -48,7 +49,7 @@ from unidiff import parse_unidiff
 from rift import RiftError, __version__
 from rift.Annex import Annex, is_binary
 from rift.Config import Config, Staff, Modules
-from rift.Gerrit import Review
+from rift.auth import auth
 from rift.Mock import Mock
 from rift.Package import Package, Test
 from rift.Repository import LocalRepository, ProjectArchRepositories
@@ -216,6 +217,9 @@ def make_parser():
     subsubprs.add_argument('--dest', metavar='PATH', required=True,
                            help='destination path')
 
+    # Auth options
+    subprs = subparsers.add_parser('auth', help='Authenticate for access to Annex write access')
+
     # VM options
     subprs = subparsers.add_parser('vm', help='Manipulate VM process')
     subprs.add_argument('-a', '--arch', help='CPU architecture of the VM')
@@ -265,11 +269,9 @@ def make_parser():
     subprs.add_argument('--bump', dest='bump', action='store_true',
                         help='also bump the release number')
 
-    # Gerrit review
-    subprs = subparsers.add_parser('gerrit', add_help=False,
-                                   help='Make Gerrit automatic review')
-    subprs.add_argument('--change', help="Gerrit Change-Id", required=True)
-    subprs.add_argument('--patchset', help="Gerrit patchset ID", required=True)
+    # GitLab review
+    subprs = subparsers.add_parser('gitlab', add_help=False,
+                                   help='Check specfiles for GitLab')
     subprs.add_argument('patch', metavar='PATCH', type=argparse.FileType('r'))
 
     # sync
@@ -370,7 +372,25 @@ def action_annex(args, config, staff, modules):
         output_file = annex.backup(
             Package.list(config, staff, modules), args.output_file
         )
+
         message(f"Annex backup is available here: {output_file}")
+
+def action_auth(args, config):
+    """Action for 'auth' sub-commands."""
+    auth_obj = auth(config)
+
+    if auth_obj.authenticate():
+        msg = "succesfully authenticated"
+
+        t = auth_obj.get_expiration_timestr()
+        if t != "":
+            msg += "; token expires in {}".format(t)
+        else:
+            msg += "; token expiration time is unknown"
+
+        message(msg)
+    else:
+        message("error: authentication failed")
 
 def _vm_start(vm):
     if vm.running():
@@ -921,23 +941,18 @@ def action_validdiff(args, config):
 
     return rc
 
-def action_gerrit(args, config, staff, modules):
-    """Review a patchset for Gerrit (specfiles)"""
-
-    review = Review()
+def action_gitlab(args, config, staff, modules):
+    """Review a patchset for GitLab (specfiles)"""
 
     # Parse matching diff and specfiles in it
-    for patchedfile in parse_unidiff(args.patch):
-        filepath = patchedfile.path
-        names = filepath.split(os.path.sep)
+    for f in parse_unidiff(args.patch):
+        path = f.path
+        names = path.split(os.path.sep)
         if names[0] == config.get('packages_dir'):
             pkg = Package(names[1], config, staff, modules)
-            if filepath == pkg.specfile and not patchedfile.is_deleted_file:
-                Spec(pkg.specfile, config=config).analyze(review, pkg.dir)
-
-    # Push review
-    review.msg_header = 'rpmlint analysis'
-    review.push(config, args.change, args.patchset)
+            if os.path.abspath(path) == pkg.specfile and not f.is_deleted_file:
+                spec = Spec(pkg.specfile, config=config)
+                spec.check()
 
 def action_sync(args, config):
     """Action for 'sync' command."""
@@ -1041,6 +1056,11 @@ def action(config, args):
     # ANNEX
     if args.command == 'annex':
         action_annex(args, config, *staff_modules(config))
+        return
+
+    # AUTH
+    if args.command == 'auth':
+        action_auth(args, config)
         return
 
     # VM
@@ -1185,9 +1205,9 @@ def action(config, args):
              config=config).add_changelog_entry(author, args.comment,
                                                 bump=getattr(args, 'bump', False))
 
-    # GERRIT
-    elif args.command == 'gerrit':
-        return action_gerrit(args, config, *staff_modules(config))
+    # GITLAB
+    elif args.command == 'gitlab':
+        return action_gitlab(args, config, *staff_modules(config))
 
     # SYNC
     elif args.command == 'sync':
@@ -1195,6 +1215,142 @@ def action(config, args):
 
     return 0
 
+def _validate_patched_file(patched_file, config, modules, staff):
+    """
+    Raise RiftError if patched_file is a binary file or does not match any known
+    file path in Rift project tree.
+
+    Return True if the patched_file modifies a package or False otherwise.
+    """
+    filepath = patched_file.path
+    names = filepath.split(os.path.sep)
+
+    if filepath == config.get('staff_file'):
+        staff = Staff(config)
+        staff.load(filepath)
+        logging.info('Staff file is OK.')
+        return False
+
+    if filepath == config.get('modules_file'):
+        modules = Modules(config, staff)
+        modules.load(filepath)
+        logging.info('Modules file is OK.')
+        return False
+
+    if filepath == 'mock.tpl':
+        logging.debug('Ignoring mock template file: %s', filepath)
+        return False
+
+    if filepath == '.gitignore':
+        logging.debug('Ignoring git file: %s', filepath)
+        return False
+
+    if filepath == 'project.conf':
+        logging.debug('Ignoring project config file: %s', filepath)
+        return False
+
+    if patched_file.binary:
+        raise RiftError("Binary file detected: %s" % filepath)
+
+    if filepath == '.gitlab-ci.yml':
+        logging.debug('Ignoring gitlab ci file: %s', filepath)
+        return False
+
+    if filepath == 'CODEOWNERS':
+        logging.debug('Ignoring gitlab ci file: %s', filepath)
+        return False
+
+    if names[0] == "gitlab-ci":
+        logging.debug("Ignoring gitlab ci file: %s" % filepath)
+        return False
+
+    if names[0] != config.get('packages_dir'):
+        raise RiftError("Unknown file pattern: %s" % filepath)
+
+    return True
+
+def _patched_file_updated_package(patched_file, config, modules, staff):
+    """
+    Return Package updated by patched_file, or None if either:
+
+    - The patched_file modifies a package file that does not impact package
+      build result.
+    - The pached_file is removed.
+
+    Raise RiftError if patched_file path does not match any known
+    packaging code file path.
+    """
+    filepath = patched_file.path
+    names = filepath.split(os.path.sep)
+    fullpath = config.project_path(filepath)
+    pkg = None
+
+    if patched_file.is_deleted_file:
+        logging.debug('Ignoring removed file: %s', filepath)
+        return None
+
+    # Drop config.get('packages_dir') from list
+    names.pop(0)
+
+    pkg = Package(names.pop(0), config, staff, modules)
+
+    # info.yaml
+    if fullpath == pkg.metafile:
+        logging.info('Ignoring meta file')
+        return None
+
+    # README file
+    if fullpath in pkg.docfiles:
+        logging.debug('Ignoring documentation file: %s', fullpath)
+        return None
+
+    # backup specfile
+    if fullpath == '%s.orig' % pkg.specfile:
+        logging.debug('Ignoring backup specfile')
+        return None
+
+    # specfile
+    if fullpath == pkg.specfile:
+        logging.info('Detected spec file')
+
+    # rpmlint config file
+    elif names == [RPMLINT_CONFIG]:
+        logging.debug('Detecting rpmlint config file')
+
+    # sources/
+    elif fullpath.startswith(pkg.sourcesdir) and len(names) == 2:
+        logging.debug('Detecting source file: %s', names[1])
+
+    # tests/
+    elif fullpath.startswith(pkg.testsdir):
+        logging.debug('Detecting test script: %s', filepath)
+
+    else:
+        raise RiftError(
+            "Unknown file pattern in '%s' directory: %s" % (pkg.name, filepath)
+        )
+
+    return pkg
+
+def _patched_file_removed_package(patched_file, config, modules, staff):
+    """
+    Return Package removed by the patched_file or None if patched_file does not
+    remove any package.
+    """
+    filepath = patched_file.path
+    names = filepath.split(os.path.sep)
+    fullpath = config.project_path(filepath)
+
+    if not patched_file.is_deleted_file:
+        logging.debug('Ignoring not removed file: %s', filepath)
+        return None
+
+    pkg = Package(names[1], config, staff, modules)
+
+    if fullpath == pkg.metafile:
+        return pkg
+
+    return None
 
 def main(args=None):
     """Main code of 'rift'"""
