@@ -86,6 +86,8 @@ _DEFAULT_VIRTIOFSD = '/usr/libexec/virtiofsd'
 _DEFAULT_SYNC_METHOD = 'dnf'
 _DEFAULT_SYNC_INCLUDE = []
 _DEFAULT_SYNC_EXCLUDE = []
+_DEFAULT_S3_CREDENTIAL_FILE = '~/.rift/auth.json'
+
 
 class Config():
     """
@@ -111,8 +113,32 @@ class Config():
         'packages_dir': {
             'default':   _DEFAULT_PKG_DIR,
         },
+        's3_credential_file': {
+            'required': False,
+            'default':  _DEFAULT_S3_CREDENTIAL_FILE,
+        },
+        's3_auth_endpoint': {
+            'required': False,
+        },
+        'idp_auth_endpoint': {
+            'required': False
+        },
+        'idp_app_token': {
+            'required': True
+        },
+        'annex_restore_cache': {
+            'required': False,
+        },
         'annex': {
             'required': True,
+        },
+        'annex_is_s3': {
+            'required': False,
+            'default': False,
+            'check': 'bool',
+        },
+        'annex_push': {
+            'required': False,
         },
         'working_repo': {
         },
@@ -547,6 +573,12 @@ class Config():
             "bool": bool,
         }
 
+        if check == 'bool':
+            if not isinstance(value, bool):
+                raise DeclError(
+                    f"Bad data type {value.__class__.__name__} for '{key}'"
+                )
+            return value
         if check == 'dict':
             if not isinstance(value, dict):
                 raise DeclError(
