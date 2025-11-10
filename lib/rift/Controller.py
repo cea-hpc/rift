@@ -49,7 +49,8 @@ from unidiff import parse_unidiff
 from rift import RiftError, __version__
 from rift.Annex import Annex, is_binary
 from rift.Config import Config, Staff, Modules
-from rift.auth import auth
+from rift.Gerrit import Review
+from rift.auth import Auth
 from rift.Mock import Mock
 from rift.Package import Package, Test
 from rift.Repository import LocalRepository, ProjectArchRepositories
@@ -218,7 +219,7 @@ def make_parser():
                            help='destination path')
 
     # Auth options
-    subprs = subparsers.add_parser('auth', help='Authenticate for access to Annex write access')
+    subprs = subparsers.add_parser('auth', help='Authenticate to an IDP for privileged actions')
 
     # VM options
     subprs = subparsers.add_parser('vm', help='Manipulate VM process')
@@ -272,6 +273,13 @@ def make_parser():
     # GitLab review
     subprs = subparsers.add_parser('gitlab', add_help=False,
                                    help='Check specfiles for GitLab')
+    subprs.add_argument('patch', metavar='PATCH', type=argparse.FileType('r'))
+
+    # Gerrit review
+    subprs = subparsers.add_parser('gerrit', add_help=False,
+                                   help='Make Gerrit automatic review')
+    subprs.add_argument('--change', help="Gerrit Change-Id", required=True)
+    subprs.add_argument('--patchset', help="Gerrit patchset ID", required=True)
     subprs.add_argument('patch', metavar='PATCH', type=argparse.FileType('r'))
 
     # sync
@@ -954,6 +962,24 @@ def action_gitlab(args, config, staff, modules):
                 spec = Spec(pkg.specfile, config=config)
                 spec.check()
 
+def action_gerrit(args, config, staff, modules):
+    """Review a patchset for Gerrit (specfiles)"""
+
+    review = Review()
+
+    # Parse matching diff and specfiles in it
+    for patchedfile in parse_unidiff(args.patch):
+        filepath = patchedfile.path
+        names = filepath.split(os.path.sep)
+        if names[0] == config.get('packages_dir'):
+            pkg = Package(names[1], config, staff, modules)
+            if filepath == pkg.specfile and not patchedfile.is_deleted_file:
+                Spec(pkg.specfile, config=config).analyze(review, pkg.dir)
+
+    # Push review
+    review.msg_header = 'rpmlint analysis'
+    review.push(config, args.change, args.patchset)
+
 def action_sync(args, config):
     """Action for 'sync' command."""
     synchronized_sources = []
@@ -1208,6 +1234,10 @@ def action(config, args):
     # GITLAB
     elif args.command == 'gitlab':
         return action_gitlab(args, config, *staff_modules(config))
+
+    # GERRIT
+    elif args.command == 'gerrit':
+        return action_gerrit(args, config, *staff_modules(config))
 
     # SYNC
     elif args.command == 'sync':

@@ -33,26 +33,27 @@
 Auth:
     This package manage rift s3 authentication
 """
-import logging
 import datetime
-import errno
 import getpass
 import json
+import logging
 import os
-import requests
 import sys
+
+import requests
 import urllib3
 import xmltodict
-import yaml
+
+from rift import RiftError
 
 urllib3.disable_warnings()
 
-class auth():
+class Auth:
     """
     Config: Manage rift authentication
         This class manages rift authentication
     """
-    def __init__(self, config, write_path=None):
+    def __init__(self, config):
         self.idp_app_token = config.get('idp_app_token')
         self.idp_auth_endpoint = config.get('idp_auth_endpoint')
         self.s3_auth_endpoint = config.get('s3_auth_endpoint')
@@ -60,7 +61,7 @@ class auth():
 
         self.config = {}
         self.expiration_dt = ""
-    
+
     def get_expiration_timestr(self):
         """
         Returns a human readable time string of auth token, if possible.
@@ -78,7 +79,7 @@ class auth():
 
         with open(self.credentials_file, 'r') as fs:
             data = fs.read()
-            
+
             config = {}
             try:
                 config = json.loads(data)
@@ -102,7 +103,7 @@ class auth():
                     config.pop("secret_access_key", None)
                     config.pop("session_token", None)
                     update_authfile = True
-            
+
             idp_expiry = config.get("idp_token_expiration")
             if idp_expiry:
                 expiration = datetime.datetime.strptime(idp_expiry, "%Y-%m-%dT%H:%M:%SZ")
@@ -115,7 +116,7 @@ class auth():
                     config.pop("idp_token")
                     config.pop("idp_token_expiration")
                     update_authfile = True
-            
+
             self.config = config
 
             if update_authfile:
@@ -133,7 +134,7 @@ class auth():
         )
         with open(fd, "w") as fs:
             json.dump(self.config, fs, indent=2, sort_keys=True)
-    
+
     # Step 1: Get OpenID token
     def get_idp_token(self):
         """
@@ -185,14 +186,17 @@ class auth():
 
         token = js.get("access_token")
         if not token:
-            logging.error("received unexpected response while fetching idp access token: missing field 'access_token'")
-            return False
-        
+            msg = "received unexpected response while fetching idp access token:"
+            msg += " missing field 'access_token'"
+            raise RiftError(msg)
+
         expires_in_sec = js.get("expires_in")
         if not expires_in_sec:
-            logging.info("received unexpected response while fetching idp access token: missing field 'expires_in'")
+            msg = "received unexpected response while fetching idp access token:"
+            msg += " missing field 'expires_in'"
+            logging.info(msg)
             expires_in = 0
-        
+
         expire_dt = datetime.datetime.now() + datetime.timedelta(seconds=expires_in_sec)
 
         self.config["idp_token_expiration"] = expire_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -200,7 +204,7 @@ class auth():
         self.save_state()
 
         return True
-    
+
     # Step 2: Get S3 credentials using token from (1)
     def get_s3_credentials(self):
         """
@@ -242,8 +246,8 @@ class auth():
         }
 
         res = requests.post(
-            self.s3_auth_endpoint, 
-            data = data, 
+            self.s3_auth_endpoint,
+            data = data,
             headers = {"Content-Type": "application/x-www-form-urlencoded"},
             verify = False
         )
@@ -252,33 +256,34 @@ class auth():
 
         creds = res_xml.get("AssumeRoleWithWebIdentityResponse")
         if not creds:
-            logging.error("S3 credential response missing expected key: AssumeRoleWithWebIdentityResponse")
-            return False
+            msg = "S3 credential response missing expected key: AssumeRoleWithWebIdentityResponse"
+            raise RiftError(msg)
 
         creds = creds.get("AssumeRoleWithWebIdentityResult")
         if not creds:
-            logging.error("S3 credential response missing expected key: AssumeRoleWithWebIdentityResult")
-            return False
+            msg = "S3 credential response missing expected key: AssumeRoleWithWebIdentityResult"
+            raise RiftError(msg)
 
         creds = creds.get("Credentials")
         if not creds:
-            logging.error("S3 credential response missing expected key: Credentials")
-            return False
+            msg = "S3 credential response missing expected key: Credentials"
+            raise RiftError(msg)
 
         access_key_id = creds.get("AccessKeyId", "")
         secret_access_key = creds.get("SecretAccessKey", "")
         session_token = creds.get("SessionToken", "")
         expiration = creds.get("Expiration", "")
-        
+
         if "" in (access_key_id, secret_access_key, session_token, expiration):
-            logging.error("one or more expected credential values is missing: AccessKeyId, SecretAccessKey, SessionToken, Expiration")
-            return False
+            msg = "one or more expected credential values is missing: \n"
+            msg += "AccessKeyId, SecretAccessKey, SessionToken, Expiration"
+            raise RiftError(msg)
 
         self.config["access_key_id"] = access_key_id
         self.config["secret_access_key"] = secret_access_key
         self.config["session_token"] = session_token
         self.config["expiration"] = expiration
-        
+
         self.expiration_dt = datetime.datetime.strptime(expiration, "%Y-%m-%dT%H:%M:%SZ")
 
         self.save_state()
@@ -299,8 +304,10 @@ class auth():
         aws_session_token = os.environ.get("AWS_SESSION_TOKEN")
 
         if None not in (aws_access_key_id, aws_secret_access_key):
-            logging.info("found AWS S3 variables in environment; will bypass credentials file")
-            logging.info("to allow use of credential file, please clear these environment variables: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN")
+            msg = "found AWS S3 variables in environment; will bypass credentials file\n"
+            msg += "to allow use of credential file, please clear these environment variables:"
+            msg += " AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN"
+            logging.info(msg)
             self.config["access_key_id"] = aws_access_key_id
             self.config["secret_access_key"] = aws_secret_access_key
             self.config["session_token"] = aws_session_token
@@ -323,5 +330,3 @@ class auth():
             sys.exit(1)
 
         return True
-
-
