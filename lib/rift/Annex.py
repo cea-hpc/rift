@@ -120,7 +120,7 @@ class Annex:
     RMODE = 0o644
     WMODE = 0o664
 
-    def __init__(self, config, annex_path=None, annex_push_path=None):
+    def __init__(self, config, annex_path=None, staging_annex_path=None):
         self.restore_cache = config.get('annex_restore_cache')
         if self.restore_cache is not None:
             self.restore_cache = os.path.expanduser(self.restore_cache)
@@ -158,13 +158,13 @@ class Annex:
                 raise RiftError(msg)
 
             parts = url.path.lstrip("/").split("/")
-            self.read_s3_endpoint = "{}://{}".format(url.scheme, url.netloc)
+            self.read_s3_endpoint = f"{url.scheme}://{url.netloc}"
             self.read_s3_bucket = parts[0]
             self.read_s3_prefix = "/".join(parts[1:])
 
-        # Annex push path
+        # Staging annex path
         # should be an http(s) url containing s3 endpoint, bucket, and prefix
-        self.annex_push_path = annex_push_path or config.get('annex_push')
+        self.staging_annex_path = staging_annex_path or config.get('staging_annex')
         self.push_over_s3 = False
         self.push_s3_endpoint = None
         self.push_s3_bucket = None
@@ -172,28 +172,28 @@ class Annex:
         self.push_s3_client = None
         self.push_s3_auth = None
 
-        if self.annex_push_path is not None:
-            url = urlparse(self.annex_push_path, allow_fragments=False)
+        if self.staging_annex_path is not None:
+            url = urlparse(self.staging_annex_path, allow_fragments=False)
             parts = url.path.lstrip("/").split("/")
             if url.scheme in ("http", "https"):
                 self.push_over_s3 = True
-                self.push_s3_endpoint = "{}://{}".format(url.scheme, url.netloc)
+                self.push_s3_endpoint = f"{url.scheme}://{url.netloc}"
                 self.push_s3_bucket = parts[0]
                 self.push_s3_prefix = "/".join(parts[1:])
                 self.push_s3_auth = Auth(config)
             elif url.scheme in ("file", ""):
-                self.annex_push_path = url.path
+                self.staging_annex_path = url.path
         else:
-            # allow annex_push_path to default to annex when annex is s3:// or file://
+            # allow staging_annex_path to default to annex when annex is s3:// or file://
             if self.annex_is_s3:
-                self.annex_push_path = self.annex_path
+                self.staging_annex_path = self.annex_path
                 self.push_over_s3 = True
                 self.push_s3_endpoint = self.read_s3_endpoint
                 self.push_s3_bucket = self.read_s3_bucket
                 self.push_s3_prefix = self.read_s3_prefix
                 self.push_s3_auth = Auth(config)
             elif self.annex_type == "file":
-                self.annex_push_path = self.annex_path
+                self.staging_annex_path = self.annex_path
                 self.push_over_s3 = False
 
     def get_read_s3_client(self):
@@ -244,7 +244,7 @@ class Annex:
         """
         if not os.path.isdir(self.restore_cache):
             if os.path.exists(self.restore_cache):
-                msg = "{} should be a directory".format(self.restore_cache)
+                msg = f"{self.restore_cache} should be a directory"
                 raise RiftError(msg)
             os.makedirs(self.restore_cache)
 
@@ -276,16 +276,17 @@ class Annex:
                 cmd = ["curl", "-sS", "-w", '"%{http_code}"', "-o", tmp_file, idpath]
                 try:
                     proc = subprocess.run(cmd, check=True, capture_output=True, text=True)
-                    if "404" not in proc.stdout.strip():
-                        if self.restore_cache:
-                            cached_path = self.get_cached_path(identifier)
-                            shutil.move(tmp_file, cached_path)
-                        else:
-                            logging.debug('Extracting %s to %s', identifier, destpath)
-                            shutil.move(tmp_file, destpath)
-                        success = True
-                except Exception as e:
-                    logging.error("failed to fetch file from annex: %s", e)
+                except subprocess.CalledProcessError as e:
+                    raise RiftError(f"failed to fetch file from annex: {idpath}") from e
+
+                if "404" not in proc.stdout.strip():
+                    if self.restore_cache:
+                        cached_path = self.get_cached_path(identifier)
+                        shutil.move(tmp_file, cached_path)
+                    else:
+                        logging.debug('Extracting %s to %s', identifier, destpath)
+                        shutil.move(tmp_file, destpath)
+                    success = True
 
             if success:
                 if self.restore_cache:
@@ -294,7 +295,7 @@ class Annex:
                     shutil.copyfile(cached_path, destpath)
                 return
 
-            logging.info("did not find object in annex, will search annex_push next")
+            logging.info("did not find object in annex, will search staging_annex next")
         else:
             # Checking annex, expecting annex path to be a filesystem location
             logging.debug('Extracting %s to %s', identifier, destpath)
@@ -303,9 +304,9 @@ class Annex:
                 shutil.copyfile(idpath, destpath)
                 return
 
-            logging.info("did not find object in annex, will search annex_push next")
+            logging.info("did not find object in annex, will search staging_annex next")
 
-        # 3. See if object is in the annex_push location
+        # 3. See if object is in the staging_annex location
         if self.push_over_s3:
             # Checking annex push, expecting annex push path to be an s3-providing http(s) url
             key = os.path.join(self.push_s3_prefix, identifier)
@@ -338,9 +339,9 @@ class Annex:
 
             return
 
-        # Checking annex_push location, expecting annex_push path to be a filesystem location
+        # Checking staging_annex location, expecting staging_annex path to be a filesystem location
         logging.debug('Extracting %s to %s', identifier, destpath)
-        idpath = os.path.join(self.annex_push_path, identifier)
+        idpath = os.path.join(self.staging_annex_path, identifier)
         shutil.copyfile(idpath, destpath)
 
     def get_by_path(self, idpath, destpath):
@@ -422,7 +423,7 @@ class Annex:
         if not self.annex_is_s3:
             # Read current metadata if present
             if os.path.exists(metapath):
-                with open(metapath) as fyaml:
+                with open(metapath, encoding="utf-8") as fyaml:
                     metadata = yaml.load(fyaml, Loader=OrderedLoader) or {}
                     # Protect against empty file
         return metadata
@@ -513,15 +514,17 @@ class Annex:
             try:
                 meta_obj = s3.get_object(Bucket=self.push_s3_bucket, Key=meta_obj_name)
                 metadata = yaml.safe_load(meta_obj['Body']) or {}
-            except Exception:
-                pass
+            except s3.exceptions.NoSuchKey:
+                logging.info("metadata not found in s3: %s", meta_obj_name)
+            except yaml.YAMLError:
+                logging.info("retrieved metadata could not be parsed as yaml: %s", meta_obj_name)
 
             originfo = os.stat(filepath)
             destinfo = None
             try:
                 destinfo = s3.get_object(Bucket=self.push_s3_bucket, Key=key)
-            except Exception:
-                pass
+            except s3.exceptions.NoSuchKey:
+                logging.info("key not found in s3: %s", key)
             if destinfo and destinfo["ContentLength"] == originfo.st_size and \
               filename in metadata.get('filenames', {}):
                 logging.debug("%s is already into annex, skipping it", filename)
@@ -538,7 +541,7 @@ class Annex:
 
                 s3.upload_file(filepath, self.push_s3_bucket, key)
         else:
-            destpath = os.path.join(self.annex_push_path, digest)
+            destpath = os.path.join(self.staging_annex_path, digest)
             filename = os.path.basename(filepath)
 
             # Prepare metadata file
@@ -559,8 +562,8 @@ class Annex:
                 fileset.setdefault(filename, {})
                 fileset[filename]['date'] = time.strftime("%c")
 
-                metapath = os.path.join(self.annex_push_path, get_info_from_digest(digest))
-                with open(metapath, 'w') as fyaml:
+                metapath = os.path.join(self.staging_annex_path, get_info_from_digest(digest))
+                with open(metapath, 'w', encoding="utf-8") as fyaml:
                     yaml.dump(metadata, fyaml, default_flow_style=False)
                 os.chmod(metapath, self.WMODE)
 
@@ -599,36 +602,36 @@ class Annex:
                                                       prefix='rift-annex-backup',
                                                       suffix='.tar.gz').name
 
-        tmp_dir = None
-        if self.annex_is_remote:
-            tmp_dir = tempfile.TemporaryDirectory()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with tarfile.open(output_file, "w:gz") as tar:
+                for _file in filelist:
+                    digest = get_digest_from_path(_file)
+                    annex_file = os.path.join(self.annex_path, digest)
+                    annex_file_info = os.path.join(self.annex_path, get_info_from_digest(digest))
 
-        with tarfile.open(output_file, "w:gz") as tar:
-            for _file in filelist:
-                digest = get_digest_from_path(_file)
-                annex_file = os.path.join(self.annex_path, digest)
-                annex_file_info = os.path.join(self.annex_path, get_info_from_digest(digest))
+                    if self.annex_is_remote:
+                        for f in (annex_file, annex_file_info):
+                            basename = os.path.basename(f)
+                            tmp = os.path.join(tmp_dir.name, basename)
+                            cmd = ["curl", "-sS", "-w", '"%{http_code}"', "-o", tmp, f]
+                            try:
+                                proc = subprocess.run(
+                                    cmd,
+                                    check=True,
+                                    capture_output=True,
+                                    text=True
+                                )
+                            except subprocess.CalledProcessError as e:
+                                raise RiftError(f"failed to fetch file from annex: {f}") from e
 
-                if self.annex_is_remote:
-                    for f in (annex_file, annex_file_info):
-                        basename = os.path.basename(f)
-                        tmp = os.path.join(tmp_dir.name, basename)
-                        cmd = ["curl", "-sS", "-w", '"%{http_code}"', "-o", tmp, f]
-                        try:
-                            proc = subprocess.run(cmd, check=True, capture_output=True, text=True)
                             if "404" not in proc.stdout.strip():
                                 tar.add(tmp, arcname=basename)
-                        except Exception as e:
-                            logging.error("failed to fetch file from annex: %s", e)
-                else:
-                    tar.add(annex_file, arcname=os.path.basename(annex_file))
-                    tar.add(annex_file_info, arcname=os.path.basename(annex_file_info))
+                    else:
+                        tar.add(annex_file, arcname=os.path.basename(annex_file))
+                        tar.add(annex_file_info, arcname=os.path.basename(annex_file_info))
 
-                print(f"> {pkg_nb}/{total_packages} ({round((pkg_nb*100)/total_packages,2)})%\r"
-                      , end="")
-                pkg_nb += 1
-
-        if tmp_dir:
-            tmp_dir.cleanup()
+                    print(f"> {pkg_nb}/{total_packages} ({round((pkg_nb*100)/total_packages,2)})%\r"
+                        , end="")
+                    pkg_nb += 1
 
         return output_file

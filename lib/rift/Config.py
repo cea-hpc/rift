@@ -124,7 +124,7 @@ class Config():
             'required': False
         },
         'idp_app_token': {
-            'required': True
+            'required': False
         },
         'annex_restore_cache': {
             'required': False,
@@ -137,7 +137,7 @@ class Config():
             'default': False,
             'check': 'bool',
         },
-        'annex_push': {
+        'staging_annex': {
             'required': False,
         },
         'working_repo': {

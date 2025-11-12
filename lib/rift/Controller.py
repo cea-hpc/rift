@@ -40,7 +40,6 @@ import logging
 from operator import attrgetter
 import random
 import time
-import datetime
 import textwrap
 # Since pylint can not found rpm.error, disable this check
 from rpm import error as RpmError # pylint: disable=no-name-in-module
@@ -369,7 +368,7 @@ def action_annex(args, config, staff, modules):
 
     elif args.annex_cmd == 'delete':
         if annex.delete(args.id):
-            message('%s has been deleted' % args.id)
+            message(f"{args.id} has been deleted")
 
     elif args.annex_cmd == 'get':
         annex.get(args.id, args.dest)
@@ -385,14 +384,14 @@ def action_annex(args, config, staff, modules):
 
 def action_auth(args, config):
     """Action for 'auth' sub-commands."""
-    auth_obj = auth(config)
+    auth_obj = Auth(config)
 
     if auth_obj.authenticate():
         msg = "succesfully authenticated"
 
         t = auth_obj.get_expiration_timestr()
         if t != "":
-            msg += "; token expires in {}".format(t)
+            msg += f"; token expires in {t}"
         else:
             msg += "; token expiration time is unknown"
 

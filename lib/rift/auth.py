@@ -55,6 +55,9 @@ class Auth:
     """
     def __init__(self, config):
         self.idp_app_token = config.get('idp_app_token')
+        if self.idp_app_token is None:
+            msg = "authentication requires presence of idp_app_token config"
+            raise RiftError(msg)
         self.idp_auth_endpoint = config.get('idp_auth_endpoint')
         self.s3_auth_endpoint = config.get('s3_auth_endpoint')
         self.credentials_file = os.path.expanduser(config.get('s3_credential_file'))
@@ -77,14 +80,14 @@ class Auth:
         If credentials file contains expired data, remove expired items from file.
         """
 
-        with open(self.credentials_file, 'r') as fs:
+        with open(self.credentials_file, 'r', encoding="utf-8") as fs:
             data = fs.read()
 
             config = {}
             try:
                 config = json.loads(data)
-            except Exception as e:
-                logging.info("failed to load json from existing credentials file")
+            except json.JSONDecodeError as e:
+                logging.info("failed to decode json from existing credentials file: %s", e)
 
             update_authfile = False
 
@@ -126,13 +129,13 @@ class Auth:
         """
         Saves auth object config information to credentials file.
         """
-        umask = os.umask(0)
+        os.umask(0)
         fd = os.open(
             path = self.credentials_file,
             flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
             mode=0o600
         )
-        with open(fd, "w") as fs:
+        with open(fd, "w", encoding="utf-8") as fs:
             json.dump(self.config, fs, indent=2, sort_keys=True)
 
     # Step 1: Get OpenID token
@@ -162,7 +165,7 @@ class Auth:
         user = os.environ.get("RIFT_AUTH_USER")
         if not user:
             default_user = getpass.getuser()
-            user = input("Username [{}]: ".format(default_user)) or default_user
+            user = input(f"Username [{default_user}]: ") or default_user
 
         password = os.environ.get("RIFT_AUTH_PASSWORD")
         if not password:
@@ -179,7 +182,8 @@ class Auth:
         res = requests.post(
             self.idp_auth_endpoint,
             data = data,
-            headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            headers = {"Content-Type": "application/x-www-form-urlencoded"},
+            timeout = 60
         )
 
         js = res.json()
@@ -195,7 +199,6 @@ class Auth:
             msg = "received unexpected response while fetching idp access token:"
             msg += " missing field 'expires_in'"
             logging.info(msg)
-            expires_in = 0
 
         expire_dt = datetime.datetime.now() + datetime.timedelta(seconds=expires_in_sec)
 
@@ -249,7 +252,8 @@ class Auth:
             self.s3_auth_endpoint,
             data = data,
             headers = {"Content-Type": "application/x-www-form-urlencoded"},
-            verify = False
+            verify = False,
+            timeout = 60
         )
 
         res_xml = xmltodict.parse(res.text)
@@ -314,14 +318,13 @@ class Auth:
             return True
 
         if os.path.isfile(self.credentials_file):
-            logging.info("found credentials file: {}".format(self.credentials_file))
+            logging.info("found credentials file: %s", self.credentials_file)
             self.restore_state()
         else:
             base = os.path.dirname(self.credentials_file)
             if os.path.exists(base):
                 if not os.path.isdir(base):
-                    logging.error("{} should be a directory".format(base))
-                    sys.exit(1)
+                    raise RiftError(f"{base} should be a directory")
             else:
                 os.makedirs(base)
 
