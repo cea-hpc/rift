@@ -30,6 +30,11 @@ jobs:
         sudo apt-get update
         sudo apt-get -y install python3-rpm python3-dnf python3-yaml python3-jinja2
 
+    # Install xmltodict
+    - name: Install xmltodict
+      run: |
+        pip install xmltodict
+
     - name: Analysing the code with pylint
       run: |
         pylint lib/rift
