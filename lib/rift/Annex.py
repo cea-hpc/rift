@@ -44,7 +44,7 @@ import sys
 import tarfile
 import tempfile
 import time
-from datetime import datetime
+from datetime import datetime as dt
 from urllib.parse import urlparse
 
 import boto3
@@ -468,7 +468,7 @@ class Annex:
                 names = info.get('filenames', [])
                 for annexed_file in names.values():
                     insertion_time = annexed_file['date']
-                    insertion_time = datetime.strptime(insertion_time, "%c").timestamp()
+                    insertion_time = dt.strptime(insertion_time, "%c").timestamp()
 
                 size = obj['Size']
 
@@ -482,7 +482,7 @@ class Annex:
                     names = info.get('filenames', [])
                     for annexed_file in names.values():
                         insertion_time = annexed_file['date']
-                        insertion_time = datetime.strptime(insertion_time, "%c").timestamp()
+                        insertion_time = dt.strptime(insertion_time, "%c").timestamp()
 
                     #The file size must come from the filesystem
                     meta = os.stat(os.path.join(self.annex_path, filename))
