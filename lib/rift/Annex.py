@@ -491,21 +491,26 @@ class Annex:
                 insertion_time = details['date']
 
                 # Handle different date formats (old method)
-                if not isinstance(insertion_time, str):
+                if not isinstance(insertion_time, (int, float, str)):
                     raise ValueError(f"Invalid date format in metadata: "
                                      f"{insertion_time} "
                                      f"(type {type(insertion_time)})")
 
-                fmt = '%a %b %d %H:%M:%S %Y'
-                try:
-                    insertion_time = dt.strptime(insertion_time, fmt).timestamp()
-                except ValueError:
-                    fmt = '%a %d %b %Y %H:%M:%S %p %Z'
+                if isinstance(insertion_time, str):
+                    fmt = '%a %b %d %H:%M:%S %Y'
                     try:
                         insertion_time = dt.strptime(insertion_time, fmt).timestamp()
-                    except ValueError as exc:
-                        raise ValueError(f"Unknown date format in "
-                                         f"metadata: {insertion_time}") from exc
+                    except ValueError:
+                        fmt = '%a %d %b %Y %H:%M:%S %p %Z'
+                        try:
+                            insertion_time = dt.strptime(insertion_time, fmt).timestamp()
+                        except ValueError as exc:
+                            raise ValueError(f"Unknown date format in "
+                                             f"metadata: {insertion_time}") from exc
+
+                elif isinstance(insertion_time, float):
+                    insertion_time = int(insertion_time)
+                # else insertion_time is already a timestamp, nothing to convert
 
                 # The file size must come from the filesystem
                 meta = os.stat(os.path.join(self.path, filename))
