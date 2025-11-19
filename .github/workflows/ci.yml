@@ -36,6 +36,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Generate missing locales in the container. Programs are executed with
+      # en_US.UTF-8 locale, this locale must be defined in the container in
+      # order to be restored by Rift without errors when manipulating dates.
+      - name: Install locales
+        run: |
+          dnf install -y glibc-locale-source glibc-langpack-en
+          localedef -i en_US -f UTF-8 en_US.UTF-8
+
       # Mount binfmt_misc virtual FS to register support of additional binary
       # formats for multi-arch builds.
       - name: Mount binfmt_misc virtual filesystem

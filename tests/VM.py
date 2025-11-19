@@ -4,7 +4,7 @@
 import os
 import shutil
 import atexit
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 import platform
 from TestUtils import RiftTestCase, RiftProjectTestCase, make_temp_dir
@@ -335,6 +335,33 @@ class VMTest(RiftTestCase):
                           'virtio-net-device,netdev=hostnet0']
         self.assertEqual(args, expected_args_aarch64)
 
+    @patch('rift.VM.message')
+    def test_start(self, mock_message):
+        """Test VM start not running"""
+        vm = VM(self.config, platform.machine())
+        vm.running = Mock(return_value=False)
+        vm.spawn = Mock()
+        vm.ready = Mock()
+        vm.prepare = Mock()
+        self.assertTrue(vm.start())
+        mock_message.assert_called_once_with("Launching VM ...")
+        vm.spawn.assert_called_once()
+        vm.ready.assert_called_once()
+        vm.prepare.assert_called_once()
+
+    @patch('rift.VM.message')
+    def test_start_running(self, mock_message):
+        """Test VM start already running"""
+        vm = VM(self.config, platform.machine())
+        vm.running = Mock(return_value=True)
+        vm.spawn = Mock()
+        vm.ready = Mock()
+        vm.prepare = Mock()
+        self.assertFalse(vm.start())
+        mock_message.assert_called_once_with("VM is already running")
+        vm.spawn.assert_not_called()
+        vm.ready.assert_not_called()
+        vm.prepare.assert_not_called()
 
 class VMBuildTest(RiftProjectTestCase):
     """

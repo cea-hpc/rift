@@ -8,6 +8,7 @@ import atexit
 from unittest.mock import patch, Mock
 import subprocess
 from io import StringIO
+import textwrap
 
 from TestUtils import (
     make_temp_dir, RiftTestCase, RiftProjectTestCase
@@ -20,7 +21,7 @@ from rift.Controller import (
     make_parser,
 )
 from rift.Package import Package
-from rift.RPM import RPM
+from rift.RPM import RPM, Spec
 from rift.run import RunResult
 from rift import RiftError
 
@@ -44,21 +45,10 @@ class ControllerTest(RiftTestCase):
         self.assert_except(SystemExit, "0", main, ['--version'])
 
 
-class ControllerProjectTest(RiftProjectTestCase):
+class ControllerProjectActionQueryTest(RiftProjectTestCase):
     """
-    Tests class for Controller
+    Tests class for Controller action query
     """
-
-    def _check_qemuuserstatic(self):
-        """Skip the test if none qemu-$arch-static executable is found for all
-        architectures declared in project configuration."""
-        if not any(
-            [
-                os.path.exists(f"/usr/bin/qemu-{arch}-static")
-                for arch in self.config.get('arch')
-            ]
-        ):
-            self.skipTest("qemu-user-static is not available")
 
     def test_action_query(self):
         """simple 'rift query' is ok """
@@ -76,6 +66,60 @@ class ControllerProjectTest(RiftProjectTestCase):
         ## A package with no name should be wrong but the command should not fail
         self.make_pkg(name='pkg2', metadata={})
         self.assertEqual(main(['query']), 0)
+
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_action_query_output_default(self, mock_stdout):
+        self.make_pkg(name="pkg1")
+        self.make_pkg(name="pkg2", version='2.1', release='3')
+        self.assertEqual(main(['query']), 0)
+        self.assertIn(
+            "NAME MODULE       MAINTAINERS VERSION RELEASE MODULEMANAGER",
+            mock_stdout.getvalue())
+        self.assertIn(textwrap.dedent("""
+            ---- ------       ----------- ------- ------- -------------
+            pkg1 Great module Myself      1.0     1       buddy@somewhere.org
+            pkg2 Great module Myself      2.1     3       buddy@somewhere.org
+            """),
+            mock_stdout.getvalue())
+
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_action_query_output_format(self, mock_stdout):
+        self.make_pkg(name="pkg1")
+        self.make_pkg(name="pkg2", version='2.1', release='3')
+        self.assertEqual(
+            main([
+                'query', '--format',
+                '%name %module %origin %reason %tests %version %arch %release '
+                '%changelogname %changelogtime %maintainers %modulemanager '
+                '%buildrequires']), 0)
+        self.assertIn(
+            "NAME MODULE       ORIGIN REASON          TESTS VERSION ARCH   "
+            "RELEASE CHANGELOGNAME                      CHANGELOGTIME "
+            "MAINTAINERS MODULEMANAGER       BUILDREQUIRES",
+            mock_stdout.getvalue())
+        self.assertIn(textwrap.dedent("""
+            ---- ------       ------ ------          ----- ------- ----   ------- -------------                      ------------- ----------- -------------       -------------
+            pkg1 Great module Vendor Missing feature 0     1.0     noarch 1       Myself <buddy@somewhere.org> 1.0-1 2019-02-26    Myself      buddy@somewhere.org br-package
+            pkg2 Great module Vendor Missing feature 0     2.1     noarch 3       Myself <buddy@somewhere.org> 2.1-3 2019-02-26    Myself      buddy@somewhere.org br-package
+            """),
+            mock_stdout.getvalue())
+
+
+class ControllerProjectTest(RiftProjectTestCase):
+    """
+    Tests class for Controller
+    """
+
+    def _check_qemuuserstatic(self):
+        """Skip the test if none qemu-$arch-static executable is found for all
+        architectures declared in project configuration."""
+        if not any(
+            [
+                os.path.exists(f"/usr/bin/qemu-{arch}-static")
+                for arch in self.config.get('arch')
+            ]
+        ):
+            self.skipTest("qemu-user-static is not available")
 
     @patch('rift.Controller.remove_packages')
     @patch('rift.Controller.validate_pkgs')
@@ -651,6 +695,63 @@ class ControllerProjectTest(RiftProjectTestCase):
             "/tmp/rift/output, parent directory /tmp/rift does not exist."
         ):
             main(['sync'])
+
+
+class ControllerProjectActionChangelogTest(RiftProjectTestCase):
+    """
+    Tests class for Controller action changelog
+    """
+
+    def test_action_changelog_without_pkg(self):
+        """changelog without package fails """
+        with self.assertRaisesRegex(SystemExit, "2"):
+            main(['changelog'])
+
+    def test_action_changelog_without_comment(self):
+        """changelog without comment fails """
+        with self.assertRaisesRegex(SystemExit, "2"):
+            main(['changelog', 'pkg'])
+
+    def test_action_changelog_without_maintainer(self):
+        """changelog without maintainer """
+        with self.assertRaisesRegex(RiftError, "You must specify a maintainer"):
+            main(['changelog', 'pkg', '-c', 'basic change'])
+
+    def test_action_changelog_pkg_not_found(self):
+        """changelog package not found"""
+        with self.assertRaisesRegex(
+            RiftError,
+            "Package 'pkg' directory does not exist"):
+            main(['changelog', 'pkg', '-c', 'basic change', '-t', 'Myself'])
+
+    def test_action_changelog(self):
+        """simple changelog"""
+        self.make_pkg()
+        self.assertEqual(
+            main(['changelog', 'pkg', '-c', 'basic change', '-t', 'Myself']), 0)
+        spec = Spec(filepath=self.pkgspecs['pkg'])
+        spec.load()
+        self.assertEqual(spec.changelog_name, 'Myself <buddy@somewhere.org> - 1.0-1')
+        self.assertEqual(spec.version, '1.0')
+        self.assertEqual(spec.release, '1')
+
+    def test_action_changelog_bump(self):
+        """simple changelog with bump"""
+        self.make_pkg()
+        self.assertEqual(
+            main(['changelog', 'pkg', '-c', 'basic change', '-t', 'Myself', '--bump']),
+            0)
+        spec = Spec(filepath=self.pkgspecs['pkg'])
+        spec.load()
+        self.assertEqual(spec.changelog_name, 'Myself <buddy@somewhere.org> - 1.0-2')
+        self.assertEqual(spec.version, '1.0')
+        self.assertEqual(spec.release, '2')
+
+    def test_action_changelog_unknown_maintainer(self):
+        """changelog with unknown maintainer"""
+        self.make_pkg()
+        with self.assertRaises(TypeError):
+            main(['changelog', 'pkg', '-c', 'basic change', '-t', 'Fail'])
 
 
 class ControllerArgumentsTest(RiftTestCase):

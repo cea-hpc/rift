@@ -49,6 +49,7 @@ from rift import RiftError, __version__
 from rift.Annex import Annex, is_binary
 from rift.Config import Config, Staff, Modules
 from rift.Gerrit import Review
+from rift.auth import Auth
 from rift.Mock import Mock
 from rift.Package import Package, Test
 from rift.Repository import LocalRepository, ProjectArchRepositories
@@ -216,6 +217,9 @@ def make_parser():
     subsubprs.add_argument('--dest', metavar='PATH', required=True,
                            help='destination path')
 
+    # Auth options
+    subprs = subparsers.add_parser('auth', help='Authenticate to an IDP for privileged actions')
+
     # VM options
     subprs = subparsers.add_parser('vm', help='Manipulate VM process')
     subprs.add_argument('-a', '--arch', help='CPU architecture of the VM')
@@ -264,6 +268,11 @@ def make_parser():
                         help='maintainer name from staff.yaml')
     subprs.add_argument('--bump', dest='bump', action='store_true',
                         help='also bump the release number')
+
+    # GitLab review
+    subprs = subparsers.add_parser('gitlab', add_help=False,
+                                   help='Check specfiles for GitLab')
+    subprs.add_argument('patch', metavar='PATCH', type=argparse.FileType('r'))
 
     # Gerrit review
     subprs = subparsers.add_parser('gerrit', add_help=False,
@@ -362,8 +371,8 @@ def action_annex(args, config, staff, modules):
                 message(f"{srcfile}: not an annex pointer, ignoring")
 
     elif args.annex_cmd == 'delete':
-        annex.delete(args.id)
-        message(f"{args.id} has been deleted")
+        if annex.delete(args.id):
+            message(f"{args.id} has been deleted")
 
     elif args.annex_cmd == 'get':
         annex.get(args.id, args.dest)
@@ -374,20 +383,27 @@ def action_annex(args, config, staff, modules):
         output_file = annex.backup(
             Package.list(config, staff, modules), args.output_file
         )
+
         message(f"Annex backup is available here: {output_file}")
 
-def _vm_start(vm):
-    if vm.running():
-        message('VM is already running')
-        return False
+def action_auth(args, config):
+    """Action for 'auth' sub-commands."""
+    auth_obj = Auth(config)
 
-    message('Launching VM ...')
-    vm.spawn()
-    vm.ready()
-    vm.prepare()
-    return True
+    if auth_obj.authenticate():
+        msg = "succesfully authenticated"
 
+        t = auth_obj.get_expiration_timestr()
+        if t != "":
+            msg += f"; token expires in {t}"
+        else:
+            msg += "; token expiration time is unknown"
 
+        message(msg)
+    else:
+        message("error: authentication failed")
+
+        
 class BasicTest(Test):
     """
     Auto-generated test for a Package.
@@ -481,7 +497,7 @@ def test_one_pkg(config, args, pkg, vm, arch, repos):
     and return results.
     """
     message(f"Preparing {arch} test environment")
-    _vm_start(vm)
+    vm.start()
     if repos.working is None:
         disablestr = '--disablerepo=working'
     else:
@@ -543,7 +559,7 @@ def test_pkgs(config, args, pkgs, arch, extra_repos=None):
             results.add_failure(case, time.time() - now, err=str(ex))
             continue
 
-        if not spec.supports_arch(arch):
+        if not pkg.supports_arch(arch) or not spec.supports_arch(arch):
             logging.info(
                 "Skipping test on architecture %s not supported by "
                 "package %s",
@@ -589,7 +605,7 @@ def validate_pkgs(config, args, pkgs, arch):
             results.add_failure(case, time.time() - now, err=str(ex))
             continue  # skip current package
 
-        if not spec.supports_arch(arch):
+        if not pkg.supports_arch(arch) or not spec.supports_arch(arch):
             logging.info(
                 "Skipping validation on architecture %s not supported by "
                 "package %s",
@@ -732,7 +748,7 @@ def action_vm(args, config):
         ret = vm.copy(args.source, args.dest)
     elif args.vm_cmd == 'start':
         vm.tmpmode = args.tmpimg
-        if _vm_start(vm):
+        if vm.start():
             message("VM started. Use: rift vm connect")
             ret = 0
     elif args.vm_cmd == 'stop':
@@ -757,7 +773,7 @@ def build_pkgs(config, args, pkgs, arch):
             results.add_failure(case, time.time() - now, err=str(ex))
             continue  # skip current package
 
-        if not spec.supports_arch(arch):
+        if not pkg.supports_arch(arch) or not spec.supports_arch(arch):
             logging.info(
                 "Skipping build on architecture %s not supported by "
                 "package %s",
@@ -925,6 +941,19 @@ def action_validdiff(args, config):
 
     return rc
 
+def action_gitlab(args, config, staff, modules):
+    """Review a patchset for GitLab (specfiles)"""
+
+    # Parse matching diff and specfiles in it
+    for f in parse_unidiff(args.patch):
+        path = f.path
+        names = path.split(os.path.sep)
+        if names[0] == config.get('packages_dir'):
+            pkg = Package(names[1], config, staff, modules)
+            if os.path.abspath(path) == pkg.specfile and not f.is_deleted_file:
+                spec = Spec(pkg.specfile, config=config)
+                spec.check()
+
 def action_gerrit(args, config, staff, modules):
     """Review a patchset for Gerrit (specfiles)"""
 
@@ -999,6 +1028,58 @@ def action_sync(args, config):
             )
             synchronizer.run()
 
+def action_query(args, config):
+    """Action for 'query' command."""
+    staff, modules = staff_modules(config)
+    pkglist = sorted(Package.list(config, staff, modules, args.packages),
+                        key=attrgetter('name'))
+
+    tbl = TextTable()
+    tbl.fmt = args.fmt or '%name %module %maintainers %version %release '\
+                            '%modulemanager'
+    tbl.show_header = args.headers
+    tbl.color = True
+
+    supported_keys = set(('name', 'module', 'origin', 'reason', 'tests',
+                            'version', 'arch', 'release', 'changelogname',
+                            'changelogtime', 'maintainers', 'modulemanager',
+                            'buildrequires'))
+    diff_keys = set(tbl.pattern_fields()) - supported_keys
+    if diff_keys:
+        raise RiftError(f"Unknown placeholder(s): {', '.join(diff_keys)} "
+                        f"(supported keys are: {', '.join(supported_keys)})")
+
+    for pkg in pkglist:
+        logging.debug('Loading package %s', pkg.name)
+        try:
+            pkg.load()
+            spec = Spec(config=config)
+            if args.spec:
+                spec.filepath = pkg.specfile
+                spec.load()
+        except RiftError as exp:
+            logging.error("%s: %s", pkg.name, str(exp))
+            continue
+
+        date = str(time.strftime("%Y-%m-%d", time.localtime(spec.changelog_time)))
+        modulemanager = staff.get(modules.get(pkg.module).get('manager')[0])
+        tbl.append({'name': pkg.name,
+                    'module': pkg.module,
+                    'origin': pkg.origin,
+                    'reason': pkg.reason,
+                    'tests': str(len(list(pkg.tests()))),
+                    'version': spec.version,
+                    'arch': spec.arch,
+                    'release': spec.release,
+                    'changelogname': spec.changelog_name,
+                    'changelogtime': date,
+                    'buildrequires': spec.buildrequires,
+                    'modulemanager': modulemanager['email'],
+                    'maintainers': ', '.join(pkg.maintainers)})
+    print(tbl)
+
+    return 0
+
 def create_staging_repo(config):
     """
     Create and return staging temporary repository with a 2-tuple containing
@@ -1045,6 +1126,11 @@ def action(config, args):
     # ANNEX
     if args.command == 'annex':
         action_annex(args, config, *staff_modules(config))
+        return
+
+    # AUTH
+    if args.command == 'auth':
+        action_auth(args, config)
         return
 
     # VM
@@ -1108,55 +1194,9 @@ def action(config, args):
     elif args.command == 'validdiff':
         return action_validdiff(args, config)
 
+    # QUERY
     elif args.command == 'query':
-
-        staff, modules = staff_modules(config)
-        pkglist = sorted(Package.list(config, staff, modules, args.packages),
-                         key=attrgetter('name'))
-
-        tbl = TextTable()
-        tbl.fmt = args.fmt or '%name %module %maintainers %version %release '\
-                              '%modulemanager'
-        tbl.show_header = args.headers
-        tbl.color = True
-
-        supported_keys = set(('name', 'module', 'origin', 'reason', 'tests',
-                              'version', 'arch', 'release', 'changelogname',
-                              'changelogtime', 'maintainers', 'modulemanager',
-                              'buildrequires'))
-        diff_keys = set(tbl.pattern_fields()) - supported_keys
-        if diff_keys:
-            raise RiftError(f"Unknown placeholder(s): {', '.join(diff_keys)} "
-                            f"(supported keys are: {', '.join(supported_keys)})")
-
-        for pkg in pkglist:
-            logging.debug('Loading package %s', pkg.name)
-            try:
-                pkg.load()
-                spec = Spec(config=config)
-                if args.spec:
-                    spec.filepath = pkg.specfile
-                    spec.load()
-            except RiftError as exp:
-                logging.error("%s: %s", pkg.name, str(exp))
-                continue
-
-            date = str(time.strftime("%Y-%m-%d", time.localtime(spec.changelog_time)))
-            modulemanager = staff.get(modules.get(pkg.module).get('manager')[0])
-            tbl.append({'name': pkg.name,
-                        'module': pkg.module,
-                        'origin': pkg.origin,
-                        'reason': pkg.reason,
-                        'tests': str(len(list(pkg.tests()))),
-                        'version': spec.version,
-                        'arch': spec.arch,
-                        'release': spec.release,
-                        'changelogname': spec.changelog_name,
-                        'changelogtime': date,
-                        'buildrequires': spec.buildrequires,
-                        'modulemanager': modulemanager['email'],
-                        'maintainers': ', '.join(pkg.maintainers)})
-        print(tbl)
+        return action_query(args, config)
 
     elif args.command == 'changelog':
 
@@ -1188,6 +1228,10 @@ def action(config, args):
         Spec(pkg.specfile,
              config=config).add_changelog_entry(author, args.comment,
                                                 bump=getattr(args, 'bump', False))
+
+    # GITLAB
+    elif args.command == 'gitlab':
+        return action_gitlab(args, config, *staff_modules(config))
 
     # GERRIT
     elif args.command == 'gerrit':

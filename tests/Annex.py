@@ -52,7 +52,7 @@ class AnnexTest(RiftTestCase):
         # Create a Annex for the tests
         os.mkdir(_TEST_ANNEX_PATH)
         self.config.annex = _TEST_ANNEX_PATH
-        self.annex = Annex(self.config, path=_TEST_ANNEX_PATH)
+        self.annex = Annex(self.config, annex_path=_TEST_ANNEX_PATH)
 
         self.source = make_temp_file(textwrap.dedent("""
         This file is an annex test
@@ -137,7 +137,7 @@ class AnnexTest(RiftTestCase):
     def test_init(self):
         """ Test local annex initialisation """
 
-        self.assertEqual(self.annex.path, _TEST_ANNEX_PATH)
+        self.assertEqual(self.annex.annex_path, _TEST_ANNEX_PATH)
 
     def test_is_pointer_valid_identifier(self):
         """ Test if is_pointer correctly detect a valid identifier """
@@ -209,13 +209,13 @@ class AnnexTest(RiftTestCase):
 
         # Push the file into the annex
         self.annex.push(self.source.name)
-        digest_path = os.path.join(self.annex.path, self.source_digest)
+        digest_path = os.path.join(self.annex.annex_path, self.source_digest)
 
         # Check if the file is correctly created
         # and pushed into the annex
         self.assertTrue(os.path.exists(digest_path))
         self.assertTrue(os.path.exists(os.path.join(
-            self.annex.path,
+            self.annex.annex_path,
             get_info_from_digest(self.source_digest))
         ))
 
