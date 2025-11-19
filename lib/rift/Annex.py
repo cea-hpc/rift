@@ -481,7 +481,7 @@ class Annex:
         Iterate over local annex files, returning for them: filename, size and
         insertion time.
         """
-        for filename in os.listdir(self.path):
+        for filename in os.listdir(self.annex_path):
             if filename.endswith(_INFOSUFFIX):
                 continue
 
