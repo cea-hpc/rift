@@ -437,9 +437,6 @@ class Annex:
         Iterate over annex files, returning for them: filename, size and
         insertion time.
         """
-<<<<<<< HEAD
-=======
-
         if self.annex_is_remote:
             if not self.annex_is_s3:
                 # non-S3, remote annex
