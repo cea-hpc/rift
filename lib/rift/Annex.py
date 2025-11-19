@@ -513,7 +513,7 @@ class Annex:
                 # else insertion_time is already a timestamp, nothing to convert
 
                 # The file size must come from the filesystem
-                meta = os.stat(os.path.join(self.path, filename))
+                meta = os.stat(os.path.join(self.annex_path, filename))
                 yield filename, meta.st_size, insertion_time, [annexed_file]
 
     def list(self):
