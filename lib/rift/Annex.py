@@ -235,21 +235,25 @@ class Annex():
                 insertion_time = details['date']
 
                 # Handle different date formats (old method)
-                if isinstance(insertion_time, str):
-                    for fmt in ('%a %b %d %H:%M:%S %Y', '%a %d %b %Y %H:%M:%S %p %Z'):
-                        try:
-                            insertion_time = datetime.datetime.strptime(
-                                insertion_time, fmt
-                            ).timestamp()
-                            break
-                        except ValueError:
-                            continue
-                else:
-                    logging.warning(
-                        "Unknown time format: %s (type %s)", 
-                        insertion_time,
-                        type(insertion_time)
-                    )
+                if not isinstance(insertion_time, str):
+                    raise ValueError(f"Invalid date format in metadata: "
+                                     f"{insertion_time} "
+                                     f"(type {type(insertion_time)})")
+
+                fmt = '%a %b %d %H:%M:%S %Y'
+                try:
+                    insertion_time = datetime.datetime.strptime(
+                        insertion_time, fmt
+                    ).timestamp()
+                except ValueError:
+                    fmt = '%a %d %b %Y %H:%M:%S %p %Z'
+                    try:
+                        insertion_time = datetime.datetime.strptime(
+                            insertion_time, fmt
+                        ).timestamp()
+                    except ValueError:
+                        raise ValueError(f"Unknown date format in metadata: "
+                                         f"{insertion_time} ")
 
                 # The file size must come from the filesystem
                 meta = os.stat(os.path.join(self.path, filename))
