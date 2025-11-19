@@ -605,7 +605,12 @@ class Annex:
         fileset = metadata.setdefault('filenames', {})
         fileset.setdefault(filename, {})
         fileset[filename]['date'] = time.time()  # Unix timestamp
-        self._save_metadata(digest, metadata)
+
+        metapath = os.path.join(self.staging_annex_path,
+                                get_info_from_digest(digest))
+        with open(metapath, 'w', encoding="utf-8") as fyaml:
+            yaml.dump(metadata, fyaml, default_flow_style=False)
+        os.chmod(metapath, self.WMODE)
 
         # Move binary file to annex
         logging.debug('Importing %s into annex (%s)', filepath, digest)
