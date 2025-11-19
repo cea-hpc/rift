@@ -498,18 +498,14 @@ class Annex:
 
                 fmt = '%a %b %d %H:%M:%S %Y'
                 try:
-                    insertion_time = datetime.datetime.strptime(
-                        insertion_time, fmt
-                    ).timestamp()
+                    insertion_time = dt.strptime(insertion_time, fmt).timestamp()
                 except ValueError:
                     fmt = '%a %d %b %Y %H:%M:%S %p %Z'
                     try:
-                        insertion_time = datetime.datetime.strptime(
-                            insertion_time, fmt
-                        ).timestamp()
-                    except ValueError:
+                        insertion_time = dt.strptime(insertion_time, fmt).timestamp()
+                    except ValueError as exc:
                         raise ValueError(f"Unknown date format in "
-                                         f"metadata: {insertion_time}")
+                                         f"metadata: {insertion_time}") from exc
 
                 # The file size must come from the filesystem
                 meta = os.stat(os.path.join(self.path, filename))
