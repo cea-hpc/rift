@@ -39,7 +39,6 @@ import logging
 import os
 import shutil
 import string
-import subprocess
 import sys
 import tarfile
 import tempfile
