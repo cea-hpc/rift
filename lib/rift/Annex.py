@@ -432,86 +432,192 @@ class Annex:
                     # Protect against empty file
         return metadata
 
+    def list_s3(self):
+        """
+        Iterate over s3 files, returning for them: filename, size and
+        insertion time.
+        """
+        if not self.annex_is_s3:
+            # non-S3, remote annex
+            print("list functionality is not implemented for public annex over non-S3, http")
+            return
+
+        # s3 list
+        # if http(s) uri is s3-compliant, then listing is easy
+        s3 = self.get_read_s3_client()
+
+        # disable signing if accessing anonymously
+        s3.meta.events.register('choose-signer.s3.*', botocore.handlers.disable_signing)
+
+        response = s3.list_objects_v2(
+            Bucket=self.read_s3_bucket,
+            Prefix=self.read_s3_prefix
+        )
+        if 'Contents' not in response:
+            logging.info("No files found in %s", self.read_s3_prefix)
+            return
+
+        for obj in response['Contents']:
+            key = obj['Key']
+            filename = os.path.basename(key)
+
+            if filename.endswith(_INFOSUFFIX):
+                continue
+
+            meta_obj_name = get_info_from_digest(key)
+            meta_obj = s3.get_object(Bucket=self.read_s3_bucket, Key=meta_obj_name)
+            info = yaml.safe_load(meta_obj['Body']) or {}
+            names = info.get('filenames', [])
+            for annexed_file in names.values():
+                insertion_time = annexed_file['date']
+                insertion_time = dt.strptime(insertion_time, "%c").timestamp()
+
+            size = obj['Size']
+
+            yield filename, size, insertion_time, names
+
+    def list_local_annex(self):
+        """
+        Iterate over local annex files, returning for them: filename, size and
+        insertion time.
+        """
+        for filename in os.listdir(self.path):
+            if filename.endswith(_INFOSUFFIX):
+                continue
+
+            info = self._load_metadata(filename)
+            names = info.get('filenames', [])
+            for annexed_file, details in names.items():
+                insertion_time = details['date']
+
+                # Handle different date formats (old method)
+                if not isinstance(insertion_time, str):
+                    raise ValueError(f"Invalid date format in metadata: "
+                                     f"{insertion_time} "
+                                     f"(type {type(insertion_time)})")
+
+                fmt = '%a %b %d %H:%M:%S %Y'
+                try:
+                    insertion_time = datetime.datetime.strptime(
+                        insertion_time, fmt
+                    ).timestamp()
+                except ValueError:
+                    fmt = '%a %d %b %Y %H:%M:%S %p %Z'
+                    try:
+                        insertion_time = datetime.datetime.strptime(
+                            insertion_time, fmt
+                        ).timestamp()
+                    except ValueError:
+                        raise ValueError(f"Unknown date format in "
+                                         f"metadata: {insertion_time}")
+
+                # The file size must come from the filesystem
+                meta = os.stat(os.path.join(self.path, filename))
+                yield filename, meta.st_size, insertion_time, [annexed_file]
+
     def list(self):
         """
         Iterate over annex files, returning for them: filename, size and
         insertion time.
         """
         if self.annex_is_remote:
-            if not self.annex_is_s3:
-                # non-S3, remote annex
-                print("list functionality is not implemented for public annex over non-S3, http")
-                return
-
-            # s3 list
-            # if http(s) uri is s3-compliant, then listing is easy
-            s3 = self.get_read_s3_client()
-
-            # disable signing if accessing anonymously
-            s3.meta.events.register('choose-signer.s3.*', botocore.handlers.disable_signing)
-
-            response = s3.list_objects_v2(
-                Bucket=self.read_s3_bucket,
-                Prefix=self.read_s3_prefix
-            )
-            if 'Contents' not in response:
-                logging.info("No files found in %s", self.read_s3_prefix)
-                return
-
-            for obj in response['Contents']:
-                key = obj['Key']
-                filename = os.path.basename(key)
-
-                if filename.endswith(_INFOSUFFIX):
-                    continue
-
-                meta_obj_name = get_info_from_digest(key)
-                meta_obj = s3.get_object(Bucket=self.read_s3_bucket, Key=meta_obj_name)
-                info = yaml.safe_load(meta_obj['Body']) or {}
-                names = info.get('filenames', [])
-                for annexed_file in names.values():
-                    insertion_time = annexed_file['date']
-                    insertion_time = dt.strptime(insertion_time, "%c").timestamp()
-
-                size = obj['Size']
-
-                yield filename, size, insertion_time, names
-
-        # local annex (i.e. file://)
+            yield from self.list_s3()
         else:
-            for filename in os.listdir(self.path):
-                if filename.endswith(_INFOSUFFIX):
-                    continue
+            yield from self.list_local_annex()
 
-                info = self._load_metadata(filename)
-                names = info.get('filenames', [])
-                for annexed_file, details in names.items():
-                    insertion_time = details['date']
+    def _push_to_s3(self, filepath, digest):
+        """
+        Copy file at `filepath' into this repository and replace the original
+        file by a fake one pointed to it.
 
-                    # Handle different date formats (old method)
-                    if not isinstance(insertion_time, str):
-                        raise ValueError(f"Invalid date format in metadata: "
-                                         f"{insertion_time} "
-                                         f"(type {type(insertion_time)})")
+        If the same content is already present, do nothing.
 
-                    fmt = '%a %b %d %H:%M:%S %Y'
-                    try:
-                        insertion_time = datetime.datetime.strptime(
-                            insertion_time, fmt
-                        ).timestamp()
-                    except ValueError:
-                        fmt = '%a %d %b %Y %H:%M:%S %p %Z'
-                        try:
-                            insertion_time = datetime.datetime.strptime(
-                                insertion_time, fmt
-                            ).timestamp()
-                        except ValueError:
-                            raise ValueError(f"Unknown date format in "
-                                             f"metadata: {insertion_time}")
+        Push is done to the S3 annex
+        """
+        s3 = self.get_push_s3_client()
+        if s3 is None:
+            logging.error("could not get s3 client: get_push_s3_client failed")
+            sys.exit(1)
 
-                    # The file size must come from the filesystem
-                    meta = os.stat(os.path.join(self.path, filename))
-                    yield filename, meta.st_size, insertion_time, [annexed_file]
+        destpath = os.path.join(self.push_s3_prefix, digest)
+        filename = os.path.basename(filepath)
+        key = destpath
+
+        # Prepare metadata file
+        meta_obj_name = get_info_from_digest(key)
+        metadata = {}
+        try:
+            meta_obj = s3.get_object(Bucket=self.push_s3_bucket, Key=meta_obj_name)
+            metadata = yaml.safe_load(meta_obj['Body']) or {}
+        except s3.exceptions.NoSuchKey:
+            logging.info("metadata not found in s3: %s", meta_obj_name)
+        except yaml.YAMLError:
+            logging.info("retrieved metadata could not be parsed as yaml: %s", meta_obj_name)
+
+        originfo = os.stat(filepath)
+        destinfo = None
+        try:
+            destinfo = s3.get_object(Bucket=self.push_s3_bucket, Key=key)
+        except s3.exceptions.NoSuchKey:
+            logging.info("key not found in s3: %s", key)
+        if destinfo and destinfo["ContentLength"] == originfo.st_size and \
+          filename in metadata.get('filenames', {}):
+            logging.debug("%s is already into annex, skipping it", filename)
+        else:
+            # Update them and write them back
+            fileset = metadata.setdefault('filenames', {})
+            fileset.setdefault(filename, {})
+            fileset[filename]['date'] = time.strftime("%c")
+
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.info') as f:
+                yaml.dump(metadata, f, default_flow_style=False)
+                s3.upload_file(f.name, self.push_s3_bucket, meta_obj_name)
+            logging.debug("Importing %s into annex (%s)", filepath, digest)
+
+            s3.upload_file(filepath, self.push_s3_bucket, key)
+
+    def _push_to_local_repo(self, filepath, digest):
+        """
+        Copy file at `filepath' into this repository and replace the original
+        file by a fake one pointed to it.
+
+        If the same content is already present, do nothing.
+
+        Push is done to the local repository annex
+        """
+        destpath = os.path.join(self.staging_annex_path, digest)
+        filename = os.path.basename(filepath)
+
+        # Prepare metadata file
+        metadata = self._load_metadata(digest)
+
+        # Is file already present?
+        originfo = os.stat(filepath)
+        destinfo = None
+        if os.path.exists(destpath):
+            destinfo = os.stat(destpath)
+            if destinfo and destinfo.st_size == originfo.st_size and \
+            filename in metadata.get('filenames', {}):
+                logging.debug('%s is already into annex, skipping it', filename)
+                return
+
+        # Update them and write them back
+        fileset = metadata.setdefault('filenames', {})
+        fileset.setdefault(filename, {})
+        fileset[filename]['date'] = time.time()  # Unix timestamp
+        self._save_metadata(digest, metadata)
+
+        # Move binary file to annex
+        logging.debug('Importing %s into annex (%s)', filepath, digest)
+        shutil.copyfile(filepath, destpath)
+        os.chmod(destpath, self.WMODE)
+
+        # Verify permission are correct before copying
+        os.chmod(filepath, self.RMODE)
+
+        # Create fake pointer file
+        with open(filepath, 'w', encoding='utf-8') as fakefile:
+            fakefile.write(digest)
 
     def push(self, filepath):
         """
@@ -524,82 +630,9 @@ class Annex:
         digest = hashfile(filepath)
 
         if self.push_over_s3:
-            s3 = self.get_push_s3_client()
-            if s3 is None:
-                logging.error("could not get s3 client: get_push_s3_client failed")
-                sys.exit(1)
-
-            destpath = os.path.join(self.push_s3_prefix, digest)
-            filename = os.path.basename(filepath)
-            key = destpath
-
-            # Prepare metadata file
-            meta_obj_name = get_info_from_digest(key)
-            metadata = {}
-            try:
-                meta_obj = s3.get_object(Bucket=self.push_s3_bucket, Key=meta_obj_name)
-                metadata = yaml.safe_load(meta_obj['Body']) or {}
-            except s3.exceptions.NoSuchKey:
-                logging.info("metadata not found in s3: %s", meta_obj_name)
-            except yaml.YAMLError:
-                logging.info("retrieved metadata could not be parsed as yaml: %s", meta_obj_name)
-
-            originfo = os.stat(filepath)
-            destinfo = None
-            try:
-                destinfo = s3.get_object(Bucket=self.push_s3_bucket, Key=key)
-            except s3.exceptions.NoSuchKey:
-                logging.info("key not found in s3: %s", key)
-            if destinfo and destinfo["ContentLength"] == originfo.st_size and \
-              filename in metadata.get('filenames', {}):
-                logging.debug("%s is already into annex, skipping it", filename)
-            else:
-                # Update them and write them back
-                fileset = metadata.setdefault('filenames', {})
-                fileset.setdefault(filename, {})
-                fileset[filename]['date'] = time.strftime("%c")
-
-                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.info') as f:
-                    yaml.dump(metadata, f, default_flow_style=False)
-                    s3.upload_file(f.name, self.push_s3_bucket, meta_obj_name)
-                logging.debug("Importing %s into annex (%s)", filepath, digest)
-
-                s3.upload_file(filepath, self.push_s3_bucket, key)
-
-       else:
-            destpath = os.path.join(self.staging_annex_path, digest)
-            filename = os.path.basename(filepath)
-
-            # Prepare metadata file
-            metadata = self._load_metadata(digest)
-
-            # Is file already present?
-            originfo = os.stat(filepath)
-            destinfo = None
-            if os.path.exists(destpath):
-                destinfo = os.stat(destpath)
-                if destinfo and destinfo.st_size == originfo.st_size and \
-                filename in metadata.get('filenames', {}):
-                    logging.debug('%s is already into annex, skipping it', filename)
-                    return
-
-            # Update them and write them back
-            fileset = metadata.setdefault('filenames', {})
-            fileset.setdefault(filename, {})
-            fileset[filename]['date'] = time.time()  # Unix timestamp
-            self._save_metadata(digest, metadata)
-
-            # Move binary file to annex
-            logging.debug('Importing %s into annex (%s)', filepath, digest)
-            shutil.copyfile(filepath, destpath)
-            os.chmod(destpath, self.WMODE)
-
-            # Verify permission are correct before copying
-            os.chmod(filepath, self.RMODE)
-
-            # Create fake pointer file
-            with open(filepath, 'w', encoding='utf-8') as fakefile:
-                fakefile.write(digest)
+            self._push_to_s3(filepath, digest)
+        else:
+            self._push_to_local_repo(filepath, digest)
 
     def backup(self, packages, output_file=None):
         """
