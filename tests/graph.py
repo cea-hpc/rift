@@ -3,6 +3,8 @@
 #
 import os
 import shutil
+import io
+from unittest.mock import patch
 
 from rift.graph import PackagesDependencyGraph
 from rift.Package import Package
@@ -347,3 +349,127 @@ class GraphTest(RiftProjectTestCase):
                 ),
                 3
             )
+
+    @patch('sys.stdout', new_callable=io.StringIO)
+    def test_draw(self, mock_stdout):
+        """ Test graph draw """
+        # Define 3 packages with depends in info.yaml, in both string and list
+        # formats.
+        self.make_pkg(
+            name='libone',
+            metadata={
+                'depends': 'libtwo'
+            }
+        )
+        self.make_pkg(
+            name='libtwo',
+        )
+        self.make_pkg(
+            name='my-software',
+            metadata={
+                'depends': ['libone']
+            }
+        )
+
+        # Load graph
+        graph = PackagesDependencyGraph.from_project(
+            self.config,
+            self.staff,
+            self.modules
+        )
+        graph.draw(False, [])  # w/o external deps
+        output = mock_stdout.getvalue()
+
+        # Check all packages are declared as nodes (with their labels) in graph.
+        for package in ['libone', 'libtwo', 'my-software']:
+            self.assertTrue(
+                f"\"{package}\" [ label = " in output
+            )
+        # Check depedencies are represented in graph.
+        self.assertTrue('"my-software" -> "libone"' in output)
+        self.assertTrue('"libone" -> "libtwo"' in output)
+        self.assertFalse('"libtwo" -> "my-software"' in output)
+
+    @patch('sys.stdout', new_callable=io.StringIO)
+    def test_draw_packages_subset(self, mock_stdout):
+        """ Test graph draw a subset of packages"""
+        # Define 3 packages with depends in info.yaml, in both string and list
+        # formats.
+        self.make_pkg(
+            name='libone',
+            metadata={
+                'depends': 'libtwo'
+            }
+        )
+        self.make_pkg(
+            name='libtwo',
+        )
+        self.make_pkg(
+            name='my-software',
+            metadata={
+                'depends': ['libone']
+            }
+        )
+
+        # Load graph
+        graph = PackagesDependencyGraph.from_project(
+            self.config,
+            self.staff,
+            self.modules
+        )
+        graph.draw(False, ['libone'])  # only libone and its deps
+        output = mock_stdout.getvalue()
+
+        # Check libone and its dependency libtwo are declared as nodes in the
+        # graph.
+        for package in ['libone', 'libtwo']:
+            self.assertTrue(
+                f"\"{package}\" [ label = " in output
+            )
+        # Check depedencies are represented in graph.
+        self.assertTrue('"libone" -> "libtwo"' in output)
+        # Check my-software is not mentionned in graph.
+        self.assertFalse('my-software' in output)
+
+    @patch('sys.stdout', new_callable=io.StringIO)
+    def test_draw_with_external_deps(self, mock_stdout):
+        """ Test graph draw with external dependencies """
+        # Define 3 packages without depends in info.yaml but with build requires
+        # on others subpackages and external dep.
+        self.make_pkg(
+            name='libone',
+            build_requires=['libtwo-devel', 'external-devel'],
+            subpackages=[
+                SubPackage('libone-bin'),
+                SubPackage('libone-devel'),
+            ]
+        )
+        self.make_pkg(
+            name='libtwo',
+            subpackages=[
+                SubPackage('libtwo-bin'),
+                SubPackage('libtwo-devel')
+            ]
+        )
+        self.make_pkg(
+            name='my-software',
+            build_requires=['libone-devel, libtwo-devel', 'external-devel'],
+        )
+
+        # Load graph
+        graph = PackagesDependencyGraph.from_project(
+            self.config,
+            self.staff,
+            self.modules
+        )
+        graph.draw(True, [])  # w/ external deps
+        output = mock_stdout.getvalue()
+        print(output)
+        # Check all packages are declared as nodes (with their labels) in graph.
+        self.assertTrue(
+                '"external-devel" [fillcolor=orange]' in output
+        )
+        # Check depedencies are represented in graph.
+        self.assertTrue('"my-software" -> "external-devel"' in output)
+        self.assertTrue('"libone" -> "external-devel"' in output)
+        self.assertFalse('"libtwo" -> "external-devel"' in output)

@@ -36,6 +36,7 @@ solve recursive build requirements.
 """
 import time
 from collections import namedtuple
+import textwrap
 import logging
 import re
 
@@ -98,12 +99,44 @@ class PackageDependencyNode:
             if subpkg in rdep.build_requires
         ]
 
+    def rdep_reason(self, rdep):
+        """
+        Return a string to describe the reason to justify the build requirement
+        on the reverse dependency. If depends are defined in info.yaml, just
+        indicate this dependency. Otherwise, resolve build requirements to
+        indicate the subpackages that explain the dependency.
+        """
+        if rdep.package.depends is not None:
+            return f"depends on {self.package.name}"
+        return 'build depends on ' + ', '.join(
+            self.required_subpackages(rdep)
+        )
+
+    def draw_label(self):
+        """
+        Return a string to represent node label in graphviz representation.
+        """
+        return (
+            '<<table border="0" cellborder="0" cellpadding="1"><tr>'
+            '<td bgcolor="#555555" align="center">'
+            f"<font color=\"white\">{self.package.name}</font>"
+            '</td></tr>'
+            + ''.join(
+                [
+                    f"<tr><td align=\"center\">{subpackage}</td></tr>"
+                    for subpackage in self.subpackages
+                ]
+            )
+            + '</table>>'
+        )
 
 class PackagesDependencyGraph:
     """Graph of dependencies between packages in Rift project."""
     def __init__(self):
         self.nodes = []
         self.path = None
+        self.represented_nodes = None  # used and initialized in _draw_nodes()
+        self.external_deps = None  # initialized in draw()
 
     def dump(self):
         """Dump graph in its current state with logging message."""
@@ -115,6 +148,119 @@ class PackagesDependencyGraph:
                 "  is required by: %s",
                 str([rdep.package.name for rdep in node.rdeps])
             )
+
+    def draw(self, external, packages):
+        """
+        Generate graphviz representation of packages dependencies graph on
+        standard output, with or without project external dependencies.
+        """
+        # circo layout is used when all project packages are represented
+        # without external dependencies because there are generally many nodes
+        # without relations and this results in a more dense layout. In other
+        # cases, there are generally more relations and default dot layout is
+        # preferred.
+        print(
+            'digraph rift {\n'
+            f"  layout={'dot' if external or packages else 'circo'} \n"
+            '  fontname="Helvetica,Arial,sans-serif"\n'
+            '  node [fontname="Helvetica,Arial,sans-serif", style=filled, '
+            'fillcolor=white, penwidth=1, fontsize=8, shape=Mrecord, '
+            'height=0.25]\n'
+            '  edge [fontname="Helvetica,Arial,sans-serif", fontsize=6, '
+            'fontcolor="#444444"]\n'
+        )
+        # Track external dependencies and represented nodes in list to avoid
+        # duplicates.
+        self.external_deps = []
+        self.represented_nodes = []
+        self._draw_nodes(external, packages)
+        self._draw_relations(external)
+
+    def _search_deps(self, node):
+        """Generator for a given node dependencies."""
+        for _node in self.nodes:
+            if node in _node.rdeps:
+                yield _node
+
+    def _draw_node(self, node):
+        """Draw a node and its dependencies recursively."""
+        # Skip node if it has already been represented.
+        if node in self.represented_nodes:
+            return
+        print(
+            f"  \"{node.package.name}\" [ label = {node.draw_label()} ];"
+        )
+        self.represented_nodes.append(node)
+        # Fill external_deps list with additional build requirements.
+        for build_require in node.build_requires:
+            if build_require not in self.external_deps:
+                self.external_deps.append(build_require)
+        # Draw node dependencies recusively.
+        for dep in self._search_deps(node):
+            self._draw_node(dep)
+
+    def _draw_nodes(self, external, packages):
+        """
+        Generate graphviz packages nodes on standard output, either a subset of
+        project packages or all nodes, with or without project external
+        dependencies.
+        """
+        if packages:
+            logging.debug(
+                "Dependency graph represented with this list of packages: %s",
+                str(packages)
+            )
+        else:
+            logging.debug(
+                "Dependency graph represented with all project packages"
+            )
+        for node in self.nodes:
+            # If a subset of packages is specified and node's package is not in
+            # this list, skip this node.
+            if packages and node.package.name not in packages:
+                continue
+            self._draw_node(node)
+        # Filter out from external_deps all dependencies that are actually
+        # satisfied by project packages.
+        for node in self.nodes:
+            for subpackage in node.subpackages:
+                if subpackage in self.external_deps:
+                    self.external_deps.remove(subpackage)
+        # If external dependencies have to be represented, draw these nodes with
+        # distinctive color.
+        if external:
+            for external_dep in self.external_deps:
+                print(
+                    f"  \"{external_dep}\" [fillcolor=orange];"
+                )
+
+    def _draw_relations(self, external):
+        """
+        Generate graphviz relations between represented nodes on standard
+        output, with or without project external dependencies.
+        """
+        for node in self.represented_nodes:
+            # Draw relations between project packages and their reverse
+            # dependencies.
+            for rdep in node.rdeps:
+                # Skip reverse dependency if its node is not represented.
+                if rdep not in self.represented_nodes:
+                    continue
+                print(
+                    f"  \"{rdep.package.name}\" -> \"{node.package.name}\" "
+                    '[ label = "',
+                    textwrap.fill(node.rdep_reason(rdep), 20),
+                    '" ];'
+                )
+            # If external dependencies have to be represented, draw relations
+            # between project packages and these external dependencies.
+            if external:
+                for build_require in node.build_requires:
+                    if build_require in self.external_deps:
+                        print(
+                            f"  \"{node.package.name}\" -> \"{build_require}\";"
+                        )
+        print('}')
 
     def _dep_index(self, new, result):
         """
@@ -168,16 +314,7 @@ class PackagesDependencyGraph:
         self.path.append(node)
 
         for rdep in node.rdeps:
-            # Determine the reason to justify the build requirement on the
-            # reverse dependency. If depends are defined in info.yaml, just
-            # indicate this dependency. Otherwise, resolve build requirements
-            # to indicate the subpackages that explain the dependency.
-            if rdep.package.depends is not None:
-                reason = f"depends on {node.package.name}"
-            else:
-                reason = "build depends on " + ", ".join(
-                    node.required_subpackages(rdep)
-                )
+            reason = node.rdep_reason(rdep)
             # If reverse dependency has already been processed in the processing
             # path to the current node, add it to resulting list and stop
             # processing to avoid endless loop.

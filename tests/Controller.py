@@ -18,6 +18,7 @@ from TestUtils import (
 from VM import GLOBAL_CACHE, VALID_IMAGE_URL, PROXY
 from rift.Controller import (
     main,
+    get_packages_in_graph,
     get_packages_from_patch,
     get_packages_to_build,
     remove_packages,
@@ -1020,6 +1021,39 @@ class ControllerProjectTest(RiftProjectTestCase):
             'DEBUG:root:       ⥀ Loop detected on node libone at depth 2: libone→libthree→libtwo→libone',
             cm.output
         )
+
+    def test_get_packages_in_graph(self):
+        """ Test get_packages_in_graph(). """
+        self.make_pkg(
+            name='libone',
+            metadata={'module': 'Great module'},
+        )
+        self.make_pkg(
+            name='libtwo',
+            metadata={'module': 'Great module'},
+        )
+        self.make_pkg(
+            name='my-software',
+            metadata={'module': 'Other module'},
+        )
+        args = Mock()
+        args.module = 'Great module'
+        args.packages = []
+        self.assertCountEqual(
+            get_packages_in_graph(args, self.config, self.staff, self.modules),
+            ['libone', 'libtwo']
+        )
+        args.module = None
+        args.packages = ['libone', 'my-software']
+        self.assertCountEqual(
+            get_packages_in_graph(args, self.config, self.staff, self.modules),
+            ['libone', 'my-software']
+        )
+        args.module = 'fail'
+        args.packages = []
+        with self.assertRaisesRegex(RiftError, r"^Invalid module name fail$"):
+            get_packages_in_graph(args, self.config, self.staff, self.modules)
+
 
 class ControllerProjectActionGerritTest(RiftProjectTestCase):
     """

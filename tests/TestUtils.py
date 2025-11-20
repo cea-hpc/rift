@@ -161,11 +161,21 @@ class RiftProjectTestCase(RiftTestCase):
         # ./packages/staff.yaml
         self.staffpath = os.path.join(self.packagesdir, 'staff.yaml')
         with open(self.staffpath, "w") as staff:
-            staff.write('staff: {Myself: {email: buddy@somewhere.org}}')
+            staff.write(
+                "staff:\n"
+                "  Myself: {email: buddy@somewhere.org}\n"
+                "  Another: {email: another@elsewhere.org}\n"
+            )
         # ./packages/modules.yaml
         self.modulespath = os.path.join(self.packagesdir, 'modules.yaml')
         with open(self.modulespath, "w") as mod:
-            mod.write('modules: {Great module: {manager: Myself}}')
+            mod.write(
+                "modules:\n"
+                "  Great module:\n"
+                "    manager: Myself\n"
+                "  Other module:\n"
+                "    manager: Another\n"
+            )
         # ./annex/
         self.annexdir = os.path.join(self.projdir, 'annex')
         os.mkdir(self.annexdir)
