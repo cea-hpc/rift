@@ -1086,6 +1086,13 @@ def action_changelog(args, config):
     pkg = Package(args.package, config, staff, modules)
     pkg.load()
 
+    # Check maintainer is present in staff of raise error
+    if args.maintainer not in staff:
+        raise RiftError(
+            f"Unknown maintainer {args.maintainer}, cannot be found in staff"
+        )
+
+    # Compute author string
     author = f"{args.maintainer} <{staff.get(args.maintainer)['email']}>"
 
     # Format comment.
