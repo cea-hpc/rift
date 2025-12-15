@@ -11,7 +11,7 @@ on:
 
 
 jobs:
-  tests:
+  rpm:
     runs-on: ubuntu-latest
     container:
       image: fedora:latest
@@ -26,4 +26,4 @@ jobs:
 
       - name: Build source and binary RPM
         run: |
-          mock --root almalinux-8-x86_64 --spec rift.spec
+          mock --root almalinux-8-x86_64 --sources . --spec rift.spec
