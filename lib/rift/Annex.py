@@ -621,10 +621,6 @@ class Annex:
         # Verify permission are correct before copying
         os.chmod(filepath, self.RMODE)
 
-        # Create fake pointer file
-        with open(filepath, 'w', encoding='utf-8') as fakefile:
-            fakefile.write(digest)
-
     def push(self, filepath):
         """
         Copy file at `filepath' into this repository and replace the original
@@ -639,6 +635,10 @@ class Annex:
             self._push_to_s3(filepath, digest)
         else:
             self._push_to_local_repo(filepath, digest)
+
+        # Create fake pointer file
+        with open(filepath, 'w', encoding='utf-8') as fakefile:
+            fakefile.write(digest)
 
     def backup(self, packages, output_file=None):
         """
