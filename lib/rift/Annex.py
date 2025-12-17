@@ -280,6 +280,11 @@ class Annex:
 
                     if res:
                         with open(tmp_file, 'wb') as f:
+                            # If the annex object to get is a gzip, reading it
+                            # with the standard 'iter_content()' method will
+                            # mistakenly gunzip it, which will cause errors
+                            # later in a build/validate. So instead, we read
+                            # the raw content, and let future gunzip do its job
                             chunk = res.raw.read(8192)
                             while chunk:
                                 f.write(chunk)
