@@ -280,8 +280,10 @@ class Annex:
 
                     if res:
                         with open(tmp_file, 'wb') as f:
-                            for chunk in res.iter_content(chunk_size=8192):
+                            chunk = res.raw.read(8192)
+                            while chunk:
                                 f.write(chunk)
+                                chunk = res.raw.read(8192)
 
                             if self.restore_cache:
                                 cached_path = self.get_cached_path(identifier)
