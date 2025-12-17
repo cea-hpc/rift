@@ -526,7 +526,7 @@ def test_one_pkg(config, args, pkg, vm, arch, repos):
     and return results.
     """
     message(f"Preparing {arch} test environment")
-    vm.start()
+    vm.start(False)
     if repos.working is None:
         disablestr = '--disablerepo=working'
     else:
