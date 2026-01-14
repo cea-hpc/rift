@@ -25,6 +25,12 @@ class PackageTestingConcrete(Package):
     def _deserialize_specific_metadata(self, data):
         pass
 
+    def subpackages(self):
+        return []
+
+    def build_requires(self):
+        return []
+
     def for_arch(self, arch):
         return ActionableArchPackageTestingConcrete(self, arch)
 
@@ -103,6 +109,20 @@ class PackageTest(RiftProjectTestCase):
         self.assertEqual(actionable_pkg.buildfile, f"{pkg.dir}/{pkg.name}.buildfile")
         self.assertEqual(actionable_pkg.config, self.config)
         self.assertEqual(actionable_pkg.arch, 'x86_64')
+
+    def test_subpackages(self):
+        """ Test Package subpackages (dummy implementation) """
+        pkg = PackageTestingConcrete(
+            'pkg', self.config, self.staff, self.modules, 'rpm'
+        )
+        self.assertCountEqual(pkg.subpackages(), [])
+
+    def test_build_requires(self):
+        """ Test Package build requires (dummy implementation) """
+        pkg = PackageTestingConcrete(
+            'pkg', self.config, self.staff, self.modules, 'rpm'
+        )
+        self.assertCountEqual(pkg.build_requires(), [])
 
     def test_add_changelog_entry(self):
         """ Test Package add changelog entry (not implemented) """

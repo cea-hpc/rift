@@ -244,6 +244,14 @@ class Package(ABC):
         """Read package metadata 'info.yaml' and check its content."""
         self.load_info(infopath)
 
+    @abstractmethod
+    def subpackages(self):
+        """Must return the list of subpackages produced by a package."""
+
+    @abstractmethod
+    def build_requires(self):
+        """Must return the list of build requirements."""
+
     def tests(self):
         """An iterator over Test objects for each test files."""
         testspattern = os.path.join(self.testsdir, '*.sh')

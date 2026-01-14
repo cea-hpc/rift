@@ -153,6 +153,34 @@ class PackageRPMTest(RiftProjectTestCase):
             r'Unused source file\(s\): unused-1.0.tar.gz'):
             pkg.check()
 
+    def test_subpackages(self):
+        """ Test PackageRPM.subpackages() returns list of provides """
+        self.make_pkg()
+        pkg = PackageRPM('pkg', self.config, self.staff, self.modules)
+        pkg.load()
+        self.assertCountEqual(pkg.subpackages(), ['pkg', 'pkg-provide'])
+
+    def test_build_requires(self):
+        """ Test PackageRPM.build_requires() returns list of build requirements """
+        self.make_pkg()
+        pkg = PackageRPM('pkg', self.config, self.staff, self.modules)
+        pkg.load()
+        self.assertCountEqual(pkg.build_requires(), ['br-package'])
+
+    def test_build_requires_explicit_versions(self):
+        """
+        Test PackageRPM.build_requires() returns list of build requirements with
+        explicit versioning.
+        """
+        self.make_pkg(
+            build_requires=['lib1-devel', 'lib2-devel >= 3.4', 'lib3-devel < 6.0.0']
+        )
+        pkg = PackageRPM('pkg', self.config, self.staff, self.modules)
+        pkg.load()
+        self.assertCountEqual(
+            pkg.build_requires(), ['lib1-devel', 'lib2-devel', 'lib3-devel']
+        )
+
     def test_add_changelog_entry(self):
         """ Test PackageRPM add changelog entry"""
         pkgname = 'pkg'

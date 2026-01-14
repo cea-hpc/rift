@@ -38,10 +38,8 @@ import time
 from collections import namedtuple
 import textwrap
 import logging
-import re
 
 from rift.package import ProjectPackages
-from rift.RPM import Spec
 from rift import RiftError
 
 BuildRequirement = namedtuple("BuildRequirement", ["package", "reasons"])
@@ -51,26 +49,8 @@ class PackageDependencyNode:
     """Node in PackagesDependencyGraph."""
     def __init__(self, package):
         self.package = package
-        # parse spec file subpackages and build requires
-        spec = Spec(package.buildfile)
-        self.subpackages = spec.provides
-        # Parse buildrequires string in spec file to discard explicit versions
-        # enforcement.
-        #
-        # Note this is currently done this way for the sake of simplicity,
-        # despite the value that could be provided by these version constraints.
-        # It could notably be interesting to extract lesser version constraints
-        # when a dependency is updated to a greater version.
-        #
-        # Currently, the automatic rebuilds of recursive reverse dependencies
-        # eventually fail at some point because of invalid versioning in this
-        # case but it could be nice to fail faster by detecting mismatching
-        # versions before the actual builds.
-        self.build_requires = [
-            value.group(1)
-            for value
-            in re.finditer(r"(\S+)( (>|>=|=|<=|<) \S+)?", spec.buildrequires)
-        ]
+        self.subpackages = package.subpackages()
+        self.build_requires = package.build_requires()
         self.rdeps = []
 
     def depends_on(self, node):
@@ -397,10 +377,7 @@ class PackagesDependencyGraph:
 
     @classmethod
     def from_project(cls, config, staff, modules):
-        """
-        Iterate over Package instances from 'names' list or all packages
-        if list is not provided.
-        """
+        """Build graph with all project's packages."""
         graph = cls()
         graph.build(ProjectPackages.list(config, staff, modules))
         return graph

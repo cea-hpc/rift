@@ -112,6 +112,33 @@ class PackageRPM(Package):
         message('Validate specfile...')
         self.spec.check(self)
 
+    def subpackages(self):
+        """Returns list of provides declared in spec file."""
+        # Check spec is already loaded
+        assert self.spec is not None
+
+        return self.spec.provides
+
+    def build_requires(self):
+        """Returns list of build requirements declared in spec file."""
+        # Parse buildrequires string in spec file to discard explicit versions
+        # enforcement.
+        #
+        # Note this is currently done this way for the sake of simplicity,
+        # despite the value that could be provided by these version constraints.
+        # It could notably be interesting to extract lesser version constraints
+        # when a dependency is updated to a greater version.
+        #
+        # Currently, the automatic rebuilds of recursive reverse dependencies
+        # eventually fail at some point because of invalid versioning in this
+        # case but it could be nice to fail faster by detecting mismatching
+        # versions before the actual builds.
+        return [
+            value.group(1)
+            for value
+            in re.finditer(r"(\S+)( (>|>=|=|<=|<) \S+)?", self.spec.buildrequires)
+        ]
+
     def add_changelog_entry(self, maintainer, comment, bump):
         """Add entry in RPM spec changelog."""
         # Check spec is already loaded
