@@ -48,8 +48,7 @@ from rift.Config import Config, Staff, Modules, _DEFAULT_VARIANT
 from rift.Gerrit import Review
 from rift.auth import Auth
 from rift.package import ProjectPackages
-from rift.repository import ProjectArchRepositories
-from rift.repository.rpm import LocalRepository
+from rift.repository import ProjectArchRepositories, StagingRepository
 from rift.graph import PackagesDependencyGraph
 from rift.RPM import RPM, Spec
 from rift.TempDir import TempDir
@@ -431,8 +430,8 @@ def validate_pkgs(config, args, pkgs, arch):
 
     # Create staging repository for all packages and add it to the project
     # supplementary repositories.
-    (staging, stagedir) = create_staging_repo(config)
     repos = ProjectArchRepositories(config, arch)
+    staging = StagingRepository(config)
 
     if args.publish and not repos.can_publish():
         raise RiftError("Cannot publish if 'working_repo' is undefined")
@@ -504,7 +503,7 @@ def validate_pkgs(config, args, pkgs, arch):
         pkg_arch.clean(noquit=args.noquit)
 
     # Remove staging repository
-    stagedir.delete()
+    staging.delete()
 
     banner(f"All packages checked on architecture {arch}")
 
@@ -671,9 +670,9 @@ def action_build(args, config):
         # Create temporary staging repository to hold dependencies unless
         # dependency tracking is disabled in project configuration or user set
         # --skip-deps argument.
-        staging = stagedir = None
+        staging = None
         if config.get('dependency_tracking') and not args.skip_deps:
-            (staging, stagedir) = create_staging_repo(config)
+            staging = StagingRepository(config)
 
         results.extend(build_pkgs(args, pkgs, arch, staging))
 
@@ -681,8 +680,8 @@ def action_build(args, config):
             logging.info('Writing test results in %s', args.junit)
             results.junit(args.junit)
 
-        if stagedir:
-            stagedir.delete()
+        if staging:
+            staging.delete()
         banner(f"All packages processed for architecture {arch}")
 
     banner('All architectures processed')
@@ -1135,24 +1134,6 @@ def get_packages_to_build(config, staff, modules, args):
             else:
                 result.insert(position, required_build.package)
     return result
-
-def create_staging_repo(config):
-    """
-    Create and return staging RPM temporary repository with a 2-tuple containing
-    (Repository, TempDir) objects.
-    """
-    logging.info('Creating temporary repository')
-    stagedir = TempDir('stagedir')
-    stagedir.create()
-    staging_repo_options = {'module_hotfixes': "true"}
-    staging = LocalRepository(
-        path=stagedir.path,
-        config=config,
-        name='staging',
-        options=staging_repo_options,
-    )
-    staging.create()
-    return (staging, stagedir)
 
 def staff_modules(config):
     """

@@ -10,9 +10,9 @@ from ..TestUtils import make_temp_dir, RiftTestCase
 
 from rift import RiftError
 from rift.Config import Config
-from rift.repository._project import ProjectArchRepositories
+from rift.repository._project import ProjectArchRepositories, StagingRepository
 from rift.repository._base import ArchRepositoriesBase
-from rift.repository.rpm import ArchRepositoriesRPM
+from rift.repository.rpm import ArchRepositoriesRPM, StagingRepositoryRPM
 
 class ProjectArchRepositoriesTest(RiftTestCase):
     """
@@ -92,3 +92,29 @@ class ProjectArchRepositoriesTest(RiftTestCase):
             "^Unable to get configuration option for unsupported architecture 'fail'$"
         ):
             ProjectArchRepositories(self.config, 'fail')
+
+
+class StagingRepositoryTest(RiftTestCase):
+    def setUp(self):
+        self.config = Config()
+        self.staging = StagingRepository(self.config)
+
+    def tearDown(self):
+        self.staging.delete()
+
+    def test_create_delete(self):
+        # Check temporary stagedir has been created
+        path = self.staging.stagedir.path
+        self.assertTrue(os.path.exists(path))
+        # Check it is removed after delete()
+        self.staging.delete()
+        self.assertFalse(os.path.exists(path))
+
+    def test_formats(self):
+        self.assertIsInstance(self.staging.for_format('rpm'), StagingRepositoryRPM)
+
+    def test_format_unsupported(self):
+        with self.assertRaisesRegex(
+            RiftError, "^Unsupported staging repository format fail$"
+        ):
+            self.staging.for_format('fail')

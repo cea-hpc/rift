@@ -41,7 +41,7 @@ import glob
 from subprocess import Popen, PIPE, STDOUT, run, CalledProcessError
 
 from rift import RiftError
-from rift.repository._base import ArchRepositoriesBase
+from rift.repository._base import ArchRepositoriesBase, StagingRepositoryBase
 from rift.RPM import RPM, Spec
 from rift.TempDir import TempDir
 from rift.Config import _DEFAULT_REPO_CMD, _DEFAULT_REPOS_VARIANTS
@@ -342,3 +342,20 @@ class ArchRepositoriesRPM(ArchRepositoriesBase):
             self.working.delete(found_pkg)
         # Update repository metadata
         self.working.update()
+
+
+class StagingRepositoryRPM(StagingRepositoryBase):
+    """Staging repository for RPM format"""
+
+    def __init__(self, config, stagedir):
+        path = os.path.join(stagedir, 'rpm')
+        os.mkdir(path)
+        super().__init__(
+            LocalRepository(
+                path=path,
+                config=config,
+                name='staging',
+                options={'module_hotfixes': "true"},
+            )
+        )
+        self.repo.create()
