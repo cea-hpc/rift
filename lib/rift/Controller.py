@@ -323,6 +323,9 @@ def make_parser():
                         help="add project external dependencies in the graph")
     subprs.add_argument('--module',
                         help="represent packages from this module in the graph")
+    subprs.add_argument('-F', '--formats', nargs='+',
+                        choices=RIFT_SUPPORTED_FORMATS,
+                        help='restrict command to specific package formats')
     subprs.add_argument('packages', metavar='PACKAGE', nargs='*',
                         help='packages to represent in the graph')
 
@@ -1116,7 +1119,7 @@ def action_graph(args, config, staff, modules):
     """Action for 'graph' command."""
     # Build dependency graph with all selected packages and generate graphviz
     # representation of this graph.
-    PackagesDependencyGraph.from_project(config, staff, modules).draw(
+    PackagesDependencyGraph.from_project(config, staff, modules, args.format).draw(
         args.with_external, get_packages_in_graph(args, config, staff, modules)
     )
     return 0

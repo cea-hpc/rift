@@ -399,8 +399,14 @@ class PackagesDependencyGraph:
         logging.debug("Graph size: %d", len(self.nodes))
 
     @classmethod
-    def from_project(cls, config, staff, modules):
-        """Build graph with all project's packages."""
+    def from_project(cls, config, staff, modules, formats=None):
+        """Build graph with all project's packages, optionally filtered by format."""
         graph = cls()
-        graph.build(ProjectPackages.list(config, staff, modules))
+        graph.build(
+            [
+                package for package in ProjectPackages.list(
+                    config, staff, modules
+                ) if not formats or package.format in formats
+            ]
+        )
         return graph
