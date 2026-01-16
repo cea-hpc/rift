@@ -1049,7 +1049,8 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
             [pkg.name for pkg in pkgs], ['libthree', 'libtwo', 'libone']
         )
         self.assertIn(
-            'DEBUG:root:       ⥀ Loop detected on node libone at depth 2: libone→libthree→libtwo→libone',
+            'DEBUG:root:       ⥀ Loop detected on node rpm:libone at depth 2: '
+            'rpm:libone→rpm:libthree→rpm:libtwo→rpm:libone',
             cm.output
         )
 

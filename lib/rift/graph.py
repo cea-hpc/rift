@@ -75,7 +75,7 @@ class PackageDependencyNode:
         of the given reverse dependency.
         """
         return [
-            subpkg
+            f"{self.package.format}:{subpkg}"
             for subpkg in self.subpackages
             if subpkg in rdep.build_requires
         ]
@@ -88,7 +88,7 @@ class PackageDependencyNode:
         indicate the subpackages that explain the dependency.
         """
         if rdep.package.depends is not None:
-            return f"depends on {self.package.name}"
+            return f"depends on {self.package.format}:{self.package.name}"
         return 'build depends on ' + ', '.join(
             self.required_subpackages(rdep)
         )
@@ -100,7 +100,7 @@ class PackageDependencyNode:
         return (
             '<<table border="0" cellborder="0" cellpadding="1"><tr>'
             '<td bgcolor="#555555" align="center">'
-            f"<font color=\"white\">{self.package.name}</font>"
+            f"<font color=\"white\">{self.package.format}:{self.package.name}</font>"
             '</td></tr>'
             + ''.join(
                 [
@@ -122,12 +122,17 @@ class PackagesDependencyGraph:
     def dump(self):
         """Dump graph in its current state with logging message."""
         for node in self.nodes:
-            logging.info("→ %s", node.package.name)
+            logging.info("→ %s:%s", node.package.format, node.package.name)
             logging.info("  provides: %s", str(node.subpackages))
             logging.info("  requires: %s", node.build_requires)
             logging.info(
                 "  is required by: %s",
-                str([rdep.package.name for rdep in node.rdeps])
+                str(
+                    [
+                        f"{rdep.package.format}:{rdep.package.name}"
+                        for rdep in node.rdeps
+                    ]
+                )
             )
 
     def draw(self, external, packages):
@@ -169,13 +174,15 @@ class PackagesDependencyGraph:
         if node in self.represented_nodes:
             return
         print(
-            f"  \"{node.package.name}\" [ label = {node.draw_label()} ];"
+            f"  \"{node.package.format}:{node.package.name}\" "
+            f"[ label = {node.draw_label()} ];"
         )
         self.represented_nodes.append(node)
         # Fill external_deps list with additional build requirements.
         for build_require in node.build_requires:
-            if build_require not in self.external_deps:
-                self.external_deps.append(build_require)
+            build_require_str = f"{node.package.format}:{build_require}"
+            if build_require_str not in self.external_deps:
+                self.external_deps.append(build_require_str)
         # Draw node dependencies recusively.
         for dep in self._search_deps(node):
             self._draw_node(dep)
@@ -205,8 +212,9 @@ class PackagesDependencyGraph:
         # satisfied by project packages.
         for node in self.nodes:
             for subpackage in node.subpackages:
-                if subpackage in self.external_deps:
-                    self.external_deps.remove(subpackage)
+                subpackage_str = f"{node.package.format}:{subpackage}"
+                if subpackage_str in self.external_deps:
+                    self.external_deps.remove(subpackage_str)
         # If external dependencies have to be represented, draw these nodes with
         # distinctive color.
         if external:
@@ -228,7 +236,8 @@ class PackagesDependencyGraph:
                 if rdep not in self.represented_nodes:
                     continue
                 print(
-                    f"  \"{rdep.package.name}\" -> \"{node.package.name}\" "
+                    f"  \"{rdep.package.format}:{rdep.package.name}\" -> "
+                    f"\"{node.package.format}:{node.package.name}\" "
                     '[ label = "',
                     textwrap.fill(node.rdep_reason(rdep), 20),
                     '" ];'
@@ -237,9 +246,11 @@ class PackagesDependencyGraph:
             # between project packages and these external dependencies.
             if external:
                 for build_require in node.build_requires:
-                    if build_require in self.external_deps:
+                    build_require_str = f"{node.package.format}:{build_require}"
+                    if build_require_str in self.external_deps:
                         print(
-                            f"  \"{node.package.name}\" -> \"{build_require}\";"
+                            f"  \"{node.package.format}:{node.package.name}\" "
+                            f"-> \"{build_require_str}\";"
                         )
         print('}')
 
@@ -281,8 +292,9 @@ class PackagesDependencyGraph:
 
         result = []
         logging.debug(
-            "%s→ Source package %s must be rebuilt",
+            "%s→ Source package %s:%s must be rebuilt",
             '  '*depth,
+            node.package.format,
             node.package.name
         )
         result.append(
@@ -301,17 +313,22 @@ class PackagesDependencyGraph:
             # processing to avoid endless loop.
             if rdep in self.path[0:depth]:
                 logging.debug(
-                    "%s   ⥀ Loop detected on node %s at depth %d: %s",
+                    "%s   ⥀ Loop detected on node %s:%s at depth %d: %s",
                     '  '*depth,
+                    rdep.package.format,
                     rdep.package.name,
                     depth,
-                    '→'.join(node.package.name for node in self.path + [rdep]),
+                    '→'.join(
+                        f"{node.package.format}:{node.package.name}"
+                        for node in self.path + [rdep]
+                    ),
                 )
                 result.append(BuildRequirement(rdep.package, [reason]))
                 continue
             logging.debug(
-                "%s  Exploring reverse dependency %s",
+                "%s  Exploring reverse dependency %s:%s",
                 '  '*depth,
+                rdep.package.format,
                 rdep.package.name
             )
             # Iterate over all recursively solved build requirements for this

@@ -106,7 +106,7 @@ class GraphTest(RiftProjectTestCase):
         self.assertEqual(
             cm.output,
             [
-                'INFO:root:→ fake',
+                'INFO:root:→ rpm:fake',
                 "INFO:root:  provides: ['fake', 'fake-provide']",
                 "INFO:root:  requires: ['br-package']",
                 'INFO:root:  is required by: []'
@@ -173,7 +173,7 @@ class GraphTest(RiftProjectTestCase):
         self.assertEqual(build_requirements[1].package.name, 'my-software')
         self.assertEqual(
             build_requirements[1].reasons,
-            ["depends on libone"],
+            ["depends on rpm:libone"],
         )
 
         # Rebuild of libtwo triggers rebuild of:
@@ -188,12 +188,12 @@ class GraphTest(RiftProjectTestCase):
         self.assertEqual(build_requirements[1].package.name, 'libone')
         self.assertEqual(
             build_requirements[1].reasons,
-            ["depends on libtwo"],
+            ["depends on rpm:libtwo"],
         )
         self.assertEqual(build_requirements[2].package.name, 'my-software')
         self.assertEqual(
             build_requirements[2].reasons,
-            ["depends on libone"],
+            ["depends on rpm:libone"],
         )
 
     def test_multiple_packages_spec_fallback(self):
@@ -251,7 +251,7 @@ class GraphTest(RiftProjectTestCase):
         self.assertEqual(build_requirements[1].package.name, 'my-software')
         self.assertEqual(
             build_requirements[1].reasons,
-            ["build depends on libone-devel"]
+            ["build depends on rpm:libone-devel"]
         )
 
         # Rebuild of libtwo triggers rebuild of libone and my-software because
@@ -267,14 +267,14 @@ class GraphTest(RiftProjectTestCase):
         self.assertEqual(build_requirements[1].package.name, 'libone')
         self.assertEqual(
             build_requirements[1].reasons,
-            ["build depends on libtwo-devel"]
+            ["build depends on rpm:libtwo-devel"]
         )
         self.assertEqual(build_requirements[2].package.name, 'my-software')
         self.assertCountEqual(
             build_requirements[2].reasons,
             [
-                "build depends on libone-devel",
-                "build depends on libtwo-devel"
+                "build depends on rpm:libone-devel",
+                "build depends on rpm:libtwo-devel"
             ]
         )
 
@@ -340,7 +340,7 @@ class GraphTest(RiftProjectTestCase):
         self.assertEqual(build_requirements[1].package.name, 'my-software')
         self.assertEqual(
             build_requirements[1].reasons,
-            ["build depends on libone-provide"]
+            ["build depends on rpm:libone-provide"]
         )
 
     def test_loop(self):
@@ -418,12 +418,12 @@ class GraphTest(RiftProjectTestCase):
         # Check all packages are declared as nodes (with their labels) in graph.
         for package in ['libone', 'libtwo', 'my-software']:
             self.assertTrue(
-                f"\"{package}\" [ label = " in output
+                f"\"rpm:{package}\" [ label = " in output
             )
         # Check depedencies are represented in graph.
-        self.assertTrue('"my-software" -> "libone"' in output)
-        self.assertTrue('"libone" -> "libtwo"' in output)
-        self.assertFalse('"libtwo" -> "my-software"' in output)
+        self.assertTrue('"rpm:my-software" -> "rpm:libone"' in output)
+        self.assertTrue('"rpm:libone" -> "rpm:libtwo"' in output)
+        self.assertFalse('"rpm:libtwo" -> "rpm:my-software"' in output)
 
     @patch('sys.stdout', new_callable=io.StringIO)
     def test_draw_packages_subset(self, mock_stdout):
@@ -459,12 +459,12 @@ class GraphTest(RiftProjectTestCase):
         # graph.
         for package in ['libone', 'libtwo']:
             self.assertTrue(
-                f"\"{package}\" [ label = " in output
+                f"\"rpm:{package}\" [ label = " in output
             )
         # Check depedencies are represented in graph.
-        self.assertTrue('"libone" -> "libtwo"' in output)
+        self.assertTrue('"rpm:libone" -> "rpm:libtwo"' in output)
         # Check my-software is not mentionned in graph.
-        self.assertFalse('my-software' in output)
+        self.assertFalse('rpm:my-software' in output)
 
     @patch('sys.stdout', new_callable=io.StringIO)
     def test_draw_with_external_deps(self, mock_stdout):
@@ -499,12 +499,12 @@ class GraphTest(RiftProjectTestCase):
         )
         graph.draw(True, [])  # w/ external deps
         output = mock_stdout.getvalue()
-        print(output)
+
         # Check all packages are declared as nodes (with their labels) in graph.
         self.assertTrue(
-                '"external-devel" [fillcolor=orange]' in output
+                '"rpm:external-devel" [fillcolor=orange]' in output
         )
         # Check depedencies are represented in graph.
-        self.assertTrue('"my-software" -> "external-devel"' in output)
-        self.assertTrue('"libone" -> "external-devel"' in output)
-        self.assertFalse('"libtwo" -> "external-devel"' in output)
+        self.assertTrue('"rpm:my-software" -> "rpm:external-devel"' in output)
+        self.assertTrue('"rpm:libone" -> "rpm:external-devel"' in output)
+        self.assertFalse('"rpm:libtwo" -> "rpm:external-devel"' in output)
