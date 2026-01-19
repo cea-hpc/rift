@@ -27,6 +27,7 @@ class GraphTest(RiftProjectTestCase):
         self.assertEqual(len(graph.nodes), 1)
         build_requirements = graph.solve(package)
         self.assertEqual(len(build_requirements), 1)
+        self.assertIsInstance(build_requirements[0].package, PackageRPM)
         self.assertEqual(build_requirements[0].package.name, package.name)
         self.assertEqual(build_requirements[0].reasons, ["User request"])
 
@@ -90,6 +91,7 @@ class GraphTest(RiftProjectTestCase):
         )
         # Check success package is successfully loaded anyway.
         self.assertEqual(len(graph.nodes), 1)
+        self.assertIsInstance(graph.nodes[0].package, PackageRPM)
         self.assertEqual(graph.nodes[0].package.name, 'success')
 
     def test_dump(self):
@@ -159,6 +161,7 @@ class GraphTest(RiftProjectTestCase):
             PackageRPM('my-software', self.config, self.staff, self.modules)
         )
         self.assertEqual(len(build_requirements), 1)
+        self.assertIsInstance(build_requirements[0].package, PackageRPM)
         self.assertEqual(build_requirements[0].package.name, 'my-software')
         self.assertEqual(build_requirements[0].reasons, ["User request"])
 
@@ -168,6 +171,8 @@ class GraphTest(RiftProjectTestCase):
             PackageRPM('libone', self.config, self.staff, self.modules)
         )
         self.assertEqual(len(build_requirements), 2)
+        for build_requirement in build_requirements:
+            self.assertIsInstance(build_requirement.package, PackageRPM)
         self.assertEqual(build_requirements[0].package.name, 'libone')
         self.assertEqual(build_requirements[0].reasons, ["User request"])
         self.assertEqual(build_requirements[1].package.name, 'my-software')
@@ -183,6 +188,8 @@ class GraphTest(RiftProjectTestCase):
             PackageRPM('libtwo', self.config, self.staff, self.modules)
         )
         self.assertEqual(len(build_requirements), 3)
+        for build_requirement in build_requirements:
+            self.assertIsInstance(build_requirement.package, PackageRPM)
         self.assertEqual(build_requirements[0].package.name, 'libtwo')
         self.assertEqual(build_requirements[0].reasons, ["User request"])
         self.assertEqual(build_requirements[1].package.name, 'libone')
@@ -236,6 +243,7 @@ class GraphTest(RiftProjectTestCase):
             PackageRPM('my-software', self.config, self.staff, self.modules)
         )
         self.assertEqual(len(build_requirements), 1)
+        self.assertIsInstance(build_requirements[0].package, PackageRPM)
         self.assertEqual(build_requirements[0].package.name, 'my-software')
         self.assertEqual(build_requirements[0].reasons, ["User request"])
 
@@ -246,6 +254,8 @@ class GraphTest(RiftProjectTestCase):
             PackageRPM('libone', self.config, self.staff, self.modules)
         )
         self.assertEqual(len(build_requirements), 2)
+        for build_requirement in build_requirements:
+            self.assertIsInstance(build_requirement.package, PackageRPM)
         self.assertEqual(build_requirements[0].package.name, 'libone')
         self.assertEqual(build_requirements[0].reasons, ["User request"])
         self.assertEqual(build_requirements[1].package.name, 'my-software')
@@ -262,6 +272,8 @@ class GraphTest(RiftProjectTestCase):
             PackageRPM('libtwo', self.config, self.staff, self.modules)
         )
         self.assertEqual(len(build_requirements), 3)
+        for build_requirement in build_requirements:
+            self.assertIsInstance(build_requirement.package, PackageRPM)
         self.assertEqual(build_requirements[0].package.name, 'libtwo')
         self.assertEqual(build_requirements[0].reasons, ["User request"])
         self.assertEqual(build_requirements[1].package.name, 'libone')
@@ -293,14 +305,11 @@ class GraphTest(RiftProjectTestCase):
         # Rebuild of libone MUST NOT trigger rebuild of my-software anymore
         # because my-software dependencies defined in info.yaml now overrides
         # build requires in RPM spec file.
-        self.assertEqual(
-            len(
-                graph.solve(
-                    PackageRPM('libone', self.config, self.staff, self.modules)
-                )
-            ),
-            1
+        build_requirements = graph.solve(
+            PackageRPM('libone', self.config, self.staff, self.modules)
         )
+        self.assertEqual(len(build_requirements), 1)
+        self.assertIsInstance(build_requirements[0].package, PackageRPM)
 
     def test_multiple_packages_with_provides(self):
         """ Test graph with multiple packages and dependencies on provides in RPM spec files """
@@ -335,6 +344,8 @@ class GraphTest(RiftProjectTestCase):
             PackageRPM('libone', self.config, self.staff, self.modules)
         )
         self.assertEqual(len(build_requirements), 2)
+        for build_requirement in build_requirements:
+            self.assertIsInstance(build_requirement.package, PackageRPM)
         self.assertEqual(build_requirements[0].package.name, 'libone')
         self.assertEqual(build_requirements[0].reasons, ["User request"])
         self.assertEqual(build_requirements[1].package.name, 'my-software')
@@ -376,14 +387,12 @@ class GraphTest(RiftProjectTestCase):
         # For all three package, the resolution should return all three
         # build requirements.
         for package in ['libone', 'libtwo', 'libthree']:
-            self.assertEqual(
-                len(
-                    graph.solve(
-                        PackageRPM(package, self.config, self.staff, self.modules)
-                    )
-                ),
-                3
+            build_requirements = graph.solve(
+                PackageRPM(package, self.config, self.staff, self.modules)
             )
+            for build_requirement in build_requirements:
+                self.assertIsInstance(build_requirement.package, PackageRPM)
+            self.assertEqual(len(build_requirements), 3)
 
     @patch('sys.stdout', new_callable=io.StringIO)
     def test_draw(self, mock_stdout):
