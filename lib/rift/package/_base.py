@@ -37,6 +37,8 @@ Class to manipulate packages and package tests with Rift.
 import glob
 import logging
 import os
+from abc import ABC, abstractmethod
+
 import yaml
 
 from rift import RiftError
@@ -48,9 +50,9 @@ _SOURCES_DIR = 'sources'
 _TESTS_DIR = 'tests'
 _DOC_FILES = ['README', 'README.md', 'README.rst', 'README.txt']
 
-class Package():
+class Package(ABC):
     """
-    Base object in Rift framework.
+    Abstract base object in Rift framework.
 
     It creates, load, update, check, build and test a package.
     """
@@ -143,13 +145,13 @@ class Package():
             data['exclude_archs'] = self.exclude_archs
         return data
 
+    @abstractmethod
     def _serialize_specific_metadata(self):
         """
         Return dict of format specific metadata to write in metadata file. This
-        is an empty in base class, designed to be overriden when necessary in
-        format specific classes.
+        is an empty in base class, must be overriden when necessary in format
+        specific classes.
         """
-        return {}
 
     def _serialize_metadata(self):
         """Return dict of package metadata to write in metadata file."""
@@ -192,11 +194,12 @@ class Package():
         else:
             self.exclude_archs = data.get('exclude_archs', [])
 
+    @abstractmethod
     def _deserialize_specific_metadata(self, data):
         """
         Set format specific package object attribute with values in metadata
-        dict. No-op in base class, designed to be overriden when necessary in
-        format specific classes.
+        dict. No-op in base class, must to be overriden in format specific
+        classes.
         """
 
     def _deserialize_metadata(self, data):
@@ -241,7 +244,15 @@ class Package():
         """
         return not self.exclude_archs or arch not in self.exclude_archs
 
-class ActionableArchPackage:
+    @abstractmethod
+    def for_arch(self, arch):
+        """
+        Must return the ActionableArchPackage child associated to the format
+        package child class for the given architecture.
+        """
+
+
+class ActionableArchPackage(ABC):
     """
     Abstract class to build, test and publish package for a specific format and
     architecture. This class must be overriden with expected methods for every
@@ -254,17 +265,17 @@ class ActionableArchPackage:
         self.package = package
         self.arch = arch
 
+    @abstractmethod
     def build(self, **kwargs):
         """Build package. Must be overriden in concrete format classes."""
-        raise NotImplementedError
 
+    @abstractmethod
     def test(self, **kwargs):
         """Test package. Must be overriden in concrete format classes."""
-        raise NotImplementedError
 
+    @abstractmethod
     def publish(self, **kwargs):
         """Publish package. Must be overriden in concrete format classes."""
-        raise NotImplementedError
 
     def clean(self, **kwargs):
         """
