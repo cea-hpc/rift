@@ -50,6 +50,11 @@ _SOURCES_DIR = 'sources'
 _TESTS_DIR = 'tests'
 _DOC_FILES = ['README', 'README.md', 'README.rst', 'README.txt']
 
+
+# Rift supported package formats
+RIFT_SUPPORTED_FORMATS = ('rpm',)
+
+
 class Package(ABC):
     """
     Abstract base object in Rift framework.
@@ -63,7 +68,7 @@ class Package(ABC):
         self._modules = modules
         self.name = name
         # check package format
-        if _format != 'rpm':
+        if _format not in RIFT_SUPPORTED_FORMATS:
             raise RiftError(f"Unsupported package format {_format}")
         self.format = _format
 
