@@ -233,10 +233,13 @@ class Annex:
         """
         meta = os.stat(filepath)
 
-        # MD5 or SHA3 256
-        if meta.st_size in (32, 64):
+        # MD5 (32) or SHA3 256 (64). Also accept one or two more bytes to accept
+        # trailing new line and carriage return characters.
+        if meta.st_size in (32, 33, 34, 64, 65, 66):
             with open(filepath, encoding='utf-8') as fh:
                 identifier = fh.read(meta.st_size)
+                # Remove possible trailing newline and carriage return characters
+                identifier = identifier.rstrip()
             return all(byte in string.hexdigits for byte in identifier)
 
         return False

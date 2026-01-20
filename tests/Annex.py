@@ -146,6 +146,22 @@ class AnnexTest(RiftTestCase):
         temp_file = make_temp_file(correct_identifier)
         self.assertTrue(Annex.is_pointer(temp_file.name))
 
+    def test_is_pointer_valid_identifier_with_line_feed(self):
+        """ Test if is_pointer correctly detect a valid identifier with a line feed """
+
+        correct_identifier = '7CF2DB5EC261A0FA27A502D3196A6F60\n'
+        temp_file = make_temp_file(correct_identifier)
+        self.assertTrue(Annex.is_pointer(temp_file.name))
+
+    def test_is_pointer_valid_identifier_with_carriage_return(self):
+        """
+        Test if is_pointer correctly detect a valid identifier with a carriage return.
+        """
+
+        correct_identifier = '7CF2DB5EC261A0FA27A502D3196A6F60\r\n'
+        temp_file = make_temp_file(correct_identifier)
+        self.assertTrue(Annex.is_pointer(temp_file.name))
+
     def test_is_pointer_invalid_identifier(self):
         """ Test if is_pointer correctly detect a invalid identifier """
 
