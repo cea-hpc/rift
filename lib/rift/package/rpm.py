@@ -54,7 +54,7 @@ class PackageRPM(Package):
     def __init__(self, name, config, staff, modules):
         super().__init__(name, config, staff, modules, 'rpm', f"{name}.spec")
 
-        # Attribytes assigned in load()
+        # Attributes assigned in load()
         # Extracted from infos.yaml
         self.ignore_rpms = None
         self.rpmnames = None
