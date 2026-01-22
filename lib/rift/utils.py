@@ -35,6 +35,7 @@ Set of utilities used in multiple Rift modules.
 
 import os
 import urllib
+from datetime import datetime, timezone
 
 from rift import RiftError
 
@@ -65,6 +66,32 @@ def download_file(url, output):
         raise RiftError(
             f"URL error while downloading {url}: {str(error)}"
         ) from error
+
+def last_modified(url):
+    """
+    Return number of seconds since epoch of Last-Modified header for the given
+    URL. By convention, Last-Modified is always in GMT/UTC timezone. Raises
+    RiftError when unable to get or convert Last-Modified header to timestamp.
+    """
+    req = urllib.request.Request(url, method='HEAD')
+
+    try:
+        with urllib.request.urlopen(req) as response:
+            return int(datetime.strptime(
+                response.getheader('Last-Modified'), '%a, %d %b %Y %H:%M:%S %Z'
+            ).replace(tzinfo=timezone.utc).timestamp())
+    except urllib.error.URLError as err:
+        raise RiftError(
+            f"Unable to send HTTP HEAD request for URL {url}: {err}"
+        ) from err
+    except TypeError as err:
+        raise RiftError(
+            f"Unable to get Last-Modified header for URL {url}"
+        ) from err
+    except ValueError as err:
+        raise RiftError(
+            f"Unable to convert Last-Modified header to datetime for URL {url}"
+        ) from err
 
 def setup_dl_opener(proxy, no_proxy, fake_user_agent=True):
     """

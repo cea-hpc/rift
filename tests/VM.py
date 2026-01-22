@@ -438,34 +438,6 @@ class VMTest(RiftTestCase):
 
     @patch('rift.VM.download_file')
     @patch('rift.VM.message')
-    def test_download_skip_exists(self, mock_message, mock_download_file):
-        """Test VM download skipped when local copy is present"""
-        url = 'http://localhost/path/to/my_image.qcow2'
-        self.config.set(
-            'vm',
-            {
-                'image': url,
-            }
-        )
-        with patch(
-            'rift.VM.VM.image_local', new_callable=PropertyMock
-        ) as mock_image_local:
-            vm = VM(self.config, platform.machine())
-            tmpfile = make_temp_file("")
-            mock_image_local.return_value = tmpfile.name
-            self.assertTrue(os.path.exists(vm.image_local))
-            with self.assertLogs(level='DEBUG') as cm:
-                vm._download(False)
-            mock_message.assert_not_called()
-            mock_download_file.assert_not_called()
-        self.assertIn(
-            'DEBUG:root:Local copy of VM image is present, skipping download of remote '
-            'image',
-            cm.output
-        )
-
-    @patch('rift.VM.download_file')
-    @patch('rift.VM.message')
     def test_download_force(self, mock_message, mock_download_file):
         """Test VM download force remove local image when present"""
         url = 'http://localhost/path/to/my_image.qcow2'
@@ -489,6 +461,104 @@ class VMTest(RiftTestCase):
         self.assertIn(
             'INFO:root:Remove VM image local copy and force re-download for remote '
             'image',
+            cm.output
+        )
+
+    @patch('rift.VM.last_modified')
+    @patch('rift.VM.download_file')
+    @patch('rift.VM.message')
+    def test_download_exists_last_modified_older(
+        self, mock_message, mock_download_file, mock_last_modified
+    ):
+        """Test VM download skipped when local copy is present"""
+        url = 'http://localhost/path/to/my_image.qcow2'
+        self.config.set(
+            'vm',
+            {
+                'image': url,
+            }
+        )
+        mock_last_modified.return_value = 0.0
+        with patch(
+            'rift.VM.VM.image_local', new_callable=PropertyMock
+        ) as mock_image_local:
+            vm = VM(self.config, platform.machine())
+            tmpfile = make_temp_file("")
+            mock_image_local.return_value = tmpfile.name
+            self.assertTrue(os.path.exists(vm.image_local))
+            with self.assertLogs(level='DEBUG') as cm:
+                vm._download(False)
+            mock_message.assert_not_called()
+            # Check download_file() has not been called
+            mock_download_file.assert_not_called()
+            self.assertIn(
+                "DEBUG:root:Local copy of VM image is already updated "
+                f"({int(os.path.getmtime(tmpfile.name))} > 0), skipping download of "
+                "remote image",
+                cm.output
+            )
+
+    @patch('rift.VM.last_modified')
+    @patch('rift.VM.download_file')
+    @patch('rift.VM.message')
+    def test_download_exists_last_modified_newer(
+        self, mock_message, mock_download_file, mock_last_modified
+    ):
+        """Test VM download skipped when local copy is present"""
+        url = 'http://localhost/path/to/my_image.qcow2'
+        self.config.set(
+            'vm',
+            {
+                'image': url,
+            }
+        )
+        mock_last_modified.return_value = float(2**32)
+        with patch(
+            'rift.VM.VM.image_local', new_callable=PropertyMock
+        ) as mock_image_local:
+            vm = VM(self.config, platform.machine())
+            tmpfile = make_temp_file("")
+            mock_image_local.return_value = tmpfile.name
+            self.assertTrue(os.path.exists(vm.image_local))
+            with self.assertLogs(level='DEBUG') as cm:
+                vm._download(False)
+            mock_message.assert_called_once_with(f"Download remote VM image {url}")
+            mock_download_file.assert_called_once_with(url, vm.image_local)
+        self.assertIn(
+            'INFO:root:Remote VM image has been updated, removing local copy',
+            cm.output
+        )
+
+    @patch('rift.VM.last_modified')
+    @patch('rift.VM.download_file')
+    @patch('rift.VM.message')
+    def test_download_exists_last_modified_error(
+        self, mock_message, mock_download_file, mock_last_modified
+    ):
+        """Test VM download skipped when local copy is present"""
+        url = 'http://localhost/path/to/my_image.qcow2'
+        self.config.set(
+            'vm',
+            {
+                'image': url,
+            }
+        )
+        mock_last_modified.side_effect = RiftError("last-modified failure")
+        with patch(
+            'rift.VM.VM.image_local', new_callable=PropertyMock
+        ) as mock_image_local:
+            vm = VM(self.config, platform.machine())
+            tmpfile = make_temp_file("")
+            mock_image_local.return_value = tmpfile.name
+            self.assertTrue(os.path.exists(vm.image_local))
+            with self.assertLogs(level='DEBUG') as cm:
+                vm._download(False)
+            mock_message.assert_not_called()
+            mock_download_file.assert_not_called()
+        self.assertIn(
+            "DEBUG:root:Local copy of VM image is present, unable to get remote image "
+            "modification date because of error (last-modified failure), skipping "
+            "download of remote image",
             cm.output
         )
 

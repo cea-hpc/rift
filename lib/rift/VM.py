@@ -62,7 +62,7 @@ from rift import RiftError
 from rift.Config import _DEFAULT_VIRTIOFSD
 from rift.Repository import ProjectArchRepositories
 from rift.TempDir import TempDir
-from rift.utils import download_file, setup_dl_opener, message
+from rift.utils import last_modified, download_file, setup_dl_opener, message
 from rift.run import run_command
 
 __all__ = ['VM']
@@ -389,6 +389,9 @@ class VM():
         if not self.image_is_remote():
             return
 
+        # Setup proxy if defined
+        setup_dl_opener(self.proxy, self.no_proxy)
+
         # Check presence of the local copy. If present and force is True, remove it
         # to force re-download. Otherwise skip download.
         if os.path.exists(self.image_local):
@@ -399,14 +402,32 @@ class VM():
                 )
                 os.unlink(self.image_local)
             else:
-                logging.debug(
-                    "Local copy of VM image is present, skipping download of "
-                    "remote image"
+                try:
+                    last_remote_modification = last_modified(self._image_src.geturl())
+                except RiftError as err:
+                    logging.debug(
+                        "Local copy of VM image is present, unable to get remote image "
+                        "modification date because of error (%s), skipping download of "
+                        "remote image",
+                        err
+                    )
+                    return
+                # Compare local copy mtime with remote image Last-Modified header.
+                local_copy_mtime = int(os.path.getmtime(self.image_local))
+                if local_copy_mtime > last_remote_modification:
+                    logging.debug(
+                        "Local copy of VM image is already updated (%d > %d), "
+                        "skipping download of remote image",
+                        int(local_copy_mtime),
+                        int(last_remote_modification)
+                    )
+                    return
+                logging.info(
+                    "Remote VM image has been updated, removing local copy"
                 )
-                return
+                os.unlink(self.image_local)
+
         message(f"Download remote VM image {self._image_src.geturl()}")
-        # Setup proxy if defined
-        setup_dl_opener(self.proxy, self.no_proxy)
         # Download VM image
         download_file(self._image_src.geturl(), self.image_local)
 
