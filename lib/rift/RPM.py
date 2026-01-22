@@ -175,30 +175,23 @@ class RPM():
                 f"package {self.filepath}"
             )
 
-        # If passphrase is defined, add the passphrase to gpg sign command
-        # parameters and make it non-interactive.
-        gpg_sign_cmd_passphrase = ""
-        if gpg.get('passphrase') is not None:
-            gpg_sign_cmd_passphrase = (
-                f"--batch --passphrase '{gpg.get('passphrase')}' "
-                "--pinentry-mode loopback"
-            )
         cmd = [
             'rpmsign',
             '--define',
             f"%_gpg_name {gpg.get('key')}",
             '--define',
             f"%_gpg_path {keyring}",
-            '--define',
-            (
-                "%__gpg_sign_cmd %{__gpg} gpg --force-v3-sigs --verbose "
-                f"--no-armor {gpg_sign_cmd_passphrase} --no-secmem-warning "
-                "-u \"%{_gpg_name}\" -sbo %{__signature_filename} "
-                "--digest-algo sha256 %{__plaintext_filename}"
-            ),
             '--addsign',
             self.filepath
         ]
+        # If passphrase is defined, add the passphrase to gpg sign command
+        # parameters and make it non-interactive.
+        if gpg.get('passphrase') is not None:
+            cmd[6:6] = [
+                '--define',
+                "%_gpg_sign_cmd_extra_args --batch "
+                f"--passphrase '{gpg.get('passphrase')}' --pinentry-mode loopback"
+            ]
         # Run rpmsign command and raise error in case of failure.
         try:
             run(cmd, check=True)
