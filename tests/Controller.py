@@ -760,10 +760,6 @@ class ControllerProjectActionSignTest(RiftProjectTestCase):
     """
     def test_action_sign(self):
         """ Test sign package """
-        # FIXME: add support of rpm-sign v6 and re-enable this test
-        self.skipTest(
-            "Test temporarily disabled, need support of rpmsign v6 on Fedora 43"
-        )
         gpg_home = os.path.join(self.projdir, '.gnupg')
 
         # Launch GPG agent for this test

@@ -404,18 +404,10 @@ class RPMTest(RiftProjectTestCase):
 
     def test_sign_src_rpm(self):
         """Source RPM package signature."""
-        # FIXME: add support of rpm-sign v6 and re-enable this test
-        self.skipTest(
-            "Test temporarily disabled, need support of rpmsign v6 on Fedora 43"
-        )
         self.sign_copy('TOPSECRET', self.src_rpm, 'TOPSECRET')
 
     def test_sign_bin_rpm(self):
         """Binary RPM package signature."""
-        # FIXME: add support of rpm-sign v6 and re-enable this test
-        self.skipTest(
-            "Test temporarily disabled, need support of rpmsign v6 on Fedora 43"
-        )
         self.sign_copy('TOPSECRET', self.bin_rpm, 'TOPSECRET')
 
     def test_sign_wrong_passphrase(self):
@@ -432,10 +424,6 @@ class RPMTest(RiftProjectTestCase):
         # in Rift configuration but loaded in GPG agent, Rift must sign the
         # package without making the agent launch pinentry to ask for the
         # passphrase interactively.
-        # FIXME: add support of rpm-sign v6 and re-enable this test
-        self.skipTest(
-            "Test temporarily disabled, need support of rpmsign v6 on Fedora 43"
-        )
         self.sign_copy('TOPSECRET', self.src_rpm, preset_passphrase='TOPSECRET')
 
     def test_sign_empty_passphrase_not_interactive(self):
@@ -443,8 +431,4 @@ class RPMTest(RiftProjectTestCase):
         # When the key is NOT encrypted with passphrase, Rift must sign the
         # package without making the agent launch pinentry to ask for the
         # passphrase interactively.
-        # FIXME: add support of rpm-sign v6 and re-enable this test
-        self.skipTest(
-            "Test temporarily disabled, need support of rpmsign v6 on Fedora 43"
-        )
         self.sign_copy(None, self.src_rpm)
