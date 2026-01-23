@@ -368,14 +368,14 @@ class RepoSyncEpelTest(RiftTestCase):
         synchronizer = RepoSyncEpel(self.config, 'repo', self.output, sync)
         with self.assertRaisesRegex(
             RiftError,
-            f"^URL error while downloading https://127.0.0.1/.*: .*$",
+            r"^URL error while downloading https://127.0.0.1/.*: .*$",
         ):
             synchronizer.run()
-        sync['source'] =  'https://dl.fedoraproject.org/pub/epel'
+        sync['source'] =  'https://google.com/failure'
         synchronizer = RepoSyncEpel(self.config, 'repo', self.output, sync)
         with self.assertRaisesRegex(
             RiftError,
-            f"^HTTP error while downloading https://dl.fedoraproject.org/.*: "
+            r"^HTTP error while downloading https://google.com/.*: "
             "HTTP Error 404: Not Found$",
         ):
             synchronizer.run()
