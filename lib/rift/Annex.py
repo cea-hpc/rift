@@ -231,15 +231,14 @@ class Annex:
         Return true if content of file at filepath looks like a valid digest
         identifier.
         """
-        meta = os.stat(filepath)
+        with open(filepath, encoding='utf-8') as fh:
+            identifier = fh.read()
+            # Remove possible trailing whitespace, newline and carriage return
+            # characters.
+            identifier = identifier.rstrip()
 
-        # MD5 (32) or SHA3 256 (64). Also accept one or two more bytes to accept
-        # trailing new line and carriage return characters.
-        if meta.st_size in (32, 33, 34, 64, 65, 66):
-            with open(filepath, encoding='utf-8') as fh:
-                identifier = fh.read(meta.st_size)
-                # Remove possible trailing newline and carriage return characters
-                identifier = identifier.rstrip()
+        # Check size corresponds to MD5 (32) or SHA3 256 (64).
+        if len(identifier) in (32, 64):
             return all(byte in string.hexdigits for byte in identifier)
 
         return False
