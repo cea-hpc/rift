@@ -69,9 +69,9 @@ def download_file(url, output):
 
 def last_modified(url):
     """
-    Return number of seconds since epoch of Last-Modified header for the given
-    URL. By convention, Last-Modified is always in GMT/UTC timezone. Raises
-    RiftError when unable to get or convert Last-Modified header to timestamp.
+    Return the mtime of the URL using the Last-Modified header. By convention,
+    Last-Modified is always in GMT/UTC timezone. Raises RiftError when unable to
+    get or convert Last-Modified header to timestamp.
     """
     req = urllib.request.Request(url, method='HEAD')
 
