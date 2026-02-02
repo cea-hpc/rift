@@ -10,49 +10,108 @@ permissions:
   contents: write
 
 jobs:
+  sources:
+    runs-on: ubuntu-latest
+    outputs:
+      RIFT_VERSION: ${{ steps.version.outputs.RIFT_VERSION }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rpm
+        run: |
+          sudo apt -y install rpm
+
+      - id: version
+        name: Set version variable
+        run: |
+          _VERSION=${{ github.ref_name }}
+          # Trim leading v prefix from tag
+          echo RIFT_VERSION="${_VERSION:1}" >> "$GITHUB_OUTPUT"
+
+      - name: Build source tarball
+        run: |
+          mkdir -p ~/rpmbuild/SOURCES
+          git archive --prefix=rift-${{ steps.version.outputs.RIFT_VERSION }}/ \
+            --format=tar.gz ${{ github.ref_name }} \
+            --output ~/rpmbuild/SOURCES/rift-${{ steps.version.outputs.RIFT_VERSION }}.tar.gz
+
+      - name: Build source RPM
+        run: |
+          rpmbuild -v \
+            --define "ci_version ${{ steps.version.outputs.RIFT_VERSION }}" \
+            -bs rift.spec
+
+      - name: Upload SRPM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: srpm
+          path: ~/rpmbuild/SRPMS/*
+
   packages:
+    needs: sources
+    strategy:
+      # Disable automatic cancellation of other running jobs as soon as one
+      # failure occurs in the matrix.
+      fail-fast: false
+      matrix:
+        buildenv:
+        - almalinux-8-x86_64
+        - almalinux-9-x86_64
+        - fedora-43-x86_64
     runs-on: ubuntu-latest
     container:
       image: fedora:latest
       # Option --privileged is required for mock+podman on fedora
       options: --privileged
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set version environment variable
-        run: |
-          _VERSION=${{ github.ref_name }}
-          # Trim leading v prefix from tag
-          echo RIFT_VERSION="${_VERSION:1}" >> "$GITHUB_ENV"
-
-      - name: Build source tarball
-        run: |
-          mkdir -p ~/rpmbuild/SOURCES
-          tar -czvf ~/rpmbuild/SOURCES/rift-${RIFT_VERSION}.tar.gz \
-            -C ${GITHUB_WORKSPACE}/.. rift
+      - name: Download SRPM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: srpm
+          path: ~/rpmbuild/SRPMS
 
       - name: Install mock
         run: |
           dnf install -y mock
 
-      - name: Build source RPM
-        run: |
-          mock --verbose --root almalinux-8-x86_64 \
-            --define "ci_version ${RIFT_VERSION}" \
-            --buildsrpm \
-            --sources ~/rpmbuild/SOURCES \
-            --resultdir ~/rpmbuild/SRPMS \
-            --spec rift.spec
-
       - name: Build binary RPM
         run: |
-          mock --verbose --root almalinux-8-x86_64 \
-            --define "ci_version ${RIFT_VERSION}" \
+          mock --verbose --root ${{ matrix.buildenv }} \
+            --define "ci_version ${{ needs.sources.outputs.RIFT_VERSION }}" \
             --resultdir ~/rpmbuild/RPMS \
             ~/rpmbuild/SRPMS/rift*.src.rpm
+
+      - name: Upload RPM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-${{ matrix.buildenv }}
+          path: ~/rpmbuild/RPMS/*.noarch.rpm
+
+  release:
+    needs: packages
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download SRPM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: srpm
+          path: ~/rpmbuild/SRPMS
+
+      - name: Download RPMs artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: rpm-*
+          path: ~/rpmbuild/RPMS
+          merge-multiple: true
 
       - name: Create release
         uses: softprops/action-gh-release@v2.5.0
         with:
           files: |
-            /github/home/rpmbuild/RPMS/*.rpm
+            /home/runner/rpmbuild/SRPMS/*.src.rpm
+            /home/runner/rpmbuild/RPMS/*.rpm
