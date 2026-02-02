@@ -258,7 +258,8 @@ class ControllerProjectActionCheckTest(RiftProjectTestCase):
     def test_check_staff(self):
         """simple check staff"""
         with self.assertLogs(level='INFO') as log:
-            main(['check', 'staff'])
+            exit_code = main(['check', 'staff'])
+        self.assertEqual(exit_code, 0)
         self.assertIn(
             'INFO:root:Staff file is OK.',
             log.output
@@ -267,12 +268,14 @@ class ControllerProjectActionCheckTest(RiftProjectTestCase):
     def test_check_staff_not_found(self):
         """check staff file not found fails"""
         with self.assertRaisesRegex(DeclError, "Could not find '/dev/fail'"):
-            main(['check', 'staff', '-f', '/dev/fail'])
+            exit_code = main(['check', 'staff', '-f', '/dev/fail'])
+            self.assertEqual(exit_code, 1)
 
     def test_check_modules(self):
         """simple check modules"""
         with self.assertLogs(level='INFO') as log:
-            main(['check', 'modules'])
+            exit_code = main(['check', 'modules'])
+        self.assertEqual(exit_code, 0)
         self.assertIn(
             'INFO:root:Modules file is OK.',
             log.output
@@ -281,22 +284,26 @@ class ControllerProjectActionCheckTest(RiftProjectTestCase):
     def test_check_modules_not_found(self):
         """check modules file not found fails"""
         with self.assertRaisesRegex(DeclError, "Could not find '/dev/fail'"):
-            main(['check', 'modules', '-f', '/dev/fail'])
+            exit_code = main(['check', 'modules', '-f', '/dev/fail'])
+            self.assertEqual(exit_code, 1)
 
     def test_check_info_without_file(self):
         """check info without file fails"""
         with self.assertRaisesRegex(
-            RiftError, r"You must specifiy a file path \(-f\)"):
-            main(['check', 'info'])
+            RiftError, r"You must specifiy a file path \(-f\)"
+        ):
+            exit_code = main(['check', 'info'])
+            self.assertEqual(exit_code, 1)
 
     def test_check_info(self):
         """simple check info"""
         self.make_pkg()
         with self.assertLogs(level='INFO') as log:
-            main(
+            exit_code = main(
                 ['check', 'info', '-f',
                  os.path.join(self.pkgdirs['pkg'], 'info.yaml')]
             )
+        self.assertEqual(exit_code, 0)
         self.assertIn(
             'INFO:root:Info file is OK.',
             log.output
@@ -306,21 +313,25 @@ class ControllerProjectActionCheckTest(RiftProjectTestCase):
         """check info file not found fails"""
         self.make_pkg()
         with self.assertRaises(FileNotFoundError):
-            main(['check', 'info', '-f', '/dev/fail'])
+            exit_code = main(['check', 'info', '-f', '/dev/fail'])
+            self.assertEqual(exit_code, 1)
 
     def test_check_spec_without_file(self):
         """check spec without file fails"""
         with self.assertRaisesRegex(
-            RiftError, r"You must specifiy a file path \(-f\)"):
-            main(['check', 'spec'])
+            RiftError, r"You must specifiy a file path \(-f\)"
+        ):
+            exit_code = main(['check', 'spec'])
+            self.assertEqual(exit_code, 1)
 
     def test_check_spec(self):
         """simple check spec"""
         self.make_pkg()
         with self.assertLogs(level='INFO') as log:
-            main(
+            exit_code = main(
                 ['check', 'spec', '-f', self.pkgspecs['pkg']]
             )
+        self.assertEqual(exit_code, 0)
         self.assertIn(
             'INFO:root:Spec file is OK.',
             log.output
