@@ -720,7 +720,7 @@ def action_test(args, config):
                 pkg.load()
             except RiftError as ex:
                 # Create a dummy parse test case to report this error
-                # specifically. When parsings succeed, this test case is not
+                # specifically. When parsing succeeds, this test case is not
                 # reported in test results.
                 case = TestCase("load", pkg.name, arch)
                 logging.error("Unable to load package: %s", str(ex))
