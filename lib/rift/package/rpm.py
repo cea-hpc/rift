@@ -31,12 +31,12 @@
 #
 """Manage packages in RPM format."""
 
+import logging
 import os
-import shutil
 import random
+import shutil
 import textwrap
 import time
-import logging
 
 from rift import RiftError
 from rift.package._base import Package, ActionableArchPackage, Test
@@ -75,7 +75,7 @@ class PackageRPM(Package):
         if isinstance(data.get('rpm_names'), str):
             self.rpmnames = [data.get('rpm_names')]
         else:
-            self.rpmnames = data.get('rpm_names')
+            self.rpmnames = data.get('rpm_names', [])
         if isinstance(data.get('ignore_rpms'), str):
             self.ignore_rpms = [data.get('ignore_rpms')]
         else:
@@ -98,8 +98,8 @@ class PackageRPM(Package):
 
     def supports_arch(self, arch):
         """
-        Returns True is package spec file does not restrict ExclusiveArch or if
-        the arch in argument is explicitely set in package ExclusiveArch.
+        Returns True if provided architecture is listed in package spec file's
+        ExclusiveArch (or if spec file does not have ExclusiveArch).
         """
         assert self.spec is not None
         return super().supports_arch(arch) and (
@@ -122,7 +122,7 @@ class ActionableArchPackageRPM(ActionableArchPackage):
         self.repos = ProjectArchRepositories(self.config, self.arch)
 
     def build(self, **kwargs):
-        message(f"Building package '{self.name}' on architecture {self.arch}")
+        message(f"Building RPM package '{self.name}' on architecture {self.arch}")
 
         # Define list of repositories included in mock build environment
         mock_repos = self.repos.all
