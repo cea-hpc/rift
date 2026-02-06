@@ -6,7 +6,7 @@ import os.path
 import os
 import textwrap
 
-from TestUtils import make_temp_file, make_temp_dir, RiftTestCase
+from .TestUtils import make_temp_file, make_temp_dir, RiftTestCase
 
 from rift import DeclError
 from rift.Config import Staff, Modules, Config, _DEFAULT_PKG_DIR, \

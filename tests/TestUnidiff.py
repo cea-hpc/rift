@@ -1,5 +1,5 @@
 from unidiff import parse_unidiff
-from TestUtils import make_temp_file, make_temp_dir, RiftTestCase
+from .TestUtils import make_temp_file, make_temp_dir, RiftTestCase
 
 class UnidiffTest(RiftTestCase):
     """

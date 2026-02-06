@@ -7,7 +7,7 @@ import rpm
 import shutil
 import subprocess
 
-from TestUtils import (
+from .TestUtils import (
     make_temp_dir,
     gen_rpm_spec,
     RiftTestCase,

@@ -263,7 +263,7 @@ class ProjectArchRepositories:
     """
     Manipulate repositories defined in a project for a particular architecture.
     """
-    def __init__(self, config, arch, extra=None):
+    def __init__(self, config, arch):
 
         self.working = None
         self.arch = arch
@@ -276,8 +276,6 @@ class ProjectArchRepositories:
             )
             self.working.create()
         self.supplementaries = []
-        if extra:
-            self.supplementaries.append(extra)
         repos = config.get('repos', arch=arch)
         if repos:
             for name, data in repos.items():

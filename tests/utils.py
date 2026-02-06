@@ -5,9 +5,10 @@
 from io import StringIO
 from unittest.mock import patch, Mock
 
-from TestUtils import RiftTestCase
 from rift import RiftError
 from rift.utils import message, banner, last_modified
+from .TestUtils import RiftTestCase
+
 
 class UtilsTest(RiftTestCase):
 

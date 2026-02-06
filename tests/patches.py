@@ -32,7 +32,7 @@
 
 import os
 
-from TestUtils import make_temp_file, RiftProjectTestCase
+from .TestUtils import make_temp_file, RiftProjectTestCase
 
 from rift import RiftError
 from rift.patches import get_packages_from_patch

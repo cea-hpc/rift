@@ -8,7 +8,7 @@ import logging
 import tempfile
 from unittest.mock import patch
 
-from TestUtils import make_temp_dir, RiftProjectTestCase
+from .TestUtils import make_temp_dir, RiftProjectTestCase
 from rift.Mock import Mock
 from rift.Repository import ConsumableRepository
 from rift.TempDir import TempDir

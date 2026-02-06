@@ -38,7 +38,7 @@ import logging
 
 from unidiff import parse_unidiff
 from rift import RiftError
-from rift.Package import Package
+from rift.package import ProjectPackages
 from rift.RPM import RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2
 from rift.Config import Staff, Modules
 
@@ -163,7 +163,7 @@ def _patched_file_updated_package(patched_file, config, modules, staff):
     # Drop config.get('packages_dir') from list
     names.pop(0)
 
-    pkg = Package(names.pop(0), config, staff, modules)
+    pkg = ProjectPackages.get(names.pop(0), config, staff, modules)
 
     # info.yaml
     if fullpath == pkg.metafile:
@@ -175,14 +175,14 @@ def _patched_file_updated_package(patched_file, config, modules, staff):
         logging.debug('Ignoring documentation file: %s', fullpath)
         return None
 
-    # backup specfile
-    if fullpath == f"{pkg.specfile}.orig":
-        logging.debug('Ignoring backup specfile')
+    # backup buildfile
+    if fullpath == f"{pkg.buildfile}.orig":
+        logging.debug('Ignoring backup buildfile')
         return None
 
-    # specfile
-    if fullpath == pkg.specfile:
-        logging.info('Detected spec file')
+    # buildfile
+    if fullpath == pkg.buildfile:
+        logging.info('Detected buildfile file')
 
     # rpmlint config file
     elif names in [RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2]:
@@ -217,7 +217,7 @@ def _patched_file_removed_package(patched_file, config, modules, staff):
         logging.debug('Ignoring not removed file: %s', filepath)
         return None
 
-    pkg = Package(names[1], config, staff, modules)
+    pkg = ProjectPackages.get(names[1], config, staff, modules)
 
     if fullpath == pkg.metafile:
         return pkg
