@@ -58,6 +58,7 @@ jobs:
         buildenv:
         - almalinux-8-x86_64
         - almalinux-9-x86_64
+        - fedora-42-x86_64
         - fedora-43-x86_64
     runs-on: ubuntu-latest
     container:
