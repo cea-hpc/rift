@@ -1,0 +1,108 @@
+---
+name: Automated unit tests
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch: {}
+
+# Boostrap of the testing environment of this Python application cannot be
+# performed the traditional way with actions/setup-python as some of the Python
+# dependencies (rpm, dnf) are not available in PyPI, they are only distributed
+# as system packages in major Linux distributions repositories. For this reason,
+# containers are used with distribution package manager to install all
+# dependencies.
+
+jobs:
+  tests:
+    strategy:
+      # Disable automatic cancellation of other running jobs as soon as one
+      # failure occurs in the matrix.
+      fail-fast: false
+      matrix:
+        envs:
+        - container: "almalinux/8-base"
+          epel: 8
+          ocean-repos: 3.8-1
+        - container: "fedora"
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ matrix.envs.container }}
+      # Option --privileged is required for mount and mock+podman on fedora
+      options: --device=/dev/kvm --privileged
+    steps:
+      - uses: actions/checkout@v4
+
+      # Generate missing locales in the container. Programs are executed with
+      # en_US.UTF-8 locale, this locale must be defined in the container in
+      # order to be restored by Rift without errors when manipulating dates.
+      - name: Install locales
+        run: |
+          dnf install -y glibc-locale-source glibc-langpack-en
+          localedef -i en_US -f UTF-8 en_US.UTF-8
+
+      # Mount binfmt_misc virtual FS to register support of additional binary
+      # formats for multi-arch builds.
+      - name: Mount binfmt_misc virtual filesystem
+        run: |
+          mount binfmt_misc -t binfmt_misc /proc/sys/fs/binfmt_misc
+
+      # On Almalinux, enable EPEL repository to install mock and all its
+      # dependencies.
+      - name: Enable EPEL repository (Almalinux 8)
+        if: ${{ startsWith(matrix.envs.container, 'almalinux') }}
+        run: |
+          dnf -y install 'dnf-command(config-manager)'
+          dnf config-manager --set-enabled powertools
+          dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-${{ matrix.envs.epel }}.noarch.rpm
+
+      # On almalinux, enable Ocean repositories in order to install qemu version
+      # required by Rift.
+      - name: Enable Ocean repository (Almalinux 8)
+        if: ${{ startsWith(matrix.envs.container, 'almalinux') }}
+        run:
+          dnf -y install https://ocean.eupex.eu/install/ocean-repos-${{ matrix.envs.ocean-repos }}.x86_64.rpm
+
+      - name: Install tests dependencies
+        run: |
+          dnf -y install python3-pip python3-jinja2 python3-PyYAML python3-rpm python3-dnf python3-pytest python3-pytest-cov sudo rpm-sign rpmlint openssh-clients genisoimage qemu qemu-user qemu-img qemu-virtiofsd mock createrepo_c
+
+      # On Almalinux, install vendored qemu-user static binaries and setup
+      # binfmt. The value in /etc/binfmt.d/qemu-static.conf is essentially a raw
+      # copy of Qemu uptream script:
+      # https://github.com/qemu/qemu/blob/master/scripts/qemu-binfmt-conf.sh
+      - name: Install and setup binfmt for multi-arch (Almalinux 8)
+        if: ${{ startsWith(matrix.envs.container, 'almalinux') }}
+        run: |
+          echo ":qemu-aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-aarch64-static:F" > /etc/binfmt.d/qemu-static.conf
+          cp vendor/qemu-aarch64-static /usr/bin/qemu-aarch64-static
+
+      - name: Register binary formats supported by qemu-user-static
+        run: |
+          /usr/lib/systemd/systemd-binfmt
+
+      - name: Install application
+        run: pip3 install -e .
+
+      # Some tests expect to run as non-root with kvm, mock and sudo permissions
+      # sudo required for sudo virtiosfd --version
+      - name: Create unprivileged user
+        run: |
+          useradd ci
+          usermod -aG $(stat -c %G /dev/kvm) ci
+          usermod -aG mock ci
+          echo "ci ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/00-ci
+
+      # Move coverage data file in ~ci because ci unprilived user does not have
+      # permissions in working directory after checkout by root.
+      - name: Run tests
+        run: |
+          cat <<EOF > .coveragerc
+          [run]
+          data_file = ~ci/.coverage
+          EOF
+          su ci -c pytest-3
+

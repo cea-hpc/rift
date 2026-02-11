@@ -1,5 +1,5 @@
 ---
-name: Automated Tests
+name: Automated integrations tests
 on:
   push:
     branches:
@@ -8,13 +8,6 @@ on:
     branches:
       - master
   workflow_dispatch: {}
-
-# Boostrap of the testing environment of this Python application cannot be
-# performed the traditional way with actions/setup-python as some of the Python
-# dependencies (rpm, dnf) are not available in PyPI, they are only distributed
-# as system packages in major Linux distributions repositories. For this reason,
-# containers are used with distribution package manager to install all
-# dependencies.
 
 jobs:
   tests:
@@ -84,30 +77,8 @@ jobs:
         run: |
           /usr/lib/systemd/systemd-binfmt
 
-      - name: Install application
-        run: pip3 install -e .
-
-      # Some tests expect to run as non-root with kvm, mock and sudo permissions
-      # sudo required for sudo virtiosfd --version
-      - name: Create unprivileged user
-        run: |
-          useradd ci
-          usermod -aG $(stat -c %G /dev/kvm) ci
-          usermod -aG mock ci
-          echo "ci ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/00-ci
-
-      # Move coverage data file in ~ci because ci unprilived user does not have
-      # permissions in working directory after checkout by root.
-      - name: Run tests
-        run: |
-          cat <<EOF > .coveragerc
-          [run]
-          data_file = ~ci/.coverage
-          EOF
-          su ci -c pytest-3
-
-      # Try to install Rift and run it
-      - name: Installation test 
+      - name: Install Rift with setup.py
         run: |
           python3 setup.py install
           rift --version
+
