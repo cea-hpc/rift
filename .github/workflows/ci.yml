@@ -105,3 +105,9 @@ jobs:
           data_file = ~ci/.coverage
           EOF
           su ci -c pytest-3
+
+      # Try to install Rift and run it
+      - name: 
+        run: |
+          sudo python3 setup.py install
+          rift --version
