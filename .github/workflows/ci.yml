@@ -109,5 +109,5 @@ jobs:
       # Try to install Rift and run it
       - name: Installation test 
         run: |
-          sudo python3 setup.py install
+          python3 setup.py install
           rift --version
