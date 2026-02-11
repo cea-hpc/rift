@@ -107,7 +107,7 @@ jobs:
           su ci -c pytest-3
 
       # Try to install Rift and run it
-      - name: 
+      - name: Installation test 
         run: |
           sudo python3 setup.py install
           rift --version
