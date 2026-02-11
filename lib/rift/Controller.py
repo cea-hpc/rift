@@ -70,7 +70,7 @@ def make_parser():
     parser.add_argument('-v', '--verbose', action='count', default=0,
                         help="increase output verbosity (twice for debug)")
     parser.add_argument('--version', action='version',
-                        version=f"%%(prog)s {__version__}")
+                        version=f"Rift {__version__}")
 
     subparsers = parser.add_subparsers(dest='command', metavar='COMMAND')
 
