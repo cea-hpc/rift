@@ -38,6 +38,7 @@ import argparse
 import logging
 from operator import attrgetter
 import time
+import platform
 # Since pylint can not found rpm.error, disable this check
 from rpm import error as RpmError # pylint: disable=no-name-in-module
 from unidiff import parse_unidiff
@@ -51,6 +52,7 @@ from rift.package import RIFT_SUPPORTED_FORMATS, ProjectPackages
 from rift.repository import ProjectArchRepositories, StagingRepository
 from rift.graph import PackagesDependencyGraph
 from rift.RPM import RPM, Spec
+from rift.Mock import Mock
 from rift.TestResults import TestCase, TestResults
 from rift.TextTable import TextTable
 from rift.VM import VM
@@ -345,7 +347,9 @@ def action_check(args, config):
         if args.file is None:
             raise RiftError("You must specifiy a file path (-f)")
 
-        spec = Spec(args.file, config=config)
+        mock = Mock(config, platform.machine())
+        repos = ProjectArchRepositories(config, platform.machine()).for_format('rpm')
+        spec = Spec(args.file, mock, repos.all, config=config)
         spec.check()
         logging.info('Spec file is OK.')
 

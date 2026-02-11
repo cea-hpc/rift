@@ -39,11 +39,13 @@ import logging
 import shutil
 import glob
 import threading
+import platform
 from subprocess import Popen, PIPE, STDOUT, run, CalledProcessError
 
 from rift import RiftError
 from rift.repository._base import ArchRepositoriesBase, StagingRepositoryBase
 from rift.RPM import RPM, Spec
+from rift.Mock import Mock
 from rift.TempDir import TempDir
 from rift.Config import _DEFAULT_REPO_CMD, _DEFAULT_REPOS_VARIANTS
 
@@ -225,9 +227,11 @@ class LocalRepository:
             except CalledProcessError as err:
                 raise RiftError(err) from err
             # Parse spec file
-            spec = Spec(os.path.join(tmp_dir.path,
-                                     'SPECS',
-                                     f"{src_rpm.name}.spec"))
+            spec = Spec(
+                os.path.join(tmp_dir.path, 'SPECS', f"{src_rpm.name}.spec"),
+                Mock(self.config, platform.machine()),
+                ArchRepositoriesRPM(self.config, None, platform.machine()).all,
+            )
             # Remove tmp directory
             tmp_dir.delete()
             # Merge list of bin package names into bin_rpm_names (and avoid
