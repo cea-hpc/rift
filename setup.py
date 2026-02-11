@@ -41,7 +41,7 @@ setup(name='rift',
       author='Aurelien Cedeyn',
       author_email='aurelien.cedeyn@cea.fr',
       package_dir={'': 'lib'},
-      packages=['rift'],
+      packages=['rift', 'rift.package'],
       install_requires=['boto3>=1.18.65', 'xmltodict'],
       py_modules = ['unidiff'],
       data_files = [
