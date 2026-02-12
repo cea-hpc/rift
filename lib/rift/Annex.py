@@ -231,16 +231,22 @@ class Annex:
         Return true if content of file at filepath looks like a valid digest
         identifier.
         """
-        with open(filepath, encoding='utf-8') as fh:
-            identifier = fh.read()
-            # Remove possible trailing whitespace, newline and carriage return
-            # characters.
-            identifier = identifier.rstrip()
+        try:
+            with open(filepath, encoding='utf-8') as fh:
+                identifier = fh.read()
+                # Remove possible trailing whitespace, newline and carriage return
+                # characters.
+                identifier = identifier.rstrip()
+
+        except UnicodeDecodeError:
+            # Binary fileis cannot be decoded with UTF-8
+            return False
 
         # Check size corresponds to MD5 (32) or SHA3 256 (64).
         if len(identifier) in (32, 64):
             return all(byte in string.hexdigits for byte in identifier)
 
+        # If the identifier is not a valid Rift Annex pointer
         return False
 
     def make_restore_cache(self):
