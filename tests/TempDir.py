@@ -3,7 +3,7 @@
 #
 
 import os
-from TestUtils import RiftTestCase
+from .TestUtils import RiftTestCase
 from rift.TempDir import TempDir
 
 class TempDirTest(RiftTestCase):

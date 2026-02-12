@@ -1,6 +1,5 @@
-#!/usr/bin/env python
 #
-# Copyright (C) 2014-2019 CEA
+# Copyright (C) 2025 CEA
 #
 # This file is part of Rift project.
 #
@@ -31,29 +30,32 @@
 # knowledge of the CeCILL license and that you accept its terms.
 #
 
-from lib.rift import __version__
-from setuptools import setup
+"""Module to get list or individual project packages."""
 
-setup(name='rift',
-      version=__version__,
-      license='CeCILL-C (French equivalent to LGPLv2+)',
-      description='RPM repository management',
-      author='Aurelien Cedeyn',
-      author_email='aurelien.cedeyn@cea.fr',
-      package_dir={'': 'lib'},
-      packages=['rift', 'rift.package'],
-      install_requires=['boto3>=1.18.65', 'xmltodict'],
-      py_modules = ['unidiff'],
-      data_files = [
-                  ('/usr/share/rift/template', ['template/project.conf', 'template/local.conf', 'template/mock.tpl']),
-                  ('/usr/share/rift/template/packages', ['template/packages/modules.yaml', 'template/packages/staff.yaml']),
-                  ('/usr/share/rift/vendor', ['vendor/QEMU_EFI.fd', 'vendor/QEMU_EFI.silent.fd']),
-                  ('/usr/share/doc/rift', ['Changelog', 'AUTHORS']),
-              ],
-      entry_points = {
-        'console_scripts': [
-            'rift = rift.Controller:main',
-        ],
-      }
-     )
+import os
 
+from rift.package.rpm import PackageRPM
+
+class ProjectPackages:
+    """
+    Factory to get list of projects packages objects with their supported
+    formats.
+    """
+
+    @staticmethod
+    def list(config, staff, modules, names=None):
+        """
+        Iterate over PackageBase concrete children instances from 'names' list
+        or all packages if list is not provided.
+        """
+        if not names:
+            pkgdir = config.project_path(config.get('packages_dir'))
+            names = [path for path in os.listdir(pkgdir)
+                     if os.path.isdir(os.path.join(pkgdir, path))]
+
+        for name in names:
+            yield PackageRPM(name, config, staff, modules)
+
+    @staticmethod
+    def get(name, config, staff, modules):
+        return PackageRPM(name, config, staff, modules)

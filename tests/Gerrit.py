@@ -3,7 +3,7 @@
 #
 from unittest import mock
 
-from TestUtils import RiftTestCase
+from .TestUtils import RiftTestCase
 from rift.Config import Config
 from rift.Gerrit import Review
 from rift import RiftError
