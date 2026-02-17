@@ -41,7 +41,7 @@ import re
 
 from rift import RiftError
 from rift.package._base import Package, ActionableArchPackage, Test
-from rift.Annex import Annex
+from rift.annex import Annex
 from rift.Repository import ProjectArchRepositories
 from rift.Mock import Mock
 from rift.RPM import Spec

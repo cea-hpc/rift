@@ -48,7 +48,7 @@ import rpm
 
 
 from rift import RiftError
-from rift.Annex import Annex, is_binary
+from rift.annex import Annex, is_binary
 from rift.Config import _DEFAULT_VARIANT
 import rift.utils
 

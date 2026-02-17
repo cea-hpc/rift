@@ -9,7 +9,8 @@ import shutil
 import tarfile
 import textwrap
 
-from rift.Annex import *
+from rift.annex import *
+from rift.annex._base import hashfile, get_info_from_digest, get_digest_from_path
 from rift.Config import Config, Staff, Modules
 from rift.package import ProjectPackages
 from rift.package.rpm import PackageRPM

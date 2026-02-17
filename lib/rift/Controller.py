@@ -43,7 +43,7 @@ from rpm import error as RpmError # pylint: disable=no-name-in-module
 from unidiff import parse_unidiff
 
 from rift import RiftError, __version__
-from rift.Annex import Annex, is_binary
+from rift.annex import Annex, is_binary
 from rift.Config import Config, Staff, Modules, _DEFAULT_VARIANT
 from rift.Gerrit import Review
 from rift.auth import Auth
