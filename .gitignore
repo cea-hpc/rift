@@ -8,3 +8,5 @@ build
 
 # Python egg metadata, regenerated from source files by setuptools.
 /lib/*.egg-info
+
+nosetests.xml
