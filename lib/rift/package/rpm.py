@@ -114,7 +114,7 @@ class PackageRPM(Package):
 
     def subpackages(self):
         """Returns list of provides declared in spec file."""
-        # Check spec is already loaded
+        # Check if spec is already loaded
         assert self.spec is not None
 
         return self.spec.provides
