@@ -1,4 +1,4 @@
-# Copyright (C) 2014-2016 CEA
+# Copyright (C) 2026 CEA
 #
 # This file is part of Rift project.
 #
