@@ -327,7 +327,7 @@ LcmZQ%;Sc}}-05kv|
 
     def test_rename_package(self):
         """ Test if renaming a package trigger a build """
-        pkgname = 'pkg'
+        pkgname = 'pkgnew'
         pkgvers = 1.0
         self.make_pkg(name=pkgname, version=pkgvers)
         patch = make_temp_file("""
@@ -356,7 +356,7 @@ rename to packages/pkgnew/sources/pkgnew-1.0.tar.gz
 
     def test_rename_and_update_package(self):
         """ Test if renaming and updating a package trigger a build """
-        pkgname = 'pkg'
+        pkgname = 'pkgnew'
         pkgvers = 1.0
         self.make_pkg(name=pkgname, version=pkgvers)
         patch = make_temp_file("""
