@@ -56,6 +56,8 @@ from rift.auth import Auth
 from rift.Config import OrderedLoader
 from rift.TempDir import TempDir
 from rift.annex.Directory import *
+from rift.annex.Server import *
+from rift.annex.S3 import *
 
 # List of ASCII printable characters
 _TEXTCHARS = bytearray([9, 10, 13] + list(range(32, 127)))
@@ -122,16 +124,8 @@ class Annex:
     WMODE = 0o664
 
     def __init__(self, config, annex_path=None, staging_annex_path=None):
-        self.restore_cache = config.get('annex_restore_cache')
-        if self.restore_cache is not None:
-            self.restore_cache = os.path.expanduser(self.restore_cache)
-
         # Annex path
         # should be either a filesystem path, or else http/https uri for an s3 endpoint
-        self.read_s3_endpoint = None
-        self.read_s3_bucket = None
-        self.read_s3_prefix = None
-        self.read_s3_client = None
         self.annex_is_remote = None
         self.annex_type = None
 
@@ -151,85 +145,13 @@ class Annex:
             sys.exit(1)
 
         self.annex_is_s3 = config.get('annex_is_s3')
-        if self.annex_is_s3:
-            if not self.annex_is_remote:
-                msg = "invalid pairing of configuration settings for: annex, annex_is_s3\n"
-                msg += "annex_is_s3 is True but the annex url is not an http(s) url,"
-                msg += " as required in this case"
-                raise RiftError(msg)
-
-            parts = url.path.lstrip("/").split("/")
-            self.read_s3_endpoint = f"{url.scheme}://{url.netloc}"
-            self.read_s3_bucket = parts[0]
-            self.read_s3_prefix = "/".join(parts[1:])
 
         self.dirannex = (DirectoryAnnex(config, annex_path, staging_annex_path) if
                         not self.annex_is_s3 else None)
         self.servannex = (ServerAnnex(config, annex_path, staging_annex_path) if
                         not self.annex_is_s3 and self.annex_is_remote else None)
-
-        # Staging annex path
-        # should be an http(s) url containing s3 endpoint, bucket, and prefix
-        self.staging_annex_path = staging_annex_path or config.get('staging_annex')
-        self.push_over_s3 = False
-        self.push_s3_endpoint = None
-        self.push_s3_bucket = None
-        self.push_s3_prefix = None
-        self.push_s3_client = None
-        self.push_s3_auth = None
-
-        if self.staging_annex_path is not None:
-            url = urlparse(self.staging_annex_path, allow_fragments=False)
-            parts = url.path.lstrip("/").split("/")
-            if url.scheme in ("http", "https"):
-                self.push_over_s3 = True
-                self.push_s3_endpoint = f"{url.scheme}://{url.netloc}"
-                self.push_s3_bucket = parts[0]
-                self.push_s3_prefix = "/".join(parts[1:])
-                self.push_s3_auth = Auth(config)
-            elif url.scheme in ("file", ""):
-                self.staging_annex_path = url.path
-        else:
-            # allow staging_annex_path to default to annex when annex is s3:// or file://
-            if self.annex_is_s3:
-                self.staging_annex_path = self.annex_path
-                self.push_over_s3 = True
-                self.push_s3_endpoint = self.read_s3_endpoint
-                self.push_s3_bucket = self.read_s3_bucket
-                self.push_s3_prefix = self.read_s3_prefix
-                self.push_s3_auth = Auth(config)
-            elif self.annex_type == "file":
-                self.staging_annex_path = self.annex_path
-                self.push_over_s3 = False
-
-    def get_read_s3_client(self):
-        """
-        Returns an boto3 s3 client for the read_s3_endpoint
-        If one already exists, return that; otherwise create one
-        """
-        if self.read_s3_client is None:
-            self.read_s3_client = boto3.client('s3', endpoint_url = self.read_s3_endpoint)
-
-        return self.read_s3_client
-
-    def get_push_s3_client(self):
-        """
-        Returns an boto3 s3 client for the push_s3_endpoint
-        If one already exists, return that; otherwise create one
-        """
-        if self.push_s3_client is not None:
-            return self.push_s3_client
-
-        if not self.push_s3_auth.authenticate():
-            raise RiftError("authentication failed; cannot get push_s3_client")
-
-        self.push_s3_client = boto3.client('s3',
-            aws_access_key_id = self.push_s3_auth.config["access_key_id"],
-            aws_secret_access_key = self.push_s3_auth.config["secret_access_key"],
-            aws_session_token = self.push_s3_auth.config["session_token"],
-            endpoint_url = self.push_s3_endpoint)
-
-        return self.push_s3_client
+        self.s3annex = (S3Annex(config, annex_path, staging_annex_path) if
+                        self.annex_is_s3 else None)
 
     @classmethod
     def is_pointer(cls, filepath):
@@ -273,12 +195,14 @@ class Annex:
 
     def get(self, identifier, destpath):
         """Get a file identified by identifier and copy it at destpath."""
-        if self.annex_is_remote and not self.push_over_s3:
-            self.servannex.get(identifier, destpath)
-            return
-        elif not self.annex_is_remote:
+        if self.dirannex:
             self.dirannex.get(identifier, destpath)
-            return
+        elif self.servannex:
+            self.servannex.get(identifier, destpath)
+        else:
+            self.s3annex.get(identifier, destpath)
+
+        return
 
         # 1. See if we can restore from cache
         if self.restore_cache:
@@ -291,7 +215,7 @@ class Annex:
 
         # 2. See if object is in the annex
         if self.annex_is_remote:
-            # Checking annex, expecting annex path to be an http(s) url
+            self.servannex.get(identifier, destpath)
 
             idpath = os.path.join(self.annex_path, identifier)
             with tempfile.TemporaryDirectory() as tmp_dir:
@@ -417,112 +341,17 @@ class Annex:
                     shutil.copy(filepath, tmpdir.path)
         return tmpdir
 
-    def list_s3(self):
-        """
-        Iterate over s3 files, returning for them: filename, size and
-        insertion time.
-        """
-        if not self.annex_is_s3:
-            # non-S3, remote annex
-            print("list functionality is not implemented for public annex over non-S3, http")
-            return
-
-        # s3 list
-        # if http(s) uri is s3-compliant, then listing is easy
-        s3 = self.get_read_s3_client()
-
-        # disable signing if accessing anonymously
-        s3.meta.events.register('choose-signer.s3.*', botocore.handlers.disable_signing)
-
-        response = s3.list_objects_v2(
-            Bucket=self.read_s3_bucket,
-            Prefix=self.read_s3_prefix
-        )
-        if 'Contents' not in response:
-            logging.info("No files found in %s", self.read_s3_prefix)
-            return
-
-        for obj in response['Contents']:
-            key = obj['Key']
-            filename = os.path.basename(key)
-
-            if filename.endswith(_INFOSUFFIX):
-                continue
-
-            meta_obj_name = get_info_from_digest(key)
-            meta_obj = s3.get_object(Bucket=self.read_s3_bucket, Key=meta_obj_name)
-            info = yaml.safe_load(meta_obj['Body']) or {}
-            names = info.get('filenames', [])
-            for annexed_file in names.values():
-                insertion_time = annexed_file['date']
-                insertion_time = dt.strptime(insertion_time, "%c").timestamp()
-
-            size = obj['Size']
-
-            yield filename, size, insertion_time, names
-
     def list(self):
         """
         Iterate over annex files, returning for them: filename, size and
         insertion time.
         """
         if self.annex_is_s3:
-            yield from self.list_s3()
+            yield from self.s3annex.list()
         elif self.annex_is_remote:
             yield from self.servannex.list()
         else:
             yield from self.dirannex.list()
-
-    def _push_to_s3(self, filepath, digest):
-        """
-        Copy file at `filepath' into this repository and replace the original
-        file by a fake one pointed to it.
-
-        If the same content is already present, do nothing.
-
-        Push is done to the S3 annex
-        """
-        s3 = self.get_push_s3_client()
-        if s3 is None:
-            logging.error("could not get s3 client: get_push_s3_client failed")
-            sys.exit(1)
-
-        destpath = os.path.join(self.push_s3_prefix, digest)
-        filename = os.path.basename(filepath)
-        key = destpath
-
-        # Prepare metadata file
-        meta_obj_name = get_info_from_digest(key)
-        metadata = {}
-        try:
-            meta_obj = s3.get_object(Bucket=self.push_s3_bucket, Key=meta_obj_name)
-            metadata = yaml.safe_load(meta_obj['Body']) or {}
-        except s3.exceptions.NoSuchKey:
-            logging.info("metadata not found in s3: %s", meta_obj_name)
-        except yaml.YAMLError:
-            logging.info("retrieved metadata could not be parsed as yaml: %s", meta_obj_name)
-
-        originfo = os.stat(filepath)
-        destinfo = None
-        try:
-            destinfo = s3.get_object(Bucket=self.push_s3_bucket, Key=key)
-        except s3.exceptions.NoSuchKey:
-            logging.info("key not found in s3: %s", key)
-        if destinfo and destinfo["ContentLength"] == originfo.st_size and \
-          filename in metadata.get('filenames', {}):
-            logging.debug("%s is already into annex, skipping it", filename)
-        else:
-            # Update them and write them back
-            fileset = metadata.setdefault('filenames', {})
-            fileset.setdefault(filename, {})
-            fileset[filename]['date'] = time.strftime("%c")
-
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.info') as f:
-                yaml.dump(metadata, f, default_flow_style=False)
-                s3.upload_file(f.name, self.push_s3_bucket, meta_obj_name)
-            logging.debug("Importing %s into annex (%s)", filepath, digest)
-
-            s3.upload_file(filepath, self.push_s3_bucket, key)
 
     def push(self, filepath):
         """
@@ -531,13 +360,14 @@ class Annex:
 
         If the same content is already present, do nothing.
         """
-        if not self.push_over_s3:
-            if self.annex_is_remote:
-                self.servannex.push(filepath)
-            else:
-                self.dirannex.push(filepath)
+        if self.annex_is_s3:
+            self.s3annex.push(filepath)
+        elif self.annex_is_remote:
+            self.servannex.push(filepath)
+        else:
+            self.dirannex.push(filepath)
 
-            return
+        return
 
         # Compute hash
         digest = hashfile(filepath)
@@ -555,11 +385,10 @@ class Annex:
         """
         Create a full backup of package list
         """
-        if not self.push_over_s3:
-            if self.annex_is_remote:
-                return self.servannex.backup(packages, output_file)
-            else:
-                return self.dirannex.backup(packages, output_file)
+        if self.annex_is_remote:
+            return self.servannex.backup(packages, output_file)
+        else:
+            return self.dirannex.backup(packages, output_file)
 
 
         filelist = []
