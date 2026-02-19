@@ -842,8 +842,8 @@ def action_gitlab(args, config, staff, modules):
         if names[0] == config.get('packages_dir'):
             pkg = ProjectPackages.get(names[1], config, staff, modules)
             if os.path.abspath(path) == pkg.buildfile and not f.is_deleted_file:
-                spec = Spec(pkg.buildfile, config=config)
-                spec.check()
+                pkg.load()
+                pkg.check()
 
 def action_gerrit(args, config, staff, modules):
     """Review a patchset for Gerrit (specfiles)"""

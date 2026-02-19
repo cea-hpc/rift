@@ -1898,6 +1898,74 @@ class ControllerProjectActionGraphTest(RiftProjectTestCase):
             get_packages_in_graph(args, self.config, self.staff, self.modules)
 
 
+class ControllerProjectActionGitlabTest(RiftProjectTestCase):
+    """
+    Tests class for Controller action gitlab
+    """
+
+    def test_gitlab_missing_patch(self):
+        """gerrit without patch"""
+        cmd = ['gitlab']
+        with self.assertRaisesRegex(SystemExit, "2"):
+            main(cmd)
+
+    def test_gitlab(self):
+        """simple gitlab"""
+        self.make_pkg()
+        patch = make_temp_file(
+            textwrap.dedent("""
+                diff --git a/packages/pkg/pkg.spec b/packages/pkg/pkg.spec
+                index d1a0d0e7..b3e36379 100644
+                --- a/packages/pkg/pkg.spec
+                +++ b/packages/pkg/pkg.spec
+                @@ -1,6 +1,6 @@
+                 Name:    pkg
+                 Version:        1.0
+                -Release:        1
+                +Release:        2
+                 Summary:        A package
+                 Group:          System Environment/Base
+                 License:        GPL
+                """))
+        # Test no error is raised
+        main(['gitlab', patch.name])
+
+    def test_gitlab_check_failed(self):
+        """gitlab check error"""
+        # Make package and inject rpmlint error ($RPM_BUILD_ROOT and
+        # RPM_SOURCE_DIR in buildsteps) in RPM spec file, with both rpmlint v1
+        # and v2.
+        self.make_pkg()
+        with open(self.pkgspecs['pkg'], "w") as spec:
+            spec.write(
+                gen_rpm_spec(
+                    name='pkg',
+                    version='1.0',
+                    release='2',
+                    arch='noarch',
+                    buildsteps="$RPM_SOURCE_DIR\n$RPM_BUILD_ROOT",
+                )
+            )
+        patch = make_temp_file(
+            textwrap.dedent("""
+                diff --git a/packages/pkg/pkg.spec b/packages/pkg/pkg.spec
+                index d1a0d0e7..b3e36379 100644
+                --- a/packages/pkg/pkg.spec
+                +++ b/packages/pkg/pkg.spec
+                @@ -1,6 +1,6 @@
+                 Name:    pkg
+                 Version:        1.0
+                -Release:        1
+                +Release:        2
+                 Summary:        A package
+                 Group:          System Environment/Base
+                 License:        GPL
+                """))
+        # Test error is raised
+        with self.assertRaisesRegex(RiftError, "rpmlint reported errors"):
+            main(['gitlab', patch.name])
+
+
 class ControllerProjectActionGerritTest(RiftProjectTestCase):
     """
     Tests class for Controller action gerrit
