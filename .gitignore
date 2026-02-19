@@ -10,3 +10,4 @@ build
 /lib/*.egg-info
 
 nosetests.xml
+.coverage

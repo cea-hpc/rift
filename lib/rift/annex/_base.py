@@ -163,8 +163,10 @@ class Annex:
             self.read_s3_bucket = parts[0]
             self.read_s3_prefix = "/".join(parts[1:])
 
-        self.annex = (DirectoryAnnex(config, annex_path, staging_annex_path) if
+        self.dirannex = (DirectoryAnnex(config, annex_path, staging_annex_path) if
                         not self.annex_is_s3 else None)
+        self.servannex = (ServerAnnex(config, annex_path, staging_annex_path) if
+                        not self.annex_is_s3 and self.annex_is_remote else None)
 
         # Staging annex path
         # should be an http(s) url containing s3 endpoint, bucket, and prefix
@@ -271,8 +273,11 @@ class Annex:
 
     def get(self, identifier, destpath):
         """Get a file identified by identifier and copy it at destpath."""
-        if not self.push_over_s3:
-            self.annex.get(identifier, destpath)
+        if self.annex_is_remote and not self.push_over_s3:
+            self.servannex.get(identifier, destpath)
+            return
+        elif not self.annex_is_remote:
+            self.dirannex.get(identifier, destpath)
             return
 
         # 1. See if we can restore from cache
@@ -363,7 +368,7 @@ class Annex:
 
     def delete(self, identifier):
         """Remove a file from annex, whose ID is `identifier'"""
-        return self.annex.delete(identifier)
+        return self.dirannex.delete(identifier)
 
     def import_dir(self, dirpath, force_temp=False):
         """
@@ -461,10 +466,12 @@ class Annex:
         Iterate over annex files, returning for them: filename, size and
         insertion time.
         """
-        if self.annex_is_remote:
+        if self.annex_is_s3:
             yield from self.list_s3()
+        elif self.annex_is_remote:
+            yield from self.servannex.list()
         else:
-            yield from self.annex.list()
+            yield from self.dirannex.list()
 
     def _push_to_s3(self, filepath, digest):
         """
@@ -525,7 +532,11 @@ class Annex:
         If the same content is already present, do nothing.
         """
         if not self.push_over_s3:
-            self.annex.push(filepath)
+            if self.annex_is_remote:
+                self.servannex.push(filepath)
+            else:
+                self.dirannex.push(filepath)
+
             return
 
         # Compute hash
@@ -544,9 +555,12 @@ class Annex:
         """
         Create a full backup of package list
         """
-
         if not self.push_over_s3:
-            return self.annex.backup(packages, output_file)
+            if self.annex_is_remote:
+                return self.servannex.backup(packages, output_file)
+            else:
+                return self.dirannex.backup(packages, output_file)
+
 
         filelist = []
 
