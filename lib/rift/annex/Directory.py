@@ -63,13 +63,13 @@ class DirectoryAnnex(GenericAnnex):
     # Read and Write file modes
     WMODE = 0o664
 
-    def __init__(self, _, annex_path, staging_annex_path):
-        super().__init__(annex_path, staging_annex_path)
+    def __init__(self, _, annex_path):
+        super().__init__(annex_path)
 
     def get(self, identifier, destpath):
         """Get a file identified by identifier and copy it at destpath."""
         logging.debug('Extracting %s to %s', identifier, destpath)
-        idpath = os.path.join(self.staging_annex_path, identifier)
+        idpath = os.path.join(self.annex_path, identifier)
         shutil.copyfile(idpath, destpath)
 
         return True
@@ -148,7 +148,7 @@ class DirectoryAnnex(GenericAnnex):
 
         If the same content is already present, do nothing.
         """
-        destpath = os.path.join(self.staging_annex_path, digest)
+        destpath = os.path.join(self.annex_path, digest)
         filename = os.path.basename(filepath)
 
         # Prepare metadata file
@@ -169,7 +169,7 @@ class DirectoryAnnex(GenericAnnex):
         fileset.setdefault(filename, {})
         fileset[filename]['date'] = time.time()  # Unix timestamp
 
-        metapath = os.path.join(self.staging_annex_path,
+        metapath = os.path.join(self.annex_path,
                                 get_info_from_digest(digest))
         with open(metapath, 'w', encoding="utf-8") as fyaml:
             yaml.dump(metadata, fyaml, default_flow_style=False)

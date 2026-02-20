@@ -62,49 +62,43 @@ class Annex:
     """
     # Read and Write file modes
     RMODE = 0o644
-    WMODE = 0o664
 
-    def __init__(self, config, annex_path=None, staging_annex_path=None):
-        self.restore_cache = config.get('annex_restore_cache')
-        if self.restore_cache is not None:
-            self.restore_cache = os.path.expanduser(self.restore_cache)
+    def __init__(self, config, set_annex=None, staging_annex=None):
+         self.restore_cache = config.get('annex_restore_cache')
+         if self.restore_cache is not None:
+             self.restore_cache = os.path.expanduser(self.restore_cache)
 
-        # Set/Staging annex paths
-        if annex_path is None:
-            annex_path = config.get('annex')
+         # Set/Staging annex paths
+        if set_annex is None:
+            set_annex = config.get('set_annex')
 
-        if staging_annex_path is None:
-            staging_annex_path = config.get('staging_annex')
+        self.set_annex = self.annex_from_type(config, set_annex)
+        if self.set_annex is None:
+            self.set_annex = DirectoryAnnex(config, set_annex)
 
-        if staging_annex_path is not None:
-            # Staging annex
-            # XXX: Temporary, an actual conf parameter to specify the type of
-            # annex would be better, for now we say it's only S3
-            self.staging_annex = S3Annex(config, annex_path, staging_annex_path)
-        else:
-            staging_annex_path = annex_path
-            self.staging_annex = DirectoryAnnex(config, annex_path,
-                                                annex_path)
+        if staging_annex is None:
+            staging_annex = config.get('staging_annex')
+            if staging_annex is None:
+                staging_annex = set_annex
 
-        # Set annex
-        # XXX: Would be better with a simple "annex_type" in the conf
-        self.annex_is_s3 = config.get('annex_is_s3')
-        if self.annex_is_s3:
-            # XXX: may be a double of the staging_annex, but that's acceptable
-            # for now
-            self.set_annex = S3Annex(config, annex_path, staging_annex_path)
-        else:
-            url = urlparse(annex_path, allow_fragments=False)
-            if url.scheme in ("http", "https"):
-                self.set_annex = ServerAnnex(config, annex_path,
-                                             staging_annex_path)
-            elif url.scheme in ("", "file"):
-                self.set_annex = DirectoryAnnex(config, annex_path,
-                                                staging_annex_path)
-            else:
-                logging.error("invalid value for config option: 'annex'")
-                logging.error("the annex should be either a file:// path or http(s):// url")
-                sys.exit(1)
+        self.staging_annex = self.annex_from_type(config, staging_annex)
+        if self.staging_annex is None:
+            self.staging_annex = DirectoryAnnex(config, set_annex)
+
+    def annex_from_type(self, config, annex):
+        """
+        Return an instance of GenericAnnex based on the given annex address and
+        type
+        """
+        annex_type = annex.get('type')
+        if annex_type == 'directory':
+            return DirectoryAnnex(config, annex.get('address'))
+        elif annex_type == 'server':
+            return ServerAnnex(config, annex.get('address'))
+        elif annex_type == 's3':
+            return S3Annex(config, annex.get('address'))
+
+        return None
 
     def make_restore_cache(self):
         """

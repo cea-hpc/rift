@@ -53,8 +53,12 @@ class AnnexTest(RiftTestCase):
 
         # Create a Annex for the tests
         os.mkdir(_TEST_ANNEX_PATH)
-        self.config.annex = _TEST_ANNEX_PATH
-        self.annex = Annex(self.config, annex_path=_TEST_ANNEX_PATH)
+        self.config.set('set_annex',
+                            {'address': _TEST_ANNEX_PATH,
+                             'type': 'directory'
+                            }
+                       )
+        self.annex = Annex(self.config)
 
         self.source = make_temp_file(textwrap.dedent("""
         This file is an annex test

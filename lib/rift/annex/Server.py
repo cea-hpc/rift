@@ -61,8 +61,8 @@ class ServerAnnex(GenericAnnex):
 
     For now, files are stored in a flat namespace.
     """
-    def __init__(self, _, annex_path=None, staging_annex_path=None):
-        super().__init__(annex_path, staging_annex_path)
+    def __init__(self, _, annex_path):
+        super().__init__(annex_path)
 
     def get_cached_path(self, path):
         """

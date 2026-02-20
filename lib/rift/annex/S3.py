@@ -64,45 +64,21 @@ class S3Annex(GenericAnnex):
 
     For now, files are stored in a flat namespace.
     """
-    def __init__(self, config, annex_path=None, staging_annex_path=None):
-        super().__init__(annex_path, staging_annex_path)
+    def __init__(self, config, annex_path):
+        super().__init__(annex_path)
 
         url = urlparse(self.annex_path, allow_fragments=False)
         self.annex_type = url.scheme
 
-        self.annex_is_s3 = config.get('annex_is_s3')
-        if self.annex_is_s3:
-            parts = url.path.lstrip("/").split("/")
-            self.read_s3_endpoint = f"{url.scheme}://{url.netloc}"
-            self.read_s3_bucket = parts[0]
-            self.read_s3_prefix = "/".join(parts[1:])
+        parts = url.path.lstrip("/").split("/")
+        self.read_s3_endpoint = f"{url.scheme}://{url.netloc}"
+        self.read_s3_bucket = parts[0]
+        self.read_s3_prefix = "/".join(parts[1:])
 
-        self.read_s3_client = boto3.client('s3',
-                                           endpoint_url = self.read_s3_endpoint)
-
-        self.push_over_s3 = False
-        self.push_s3_endpoint = None
-        self.push_s3_bucket = None
-        self.push_s3_prefix = None
-        self.push_s3_client = None
-        self.push_s3_auth = None
-
-        if self.staging_annex_path is not None:
-            url = urlparse(self.staging_annex_path, allow_fragments=False)
-            parts = url.path.lstrip("/").split("/")
-            self.push_over_s3 = True
-            self.push_s3_endpoint = f"{url.scheme}://{url.netloc}"
-            self.push_s3_bucket = parts[0]
-            self.push_s3_prefix = "/".join(parts[1:])
-            self.push_s3_auth = Auth(config)
-        else:
-            # allow staging_annex_path to default to annex when annex is s3:// or file://
-            self.staging_annex_path = self.annex_path
-            self.push_over_s3 = True
-            self.push_s3_endpoint = self.read_s3_endpoint
-            self.push_s3_bucket = self.read_s3_bucket
-            self.push_s3_prefix = self.read_s3_prefix
-            self.push_s3_auth = Auth(config)
+        self.push_s3_endpoint = self.read_s3_endpoint
+        self.push_s3_bucket = self.read_s3_bucket
+        self.push_s3_prefix = self.read_s3_prefix
+        self.push_s3_auth = Auth(config)
 
     def get_push_s3_client(self):
         """

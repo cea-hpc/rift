@@ -220,10 +220,20 @@ class ConfigTest(RiftTestCase):
     def test_load(self):
         """load() checks mandatory options are present"""
         emptyfile = make_temp_file("")
-        self.assert_except(DeclError, "'annex' is not defined",
+        self.assert_except(DeclError, "'set_annex' is not defined",
                            Config().load, emptyfile.name)
 
-        cfgfile = make_temp_file("annex: /a/dir\nvm:\n  image: /a/image.img")
+        cfgfile = make_temp_file(
+                textwrap.dedent(
+                    """
+                    set_annex:
+                      address: /a/dir
+                      type: directory
+                    vm:
+                      image: /a/image.img
+                    """
+                )
+            )
         config = Config()
         # Simple filename
         config.load(cfgfile.name)
@@ -233,7 +243,7 @@ class ConfigTest(RiftTestCase):
         config.load([cfgfile.name])
 
         # Default config files
-        self.assert_except(DeclError, "'annex' is not defined",
+        self.assert_except(DeclError, "'set_annex' is not defined",
                            Config().load)
 
     def test_load_multiple_files(self):
@@ -242,7 +252,9 @@ class ConfigTest(RiftTestCase):
             make_temp_file(
                 textwrap.dedent(
                     """
-                    annex: /a/dir
+                    set_annex:
+                      address: /a/dir
+                      type: directory
                     vm:
                       image: /a/image.img
                     """
@@ -263,7 +275,8 @@ class ConfigTest(RiftTestCase):
         config = Config()
         config.load([conf_file.name for conf_file in conf_files])
         # Value from 1st file should be loaded
-        self.assertEqual(config.get('annex'), '/a/dir')
+        self.assertEqual(config.get('set_annex').get('address'), '/a/dir')
+        self.assertEqual(config.get('set_annex').get('type'), 'directory')
         # Value from 2nd file should override value from 1st file
         self.assertEqual(config.get('vm').get('image'), '/b/image.img')
         # Value from 2nd file should be loaded
@@ -274,7 +287,9 @@ class ConfigTest(RiftTestCase):
         cfgfile = make_temp_file(
             textwrap.dedent(
                 """
-                annex: /a/dir
+                set_annex:
+                  address: /a/dir
+                  type: directory
                 vm:
                   image: /a/image.img
                 arch:
@@ -300,7 +315,9 @@ class ConfigTest(RiftTestCase):
         cfgfile = make_temp_file(
             textwrap.dedent(
                 """
-                annex: /a/dir
+                set_annex:
+                  address: /a/dir
+                  type: directory
                 vm:
                   image: /a/image.img
                 x86_64: fail
@@ -319,7 +336,9 @@ class ConfigTest(RiftTestCase):
         cfgfile = make_temp_file(
             textwrap.dedent(
                 """
-                annex: /a/dir
+                set_annex:
+                  address: /a/dir
+                  type: directory
                 vm:
                   image: /a/image.img
                 x86_64:
@@ -339,11 +358,15 @@ class ConfigTest(RiftTestCase):
         contents = {
             # vm_image is not defined at all
             """
-            annex: /a/dir
+            set_annex:
+               address: /a/dir
+               type: directory
             """,
             # vm_image is not defined for aarch64
             """
-            annex: /a/dir
+            set_annex:
+               address: /a/dir
+               type: directory
             arch:
             - x86_64
             - aarch64
@@ -366,7 +389,9 @@ class ConfigTest(RiftTestCase):
         cfgfile = make_temp_file(
             textwrap.dedent(
                 """
-                annex: /a/dir
+                set_annex:
+                  address: /a/dir
+                  type: directory
                 arch:
                 - x86_64
                 - aarch64
@@ -404,7 +429,9 @@ class ConfigTest(RiftTestCase):
             make_temp_file(
                 textwrap.dedent(
                     """
-                    annex: /a/dir
+                    set_annex:
+                      address: /a/dir
+                      type: directory
                     vm:
                       image: /a/image.img
                     repos:
@@ -448,7 +475,9 @@ class ConfigTest(RiftTestCase):
         cfgfile = make_temp_file(
             textwrap.dedent(
                 """
-                annex: /a/dir
+                set_annex:
+                  address: /a/dir
+                  type: directory
                 vm:
                   image: /a/image.img
                   port_range:
@@ -466,7 +495,9 @@ class ConfigTest(RiftTestCase):
         cfgfile = make_temp_file(
             textwrap.dedent(
                 """
-                annex: /a/dir
+                set_annex:
+                  address: /a/dir
+                  type: directory
                 vm:
                   image: /a/image.img
                   port_range:
@@ -487,7 +518,9 @@ class ConfigTest(RiftTestCase):
         cfgfile = make_temp_file(
             textwrap.dedent(
                 """
-                annex: /a/dir
+                set_annex:
+                  address: /a/dir
+                  type: directory
                 vm:
                   image: /a/image.img
                 gpg:
@@ -506,7 +539,9 @@ class ConfigTest(RiftTestCase):
         cfgfile = make_temp_file(
             textwrap.dedent(
                 """
-                annex: /a/dir
+                set_annex:
+                  address: /a/dir
+                  type: directory
                 vm:
                   image: /a/image.img
                 gpg:
@@ -529,7 +564,9 @@ class ConfigTest(RiftTestCase):
             cfgfile = make_temp_file(
                 textwrap.dedent(
                     f"""
-                    annex: /a/dir
+                    set_annex:
+                      address: /a/dir
+                      type: directory
                     vm:
                       image: /a/image.img
                     gpg: {gpg_config}
@@ -548,7 +585,9 @@ class ConfigTest(RiftTestCase):
         cfgfile = make_temp_file(
             textwrap.dedent(
                 """
-                annex: /a/dir
+                set_annex:
+                  address: /a/dir
+                  type: directory
                 vm:
                   image: /a/image.img
                 gpg:
@@ -568,7 +607,9 @@ class ConfigTest(RiftTestCase):
         cfgfile = make_temp_file(
             textwrap.dedent(
                 """
-                annex: /a/dir
+                set_annex:
+                  address: /a/dir
+                  type: directory
                 vm:
                   image: /a/image.img
                 sync_output: /sync/output
@@ -632,7 +673,9 @@ class ConfigTest(RiftTestCase):
         cfgfile = make_temp_file(
             textwrap.dedent(
                 """
-                annex: /a/dir
+                set_annex:
+                  address: /a/dir
+                  type: directory
                 vm:
                   image: /a/image.img
                 repos:
@@ -654,7 +697,9 @@ class ConfigTest(RiftTestCase):
         cfgfile = make_temp_file(
             textwrap.dedent(
                 """
-                annex: /a/dir
+                set_annex:
+                  address: /a/dir
+                  type: directory
                 vm:
                   image: /a/image.img
                 repos:
@@ -678,7 +723,9 @@ class ConfigTest(RiftTestCase):
         cfgfile = make_temp_file(
             textwrap.dedent(
                 """
-                annex: /a/dir
+                set_annex:
+                  address: /a/dir
+                  type: directory
                 vm_image: /my/custom/image.img
                 vm_cpus: 42
                 vm_memory: 1234
@@ -697,7 +744,9 @@ class ConfigTest(RiftTestCase):
         cfgfile = make_temp_file(
             textwrap.dedent(
                 """
-                annex: /a/dir
+                set_annex:
+                  address: /a/dir
+                  type: directory
                 vm:
                   image: /a/image.img
                 gerrit_realm: Rift

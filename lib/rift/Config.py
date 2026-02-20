@@ -132,16 +132,39 @@ class Config():
         'annex_restore_cache': {
             'required': False,
         },
-        'annex': {
+        'set_annex': {
+            'check': 'dict',
             'required': True,
+            'syntax': {
+                'address': {
+                    'required': True,
+                },
+                'type': {
+                    'check': 'enum',
+                    'required': True,
+                    'values': ['directory', 'server', 's3']
+                }
+            }
+        },
+        'annex': {
+            'deprecated': 'set_annex.address'
         },
         'annex_is_s3': {
-            'required': False,
-            'default': False,
-            'check': 'bool',
+            'deprecated': 'set_annex.type'
         },
         'staging_annex': {
+            'check': 'dict',
             'required': False,
+            'syntax': {
+                'address': {
+                    'required': True,
+                },
+                'type': {
+                    'check': 'enum',
+                    'required': True,
+                    'values': ['directory', 'server', 's3']
+                }
+            }
         },
         'working_repo': {
         },
