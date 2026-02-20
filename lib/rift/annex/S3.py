@@ -33,8 +33,6 @@
 Class and function to detect binary files and push them into a file repository
 called an annex.
 """
-import boto3
-import botocore
 import errno
 import logging
 import os
@@ -42,14 +40,17 @@ import shutil
 import sys
 import tempfile
 import time
-import yaml
 
 from datetime import datetime as dt
 from urllib.parse import urlparse
 
+import boto3
+import botocore
+import yaml
+
 from rift import RiftError
 from rift.auth import Auth
-from rift.annex.GenericAnnex import *
+from rift.annex.GenericAnnex import GenericAnnex
 
 # Suffix of metadata filename
 _INFOSUFFIX = '.info'
@@ -93,6 +94,9 @@ class S3Annex(GenericAnnex):
             self.read_s3_bucket = parts[0]
             self.read_s3_prefix = "/".join(parts[1:])
 
+        self.read_s3_client = boto3.client('s3',
+                                           endpoint_url = self.read_s3_endpoint)
+
         self.push_over_s3 = False
         self.push_s3_endpoint = None
         self.push_s3_bucket = None
@@ -116,16 +120,6 @@ class S3Annex(GenericAnnex):
             self.push_s3_bucket = self.read_s3_bucket
             self.push_s3_prefix = self.read_s3_prefix
             self.push_s3_auth = Auth(config)
-
-    def get_read_s3_client(self):
-        """
-        Returns an boto3 s3 client for the read_s3_endpoint
-        If one already exists, return that; otherwise create one
-        """
-        if self.read_s3_client is None:
-            self.read_s3_client = boto3.client('s3', endpoint_url = self.read_s3_endpoint)
-
-        return self.read_s3_client
 
     def get_push_s3_client(self):
         """
@@ -157,7 +151,7 @@ class S3Annex(GenericAnnex):
         # Checking annex push, expecting annex push path to be an s3-providing http(s) url
         key = os.path.join(self.push_s3_prefix, identifier)
 
-        s3 = self.get_read_s3_client()
+        s3 = self.get_read_s3_client
         # s3.meta.events.register('choose-signer.s3.*', botocore.handlers.disable_signing)
 
         success = False
@@ -197,7 +191,7 @@ class S3Annex(GenericAnnex):
         """
         # s3 list
         # if http(s) uri is s3-compliant, then listing is easy
-        s3 = self.get_read_s3_client()
+        s3 = self.get_read_s3_client
 
         # disable signing if accessing anonymously
         s3.meta.events.register('choose-signer.s3.*', botocore.handlers.disable_signing)

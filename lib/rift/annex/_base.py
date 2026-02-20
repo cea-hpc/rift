@@ -40,24 +40,14 @@ import os
 import shutil
 import string
 import sys
-import tarfile
-import tempfile
-import time
-from datetime import datetime as dt
+
 from urllib.parse import urlparse
 
-import boto3
-import botocore
-import requests
-import yaml
-
 from rift import RiftError
-from rift.auth import Auth
-from rift.Config import OrderedLoader
 from rift.TempDir import TempDir
-from rift.annex.Directory import *
-from rift.annex.Server import *
-from rift.annex.S3 import *
+from rift.annex.Directory import DirectoryAnnex
+from rift.annex.Server import ServerAnnex
+from rift.annex.S3 import S3Annex
 
 # List of ASCII printable characters
 _TEXTCHARS = bytearray([9, 10, 13] + list(range(32, 127)))
@@ -223,7 +213,7 @@ class Annex:
 
         logging.info("did not find object in set_annex, will search staging_annex next")
 
-        if self.staging_annex and self.staging_annex.get(identifier, despath):
+        if self.staging_annex and self.staging_annex.get(identifier, destpath):
             return
 
         sys.exit(errno.ENOENT)

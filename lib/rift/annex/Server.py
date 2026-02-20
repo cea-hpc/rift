@@ -39,16 +39,14 @@ import logging
 import os
 import requests
 import shutil
-import string
 import sys
 import tarfile
 import tempfile
-import yaml
 
 from urllib.parse import urlparse
 
 from rift import RiftError
-from rift.annex.GenericAnnex import *
+from rift.annex.GenericAnnex import GenericAnnex
 
 # List of ASCII printable characters
 _TEXTCHARS = bytearray([9, 10, 13] + list(range(32, 127)))
@@ -75,7 +73,7 @@ class ServerAnnex(GenericAnnex):
 
     For now, files are stored in a flat namespace.
     """
-    def __init__(self, config, annex_path=None, staging_annex_path=None):
+    def __init__(self, _, annex_path=None, staging_annex_path=None):
         url = urlparse(annex_path, allow_fragments=False)
         self.annex_path = url.path
 
@@ -143,7 +141,7 @@ class ServerAnnex(GenericAnnex):
         logging.error("List not implemented for server annex")
         sys.exit(errno.ENOTSUP)
 
-    def push(self, filepath):
+    def push(self, filepath, digest):
         """
         Copy file at `filepath' into this repository and replace the original
         file by a fake one pointed to it.
@@ -198,7 +196,10 @@ class ServerAnnex(GenericAnnex):
                                 tar.add(tmp, arcname=basename)
                         except requests.exceptions.RequestException as e:
                             raise RiftError(f"failed to fetch file from annex: {f}: {e}") from e
-                    print(f"> {pkg_nb}/{total_packages} ({round((pkg_nb*100)/total_packages,2)})%\r" , end="")
+
+                    percentage = round((pkg_nb * 100) / total_packages, 2)
+                    print(f"> {pkg_nb}/{total_packages} ({percentage})%\r",
+                          end="")
                     pkg_nb += 1
 
         return output_file
