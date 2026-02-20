@@ -32,32 +32,19 @@
 """
 Implementation of the Annex class for a directory annex
 """
-
-import hashlib
 import logging
 import os
 import shutil
-import string
-import sys
 import tarfile
 import tempfile
 import time
+import yaml
+
 from datetime import datetime as dt
 from urllib.parse import urlparse
 
-import boto3
-import botocore
-import requests
-import yaml
-
-from rift import RiftError
-from rift.auth import Auth
-from rift.Config import OrderedLoader
-from rift.TempDir import TempDir
 from rift.annex.GenericAnnex import GenericAnnex
-
-# List of ASCII printable characters
-_TEXTCHARS = bytearray([9, 10, 13] + list(range(32, 127)))
+from rift.Config import OrderedLoader
 
 # Suffix of metadata filename
 _INFOSUFFIX = '.info'
@@ -66,20 +53,9 @@ def get_digest_from_path(path):
     """Get file id from the givent path"""
     return open(path, encoding='utf-8').read()
 
-
 def get_info_from_digest(digest):
     """Get file info id"""
     return digest + _INFOSUFFIX
-
-def hashfile(filepath, iosize=65536):
-    """Compute a digest of filepath content."""
-    hasher = hashlib.sha3_256()
-    with open(filepath, 'rb') as srcfile:
-        buf = srcfile.read(iosize)
-        while len(buf) > 0:
-            hasher.update(buf)
-            buf = srcfile.read(iosize)
-    return hasher.hexdigest()
 
 
 class DirectoryAnnex(GenericAnnex):
@@ -93,152 +69,28 @@ class DirectoryAnnex(GenericAnnex):
     For now, files are stored in a flat namespace.
     """
     # Read and Write file modes
-    RMODE = 0o644
     WMODE = 0o664
 
-    def __init__(self, config, annex_path=None, staging_annex_path=None):
-        self.restore_cache = config.get('annex_restore_cache')
-        if self.restore_cache is not None:
-            self.restore_cache = os.path.expanduser(self.restore_cache)
+    def __init__(self, config, annex_path, staging_annex_path):
+        url = urlparse(annex_path, allow_fragments=False)
+        self.annex_path = url.path
 
-        self.annex_is_remote = False
-        self.annex_path = annex_path or config.get('annex')
-        url = urlparse(self.annex_path, allow_fragments=False)
-        if url.scheme in ("", "file"):
-            self.annex_type = "file"
-            self.annex_path = url.path
-        else:
-            logging.error("invalid value for config option: 'annex'")
-            logging.error("the annex should be either a file:// path or http(s):// url")
-            sys.exit(1)
-
-        # Staging annex path
-        # should be an http(s) url containing s3 endpoint, bucket, and prefix
-        self.staging_annex_path = staging_annex_path or config.get('staging_annex')
-
-        if self.staging_annex_path is not None:
-            url = urlparse(self.staging_annex_path, allow_fragments=False)
+        if staging_annex_path is not None:
+            url = urlparse(staging_annex_path, allow_fragments=False)
             self.staging_annex_path = url.path
         else:
             self.staging_annex_path = self.annex_path
 
-    @classmethod
-    def is_pointer(cls, filepath):
-        """
-        Return true if content of file at filepath looks like a valid digest
-        identifier.
-        """
-        try:
-            with open(filepath, encoding='utf-8') as fh:
-                identifier = fh.read()
-                # Remove possible trailing whitespace, newline and carriage return
-                # characters.
-                identifier = identifier.rstrip()
-
-        except UnicodeDecodeError:
-            # Binary fileis cannot be decoded with UTF-8
-            return False
-
-        # Check size corresponds to MD5 (32) or SHA3 256 (64).
-        if len(identifier) in (32, 64):
-            return all(byte in string.hexdigits for byte in identifier)
-
-        # If the identifier is not a valid Rift Annex pointer
-        return False
-
-    def make_restore_cache(self):
-        """
-        Creates the restore_cache directory
-        """
-        if not os.path.isdir(self.restore_cache):
-            if os.path.exists(self.restore_cache):
-                msg = f"{self.restore_cache} should be a directory"
-                raise RiftError(msg)
-            os.makedirs(self.restore_cache)
-
-    def get_cached_path(self, path):
-        """
-        Returns the location where 'path' would be in the restore_cache
-        """
-        return os.path.join(self.restore_cache, path)
-
     def get(self, identifier, destpath):
         """Get a file identified by identifier and copy it at destpath."""
-        # 1. See if we can restore from cache
-        if self.restore_cache:
-            self.make_restore_cache()
-            cached_path = self.get_cached_path(identifier)
-            if os.path.isfile(cached_path):
-                logging.debug('Extract %s to %s using restore cache', identifier, destpath)
-                shutil.copyfile(cached_path, destpath)
-                return
-
-        # 2. See if object is in the annex
-        if self.annex_is_remote:
-            # Checking annex, expecting annex path to be an http(s) url
-
-            idpath = os.path.join(self.annex_path, identifier)
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                tmp_file = os.path.join(tmp_dir, identifier)
-                try:
-                    res = requests.get(idpath, stream=True, timeout=15)
-
-                    if res:
-                        with open(tmp_file, 'wb') as f:
-                            # If the annex object to get is a gzip, reading it
-                            # with the standard 'iter_content()' method will
-                            # mistakenly gunzip it, which will cause errors
-                            # later in a build/validate. So instead, we read
-                            # the raw content, and let future gunzip do its job
-                            chunk = res.raw.read(8192)
-                            while chunk:
-                                f.write(chunk)
-                                chunk = res.raw.read(8192)
-
-                            if self.restore_cache:
-                                cached_path = self.get_cached_path(identifier)
-                                shutil.move(tmp_file, cached_path)
-                                logging.debug('Extracting %s to %s', identifier, destpath)
-                                cached_path = self.get_cached_path(identifier)
-                                shutil.copyfile(cached_path, destpath)
-                            else:
-                                logging.debug('Extracting %s to %s', identifier, destpath)
-                                shutil.move(tmp_file, destpath)
-
-                            return
-                    elif res.status_code != 404:
-                        res.raise_for_status()
-                except requests.exceptions.RequestException as e:
-                    raise RiftError(f"failed to fetch file from annex: {idpath}: {e}") from e
-
-            logging.info("did not find object in annex, will search staging_annex next")
-        else:
-            # Checking annex, expecting annex path to be a filesystem location
-            logging.debug('Extracting %s to %s', identifier, destpath)
-            idpath = os.path.join(self.annex_path, identifier)
-            if os.path.exists(idpath):
-                shutil.copyfile(idpath, destpath)
-                return
-
-            logging.info("did not find object in annex, will search staging_annex next")
-
-        # Checking staging_annex location, expecting staging_annex path to be a filesystem location
         logging.debug('Extracting %s to %s', identifier, destpath)
         idpath = os.path.join(self.staging_annex_path, identifier)
         shutil.copyfile(idpath, destpath)
 
-    def get_by_path(self, idpath, destpath):
-        """Get a file identified by idpath content, and copy it at destpath."""
-        self.get(get_digest_from_path(idpath), destpath)
+        return True
 
     def delete(self, identifier):
         """Remove a file from annex, whose ID is `identifier'"""
-
-        if self.annex_is_remote:
-            logging.info("delete functionality is not implemented for remote annex")
-            return False
-
-        # local annex (file://)
         idpath = os.path.join(self.annex_path, identifier)
         logging.debug('Deleting from annex: %s', idpath)
         infopath = get_info_from_digest(idpath)
@@ -247,53 +99,6 @@ class DirectoryAnnex(GenericAnnex):
         os.unlink(idpath)
 
         return True
-
-    def import_dir(self, dirpath, force_temp=False):
-        """
-        Look for identifier files in `dirpath' directory and setup a usable
-        directory.
-
-        It returns a TempDir instance.
-        If `dirpath' does not contain any identifier file, this temporary
-        directory is not created.
-
-        If it does, this temporary directory is created and text files from
-        dirpath and identified ones are copied into it. It is caller
-        responsability to delete it when it does not need it anymore.
-
-        If `force_temp' is True, temporary is always created and source files
-        copied in it even if there is no binary files.
-        """
-        tmpdir = TempDir('sources')
-        if force_temp:
-            tmpdir.create()
-
-        filelist = []
-        if os.path.exists(dirpath):
-            filelist = os.listdir(dirpath)
-
-        textfiles = []
-        for filename in filelist:
-            filepath = os.path.join(dirpath, filename)
-
-            # Is a pointer to a binary file?
-            if self.is_pointer(filepath):
-
-                # We have our first binary file, we need a temp directory
-                if tmpdir.path is None:
-                    tmpdir.create()
-                    for txtpath in textfiles:
-                        shutil.copy(txtpath, tmpdir.path)
-
-                # Copy the real binary content
-                self.get_by_path(filepath, os.path.join(tmpdir.path, filename))
-
-            else:
-                if tmpdir.path is None:
-                    textfiles.append(filepath)
-                else:
-                    shutil.copy(filepath, tmpdir.path)
-        return tmpdir
 
     def _load_metadata(self, digest):
         """
@@ -311,7 +116,7 @@ class DirectoryAnnex(GenericAnnex):
 
         return metadata
 
-    def list_local_annex(self):
+    def list(self):
         """
         Iterate over local annex files, returning for them: filename, size and
         insertion time.
@@ -351,21 +156,12 @@ class DirectoryAnnex(GenericAnnex):
                 meta = os.stat(os.path.join(self.annex_path, filename))
                 yield filename, meta.st_size, insertion_time, [annexed_file]
 
-    def list(self):
-        """
-        Iterate over annex files, returning for them: filename, size and
-        insertion time.
-        """
-        yield from self.list_local_annex()
-
-    def _push_to_local_repo(self, filepath, digest):
+    def push(self, filepath, digest):
         """
         Copy file at `filepath' into this repository and replace the original
         file by a fake one pointed to it.
 
         If the same content is already present, do nothing.
-
-        Push is done to the local repository annex
         """
         destpath = os.path.join(self.staging_annex_path, digest)
         filename = os.path.basename(filepath)
@@ -399,25 +195,6 @@ class DirectoryAnnex(GenericAnnex):
         shutil.copyfile(filepath, destpath)
         os.chmod(destpath, self.WMODE)
 
-    def push(self, filepath):
-        """
-        Copy file at `filepath' into this repository and replace the original
-        file by a fake one pointed to it.
-
-        If the same content is already present, do nothing.
-        """
-        # Compute hash
-        digest = hashfile(filepath)
-
-        self._push_to_local_repo(filepath, digest)
-
-        # Verify permission are correct before updating original file
-        os.chmod(filepath, self.RMODE)
-
-        # Create fake pointer file
-        with open(filepath, 'w', encoding='utf-8') as fakefile:
-            fakefile.write(digest)
-
     def backup(self, packages, output_file=None):
         """
         Create a full backup of package list
@@ -447,26 +224,8 @@ class DirectoryAnnex(GenericAnnex):
                     digest = get_digest_from_path(_file)
                     annex_file = os.path.join(self.annex_path, digest)
                     annex_file_info = os.path.join(self.annex_path, get_info_from_digest(digest))
-
-                    if self.annex_is_remote:
-                        for f in (annex_file, annex_file_info):
-                            basename = os.path.basename(f)
-                            tmp = os.path.join(tmp_dir.name, basename)
-
-                            try:
-                                res = requests.get(f, stream=True, timeout=15)
-                                if res:
-                                    with open(tmp, 'wb') as f:
-                                        for chunk in res.iter_content(chunk_size=8192):
-                                            f.write(chunk)
-                                        tar.add(tmp, arcname=basename)
-                                elif res.status_code != 404:
-                                    res.raise_for_status()
-                            except requests.exceptions.RequestException as e:
-                                raise RiftError(f"failed to fetch file from annex: {f}: {e}") from e
-                    else:
-                        tar.add(annex_file, arcname=os.path.basename(annex_file))
-                        tar.add(annex_file_info, arcname=os.path.basename(annex_file_info))
+                    tar.add(annex_file, arcname=os.path.basename(annex_file))
+                    tar.add(annex_file_info, arcname=os.path.basename(annex_file_info))
 
                     print(f"> {pkg_nb}/{total_packages} ({round((pkg_nb*100)/total_packages,2)})%\r"
                         , end="")

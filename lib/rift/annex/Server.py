@@ -34,29 +34,20 @@ Class and function to detect binary files and push them into a file repository
 called an annex.
 """
 
-import hashlib
+import errno
 import logging
 import os
+import requests
 import shutil
 import string
 import sys
 import tarfile
 import tempfile
-import time
-from datetime import datetime as dt
-from urllib.parse import urlparse
-from abc import ABC, abstractmethod
-import errno
-
-import boto3
-import botocore
-import requests
 import yaml
 
+from urllib.parse import urlparse
+
 from rift import RiftError
-from rift.auth import Auth
-from rift.Config import OrderedLoader
-from rift.TempDir import TempDir
 from rift.annex.GenericAnnex import *
 
 # List of ASCII printable characters
@@ -69,44 +60,9 @@ def get_digest_from_path(path):
     """Get file id from the givent path"""
     return open(path, encoding='utf-8').read()
 
-
 def get_info_from_digest(digest):
     """Get file info id"""
     return digest + _INFOSUFFIX
-
-
-def is_binary(filepath, blocksize=65536):
-    """
-    Look for non printable characters in the first blocksize bytes of filepath.
-
-    Note it only looks for the first bytes. If binary data appeared farther in
-    that file, it will be wrongly detected as a non-binary one.
-
-    If there is a very small number of binary characters compared to the whole
-    file, we still consider it as non-binary to avoid using Annex uselessly.
-    """
-    with open(filepath, 'rb') as srcfile:
-        data = srcfile.read(blocksize)
-        binchars = data.translate(None, _TEXTCHARS)
-        if len(data) == 0:
-            result = False
-        # If there is very few binary characters among the file, consider it as
-        # plain us-ascii.
-        elif float(len(binchars)) / float(len(data)) < 0.01:
-            result = False
-        else:
-            result = bool(binchars)
-    return result
-
-def hashfile(filepath, iosize=65536):
-    """Compute a digest of filepath content."""
-    hasher = hashlib.sha3_256()
-    with open(filepath, 'rb') as srcfile:
-        buf = srcfile.read(iosize)
-        while len(buf) > 0:
-            hasher.update(buf)
-            buf = srcfile.read(iosize)
-    return hasher.hexdigest()
 
 
 class ServerAnnex(GenericAnnex):
@@ -119,74 +75,15 @@ class ServerAnnex(GenericAnnex):
 
     For now, files are stored in a flat namespace.
     """
-    # Read and Write file modes
-    RMODE = 0o644
-    WMODE = 0o664
-
     def __init__(self, config, annex_path=None, staging_annex_path=None):
-        self.restore_cache = config.get('annex_restore_cache')
-        if self.restore_cache is not None:
-            self.restore_cache = os.path.expanduser(self.restore_cache)
+        url = urlparse(annex_path, allow_fragments=False)
+        self.annex_path = url.path
 
-        # Annex path
-        # should be either a filesystem path, or else http/https uri for an s3 endpoint
-        self.annex_type = None
-
-        self.annex_path = annex_path or config.get('annex')
-
-        url = urlparse(self.annex_path, allow_fragments=False)
-        if url.scheme in ("http", "https"):
-            self.annex_is_remote = True
-            self.annex_type = url.scheme
-        else:
-            logging.error("invalid value for config option: 'annex'")
-            logging.error("the annex should be either a file:// path or http(s):// url")
-            sys.exit(1)
-
-        # Staging annex path
-        # should be an http(s) url containing s3 endpoint, bucket, and prefix
-        self.staging_annex_path = staging_annex_path or config.get('staging_annex')
-
-        if self.staging_annex_path is not None:
-            url = urlparse(self.staging_annex_path, allow_fragments=False)
+        if staging_annex_path is not None:
+            url = urlparse(staging_annex_path, allow_fragments=False)
             self.staging_annex_path = url.path
         else:
-            # allow staging_annex_path to default to annex when annex is s3:// or file://
             self.staging_annex_path = self.annex_path
-
-    @classmethod
-    def is_pointer(cls, filepath):
-        """
-        Return true if content of file at filepath looks like a valid digest
-        identifier.
-        """
-        try:
-            with open(filepath, encoding='utf-8') as fh:
-                identifier = fh.read()
-                # Remove possible trailing whitespace, newline and carriage return
-                # characters.
-                identifier = identifier.rstrip()
-
-        except UnicodeDecodeError:
-            # Binary fileis cannot be decoded with UTF-8
-            return False
-
-        # Check size corresponds to MD5 (32) or SHA3 256 (64).
-        if len(identifier) in (32, 64):
-            return all(byte in string.hexdigits for byte in identifier)
-
-        # If the identifier is not a valid Rift Annex pointer
-        return False
-
-    def make_restore_cache(self):
-        """
-        Creates the restore_cache directory
-        """
-        if not os.path.isdir(self.restore_cache):
-            if os.path.exists(self.restore_cache):
-                msg = f"{self.restore_cache} should be a directory"
-                raise RiftError(msg)
-            os.makedirs(self.restore_cache)
 
     def get_cached_path(self, path):
         """
@@ -196,16 +93,6 @@ class ServerAnnex(GenericAnnex):
 
     def get(self, identifier, destpath):
         """Get a file identified by identifier and copy it at destpath."""
-        # 1. See if we can restore from cache
-        if self.restore_cache:
-            self.make_restore_cache()
-            cached_path = self.get_cached_path(identifier)
-            if os.path.isfile(cached_path):
-                logging.debug('Extract %s to %s using restore cache', identifier, destpath)
-                shutil.copyfile(cached_path, destpath)
-                return
-
-        # 2. See if object is in the annex
         # Checking annex, expecting annex path to be an http(s) url
         idpath = os.path.join(self.annex_path, identifier)
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -235,35 +122,25 @@ class ServerAnnex(GenericAnnex):
                             logging.debug('Extracting %s to %s', identifier, destpath)
                             shutil.move(tmp_file, destpath)
 
-                        return
+                        return True
                 elif res.status_code != 404:
                     res.raise_for_status()
             except requests.exceptions.RequestException as e:
                 raise RiftError(f"failed to fetch file from annex: {idpath}: {e}") from e
 
-        logging.info("did not find object in annex, will search staging_annex next")
-
-        # Checking staging_annex location, expecting staging_annex path to be a filesystem location
-        logging.debug('Extracting %s to %s', identifier, destpath)
-        idpath = os.path.join(self.staging_annex_path, identifier)
-        shutil.copyfile(idpath, destpath)
-
-    def get_by_path(self, idpath, destpath):
-        """Get a file identified by idpath content, and copy it at destpath."""
-        self.get(get_digest_from_path(idpath), destpath)
+        return False
 
     def delete(self, identifier):
         """Remove a file from annex, whose ID is `identifier'"""
-
-        if self.annex_is_remote:
-            logging.info("delete functionality is not implemented for remote annex")
-            return False
+        logging.error("Delete not implemented for server annex")
+        sys.exit(errno.ENOTSUP)
 
     def list(self):
         """
         Iterate over annex files, returning for them: filename, size and
         insertion time.
         """
+        logging.error("List not implemented for server annex")
         sys.exit(errno.ENOTSUP)
 
     def push(self, filepath):
@@ -273,13 +150,13 @@ class ServerAnnex(GenericAnnex):
 
         If the same content is already present, do nothing.
         """
+        logging.info("Push not implemented for server annex")
         sys.exit(errno.ENOTSUP)
 
     def backup(self, packages, output_file=None):
         """
         Create a full backup of package list
         """
-
         filelist = []
 
         for package in packages:
@@ -303,7 +180,8 @@ class ServerAnnex(GenericAnnex):
                 for _file in filelist:
                     digest = get_digest_from_path(_file)
                     annex_file = os.path.join(self.annex_path, digest)
-                    annex_file_info = os.path.join(self.annex_path, get_info_from_digest(digest))
+                    annex_file_info = os.path.join(self.annex_path,
+                                                   get_info_from_digest(digest))
 
                     for f in (annex_file, annex_file_info):
                         basename = os.path.basename(f)
@@ -311,13 +189,13 @@ class ServerAnnex(GenericAnnex):
 
                         try:
                             res = requests.get(f, stream=True, timeout=15)
-                            if res:
-                                with open(tmp, 'wb') as f:
-                                    for chunk in res.iter_content(chunk_size=8192):
-                                        f.write(chunk)
-                                    tar.add(tmp, arcname=basename)
-                            elif res.status_code != 404:
+                            if res.status_code != 404:
                                 res.raise_for_status()
+
+                            with open(tmp, 'wb') as f:
+                                for chunk in res.iter_content(chunk_size=8192):
+                                    f.write(chunk)
+                                tar.add(tmp, arcname=basename)
                         except requests.exceptions.RequestException as e:
                             raise RiftError(f"failed to fetch file from annex: {f}: {e}") from e
                     print(f"> {pkg_nb}/{total_packages} ({round((pkg_nb*100)/total_packages,2)})%\r" , end="")

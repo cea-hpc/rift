@@ -124,34 +124,46 @@ class Annex:
     WMODE = 0o664
 
     def __init__(self, config, annex_path=None, staging_annex_path=None):
-        # Annex path
-        # should be either a filesystem path, or else http/https uri for an s3 endpoint
-        self.annex_is_remote = None
-        self.annex_type = None
+        self.restore_cache = config.get('annex_restore_cache')
+        if self.restore_cache is not None:
+            self.restore_cache = os.path.expanduser(self.restore_cache)
 
-        self.annex_path = annex_path or config.get('annex')
+        # Set/Staging annex paths
+        if annex_path is None:
+            annex_path = config.get('annex')
 
-        url = urlparse(self.annex_path, allow_fragments=False)
-        if url.scheme in ("http", "https"):
-            self.annex_is_remote = True
-            self.annex_type = url.scheme
-        elif url.scheme in ("", "file"):
-            self.annex_is_remote = False
-            self.annex_type = "file"
-            self.annex_path = url.path
+        if staging_annex_path is None:
+            staging_annex_path = config.get('staging_annex')
+
+        if staging_annex_path is not None:
+            # Staging annex
+            # XXX: Temporary, an actual conf parameter to specify the type of
+            # annex would be better, for now we say it's only S3
+            self.staging_annex = S3Annex(config, annex_path, staging_annex_path)
         else:
-            logging.error("invalid value for config option: 'annex'")
-            logging.error("the annex should be either a file:// path or http(s):// url")
-            sys.exit(1)
+            staging_annex_path = annex_path
+            self.staging_annex = DirectoryAnnex(config, annex_path,
+                                                annex_path)
 
+        # Set annex
+        # XXX: Would be better with a simple "annex_type" in the conf
         self.annex_is_s3 = config.get('annex_is_s3')
-
-        self.dirannex = (DirectoryAnnex(config, annex_path, staging_annex_path) if
-                        not self.annex_is_s3 else None)
-        self.servannex = (ServerAnnex(config, annex_path, staging_annex_path) if
-                        not self.annex_is_s3 and self.annex_is_remote else None)
-        self.s3annex = (S3Annex(config, annex_path, staging_annex_path) if
-                        self.annex_is_s3 else None)
+        if self.annex_is_s3:
+            # XXX: may be a double of the staging_annex, but that's acceptable
+            # for now
+            self.set_annex = S3Annex(config, annex_path, staging_annex_path)
+        else:
+            url = urlparse(annex_path, allow_fragments=False)
+            if url.scheme in ("http", "https"):
+                self.set_annex = ServerAnnex(config, annex_path,
+                                             staging_annex_path)
+            elif url.scheme in ("", "file"):
+                self.set_annex = DirectoryAnnex(config, annex_path,
+                                                staging_annex_path)
+            else:
+                logging.error("invalid value for config option: 'annex'")
+                logging.error("the annex should be either a file:// path or http(s):// url")
+                sys.exit(1)
 
     @classmethod
     def is_pointer(cls, filepath):
@@ -195,104 +207,34 @@ class Annex:
 
     def get(self, identifier, destpath):
         """Get a file identified by identifier and copy it at destpath."""
-        if self.dirannex:
-            self.dirannex.get(identifier, destpath)
-        elif self.servannex:
-            self.servannex.get(identifier, destpath)
-        else:
-            self.s3annex.get(identifier, destpath)
-
-        return
-
         # 1. See if we can restore from cache
         if self.restore_cache:
             self.make_restore_cache()
             cached_path = self.get_cached_path(identifier)
             if os.path.isfile(cached_path):
-                logging.debug('Extract %s to %s using restore cache', identifier, destpath)
+                logging.debug('Extract %s to %s using restore cache',
+                              identifier, destpath)
                 shutil.copyfile(cached_path, destpath)
                 return
 
-        # 2. See if object is in the annex
-        if self.annex_is_remote:
-            self.servannex.get(identifier, destpath)
-
-            idpath = os.path.join(self.annex_path, identifier)
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                tmp_file = os.path.join(tmp_dir, identifier)
-                try:
-                    res = requests.get(idpath, stream=True, timeout=15)
-
-                    if res:
-                        with open(tmp_file, 'wb') as f:
-                            # If the annex object to get is a gzip, reading it
-                            # with the standard 'iter_content()' method will
-                            # mistakenly gunzip it, which will cause errors
-                            # later in a build/validate. So instead, we read
-                            # the raw content, and let future gunzip do its job
-                            chunk = res.raw.read(8192)
-                            while chunk:
-                                f.write(chunk)
-                                chunk = res.raw.read(8192)
-
-                            if self.restore_cache:
-                                cached_path = self.get_cached_path(identifier)
-                                shutil.move(tmp_file, cached_path)
-                                logging.debug('Extracting %s to %s', identifier, destpath)
-                                cached_path = self.get_cached_path(identifier)
-                                shutil.copyfile(cached_path, destpath)
-                            else:
-                                logging.debug('Extracting %s to %s', identifier, destpath)
-                                shutil.move(tmp_file, destpath)
-
-                            return
-                    elif res.status_code != 404:
-                        res.raise_for_status()
-                except requests.exceptions.RequestException as e:
-                    raise RiftError(f"failed to fetch file from annex: {idpath}: {e}") from e
-
-            logging.info("did not find object in annex, will search staging_annex next")
-
-        # 3. See if object is in the staging_annex location
-        if self.push_over_s3:
-            # Checking annex push, expecting annex push path to be an s3-providing http(s) url
-            key = os.path.join(self.push_s3_prefix, identifier)
-
-            s3 = self.get_push_s3_client()
-            # s3.meta.events.register('choose-signer.s3.*', botocore.handlers.disable_signing)
-
-            success = False
-            with tempfile.NamedTemporaryFile(mode='wb', delete=False) as tmp_file:
-                try:
-                    s3.download_fileobj(self.push_s3_bucket, key, tmp_file)
-                    success = True
-                except botocore.exceptions.ClientError as error:
-                    if error.response['Error']['Code'] == '404':
-                        logging.info("object not found: %s", key)
-                    logging.error(error)
-                except Exception as error:
-                    raise error
-
-            if not success:
-                sys.exit(1)
-
-            logging.debug('Extracting %s to %s', identifier, destpath)
-            if self.restore_cache:
-                cached_path = self.get_cached_path(identifier)
-                shutil.move(tmp_file.name, cached_path)
-                shutil.copyfile(cached_path, destpath)
-            else:
-                shutil.move(tmp_file.name, destpath)
-
+        # 2. See if object is in the set_annex
+        if self.set_annex.get(identifier, destpath):
             return
+
+        logging.info("did not find object in set_annex, will search staging_annex next")
+
+        if self.staging_annex and self.staging_annex.get(identifier, despath):
+            return
+
+        sys.exit(errno.ENOENT)
 
     def get_by_path(self, idpath, destpath):
         """Get a file identified by idpath content, and copy it at destpath."""
         self.get(get_digest_from_path(idpath), destpath)
 
     def delete(self, identifier):
-        """Remove a file from annex, whose ID is `identifier'"""
-        return self.dirannex.delete(identifier)
+        """Remove a file from set_annex, whose ID is `identifier'"""
+        return self.set_annex.delete(identifier)
 
     def import_dir(self, dirpath, force_temp=False):
         """
@@ -343,36 +285,26 @@ class Annex:
 
     def list(self):
         """
-        Iterate over annex files, returning for them: filename, size and
+        Iterate over set_annex files, returning for them: filename, size and
         insertion time.
         """
-        if self.annex_is_s3:
-            yield from self.s3annex.list()
-        elif self.annex_is_remote:
-            yield from self.servannex.list()
-        else:
-            yield from self.dirannex.list()
+        yield from self.set_annex.list()
 
     def push(self, filepath):
         """
-        Copy file at `filepath' into this repository and replace the original
+        Copy file at `filepath' into the staging_annex and replace the original
         file by a fake one pointed to it.
 
         If the same content is already present, do nothing.
         """
-        if self.annex_is_s3:
-            self.s3annex.push(filepath)
-        elif self.annex_is_remote:
-            self.servannex.push(filepath)
-        else:
-            self.dirannex.push(filepath)
-
-        return
+        if self.staging_annex is None:
+            logging.error("Staging annex undefined but necessary for push")
+            sys.exit(errno.EINVAL)
 
         # Compute hash
         digest = hashfile(filepath)
 
-        self._push_to_s3(filepath, digest)
+        self.staging_annex.push(filepath, digest)
 
         # Verify permission are correct before updating original file
         os.chmod(filepath, self.RMODE)
@@ -385,59 +317,4 @@ class Annex:
         """
         Create a full backup of package list
         """
-        if self.annex_is_remote:
-            return self.servannex.backup(packages, output_file)
-        else:
-            return self.dirannex.backup(packages, output_file)
-
-
-        filelist = []
-
-        for package in packages:
-            package.load()
-            for source in package.sources:
-                source_file = os.path.join(package.sourcesdir, source)
-                if self.is_pointer(source_file):
-                    filelist.append(source_file)
-
-        # Manage progession
-        total_packages = len(filelist)
-        pkg_nb = 0
-
-        if output_file is None:
-            output_file = tempfile.NamedTemporaryFile(delete=False,
-                                                      prefix='rift-annex-backup',
-                                                      suffix='.tar.gz').name
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            with tarfile.open(output_file, "w:gz") as tar:
-                for _file in filelist:
-                    digest = get_digest_from_path(_file)
-                    annex_file = os.path.join(self.annex_path, digest)
-                    annex_file_info = os.path.join(self.annex_path, get_info_from_digest(digest))
-
-                    if self.annex_is_remote:
-                        for f in (annex_file, annex_file_info):
-                            basename = os.path.basename(f)
-                            tmp = os.path.join(tmp_dir.name, basename)
-
-                            try:
-                                res = requests.get(f, stream=True, timeout=15)
-                                if res:
-                                    with open(tmp, 'wb') as f:
-                                        for chunk in res.iter_content(chunk_size=8192):
-                                            f.write(chunk)
-                                        tar.add(tmp, arcname=basename)
-                                elif res.status_code != 404:
-                                    res.raise_for_status()
-                            except requests.exceptions.RequestException as e:
-                                raise RiftError(f"failed to fetch file from annex: {f}: {e}") from e
-                    else:
-                        tar.add(annex_file, arcname=os.path.basename(annex_file))
-                        tar.add(annex_file_info, arcname=os.path.basename(annex_file_info))
-
-                    print(f"> {pkg_nb}/{total_packages} ({round((pkg_nb*100)/total_packages,2)})%\r"
-                        , end="")
-                    pkg_nb += 1
-
-        return output_file
+        return self.set_annex.backup(packages, output_file)
