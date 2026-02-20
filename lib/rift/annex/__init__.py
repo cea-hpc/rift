@@ -1,6 +1,5 @@
-#!/usr/bin/env python
 #
-# Copyright (C) 2014-2019 CEA
+# Copyright (C) 2014-2025 CEA
 #
 # This file is part of Rift project.
 #
@@ -31,29 +30,5 @@
 # knowledge of the CeCILL license and that you accept its terms.
 #
 
-from lib.rift import __version__
-from setuptools import setup
-
-setup(name='rift',
-      version=__version__,
-      license='CeCILL-C (French equivalent to LGPLv2+)',
-      description='RPM repository management',
-      author='Aurelien Cedeyn',
-      author_email='aurelien.cedeyn@cea.fr',
-      package_dir={'': 'lib'},
-      packages=['rift', 'rift.package', 'rift.annex'],
-      install_requires=['boto3>=1.18.65', 'xmltodict'],
-      py_modules = ['unidiff'],
-      data_files = [
-                  ('/usr/share/rift/template', ['template/project.conf', 'template/local.conf', 'template/mock.tpl']),
-                  ('/usr/share/rift/template/packages', ['template/packages/modules.yaml', 'template/packages/staff.yaml']),
-                  ('/usr/share/rift/vendor', ['vendor/QEMU_EFI.fd', 'vendor/QEMU_EFI.silent.fd']),
-                  ('/usr/share/doc/rift', ['Changelog', 'AUTHORS']),
-              ],
-      entry_points = {
-        'console_scripts': [
-            'rift = rift.Controller:main',
-        ],
-      }
-     )
-
+"""Module to handle different annexes target."""
+from rift.annex._base import Annex, is_binary
