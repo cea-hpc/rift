@@ -33,59 +33,33 @@
 Class and function to detect binary files and push them into a file repository
 called an annex.
 """
-
-import hashlib
+import boto3
+import botocore
+import errno
 import logging
 import os
 import shutil
-import string
 import sys
-import tarfile
 import tempfile
 import time
+import yaml
+
 from datetime import datetime as dt
 from urllib.parse import urlparse
-import errno
-
-import boto3
-import botocore
-import requests
-import yaml
 
 from rift import RiftError
 from rift.auth import Auth
-from rift.Config import OrderedLoader
-from rift.TempDir import TempDir
 from rift.annex.GenericAnnex import *
-
-# List of ASCII printable characters
-_TEXTCHARS = bytearray([9, 10, 13] + list(range(32, 127)))
 
 # Suffix of metadata filename
 _INFOSUFFIX = '.info'
-
-def get_digest_from_path(path):
-    """Get file id from the givent path"""
-    return open(path, encoding='utf-8').read()
-
 
 def get_info_from_digest(digest):
     """Get file info id"""
     return digest + _INFOSUFFIX
 
 
-def hashfile(filepath, iosize=65536):
-    """Compute a digest of filepath content."""
-    hasher = hashlib.sha3_256()
-    with open(filepath, 'rb') as srcfile:
-        buf = srcfile.read(iosize)
-        while len(buf) > 0:
-            hasher.update(buf)
-            buf = srcfile.read(iosize)
-    return hasher.hexdigest()
-
-
-class Annex:
+class S3Annex(GenericAnnex):
     """
     Repository of binary files.
 
@@ -100,46 +74,25 @@ class Annex:
     WMODE = 0o664
 
     def __init__(self, config, annex_path=None, staging_annex_path=None):
-        self.restore_cache = config.get('annex_restore_cache')
-        if self.restore_cache is not None:
-            self.restore_cache = os.path.expanduser(self.restore_cache)
+        url = urlparse(annex_path, allow_fragments=False)
+        self.annex_path = url.path
 
-        # Annex path
-        # should be either a filesystem path, or else http/https uri for an s3 endpoint
-        self.read_s3_endpoint = None
-        self.read_s3_bucket = None
-        self.read_s3_prefix = None
-        self.read_s3_client = None
-        self.annex_is_remote = None
-        self.annex_type = None
-
-        self.annex_path = annex_path or config.get('annex')
+        if staging_annex_path is not None:
+            url = urlparse(staging_annex_path, allow_fragments=False)
+            self.staging_annex_path = url.path
+        else:
+            self.staging_annex_path = self.annex_path
 
         url = urlparse(self.annex_path, allow_fragments=False)
-        if url.scheme in ("http", "https"):
-            self.annex_is_remote = True
-            self.annex_type = url.scheme
-        else:
-            logging.error("invalid value for config option: 'annex'")
-            logging.error("the annex should be either a file:// path or http(s):// url")
-            sys.exit(1)
+        self.annex_type = url.scheme
 
         self.annex_is_s3 = config.get('annex_is_s3')
         if self.annex_is_s3:
-            if not self.annex_is_remote:
-                msg = "invalid pairing of configuration settings for: annex, annex_is_s3\n"
-                msg += "annex_is_s3 is True but the annex url is not an http(s) url,"
-                msg += " as required in this case"
-                raise RiftError(msg)
-
             parts = url.path.lstrip("/").split("/")
             self.read_s3_endpoint = f"{url.scheme}://{url.netloc}"
             self.read_s3_bucket = parts[0]
             self.read_s3_prefix = "/".join(parts[1:])
 
-        # Staging annex path
-        # should be an http(s) url containing s3 endpoint, bucket, and prefix
-        self.staging_annex_path = staging_annex_path or config.get('staging_annex')
         self.push_over_s3 = False
         self.push_s3_endpoint = None
         self.push_s3_bucket = None
@@ -193,30 +146,6 @@ class Annex:
 
         return self.push_s3_client
 
-    @classmethod
-    def is_pointer(cls, filepath):
-        """
-        Return true if content of file at filepath looks like a valid digest
-        identifier.
-        """
-        try:
-            with open(filepath, encoding='utf-8') as fh:
-                identifier = fh.read()
-                # Remove possible trailing whitespace, newline and carriage return
-                # characters.
-                identifier = identifier.rstrip()
-
-        except UnicodeDecodeError:
-            # Binary fileis cannot be decoded with UTF-8
-            return False
-
-        # Check size corresponds to MD5 (32) or SHA3 256 (64).
-        if len(identifier) in (32, 64):
-            return all(byte in string.hexdigits for byte in identifier)
-
-        # If the identifier is not a valid Rift Annex pointer
-        return False
-
     def get_cached_path(self, path):
         """
         Returns the location where 'path' would be in the restore_cache
@@ -228,7 +157,7 @@ class Annex:
         # Checking annex push, expecting annex push path to be an s3-providing http(s) url
         key = os.path.join(self.push_s3_prefix, identifier)
 
-        s3 = self.get_push_s3_client()
+        s3 = self.get_read_s3_client()
         # s3.meta.events.register('choose-signer.s3.*', botocore.handlers.disable_signing)
 
         success = False
@@ -244,7 +173,7 @@ class Annex:
                 raise error
 
         if not success:
-            sys.exit(1)
+            return False
 
         logging.debug('Extracting %s to %s', identifier, destpath)
         if self.restore_cache:
@@ -254,26 +183,18 @@ class Annex:
         else:
             shutil.move(tmp_file.name, destpath)
 
-        return
-
-    def get_by_path(self, idpath, destpath):
-        """Get a file identified by idpath content, and copy it at destpath."""
-        self.get(get_digest_from_path(idpath), destpath)
+        return True
 
     def delete(self, identifier):
-        """Remove a file from annex, whose ID is `identifier'"""
+        """Remove an object from annex, whose ID is `identifier'"""
+        logging.error("Delete not implemented for S3 annex")
         sys.exit(errno.ENOTSUP)
 
-    def list_s3(self):
+    def list(self):
         """
-        Iterate over s3 files, returning for them: filename, size and
+        Iterate over s3 objects, returning for them: name, size and
         insertion time.
         """
-        if not self.annex_is_s3:
-            # non-S3, remote annex
-            print("list functionality is not implemented for public annex over non-S3, http")
-            return
-
         # s3 list
         # if http(s) uri is s3-compliant, then listing is easy
         s3 = self.get_read_s3_client()
@@ -308,26 +229,12 @@ class Annex:
 
             yield filename, size, insertion_time, names
 
-    def list(self):
+    def push(self, filepath, digest):
         """
-        Iterate over annex files, returning for them: filename, size and
-        insertion time.
-        """
-        if self.annex_is_s3:
-            yield from self.list_s3()
-        elif self.annex_is_remote:
-            yield from self.servannex.list()
-        else:
-            yield from self.dirannex.list()
-
-    def _push_to_s3(self, filepath, digest):
-        """
-        Copy file at `filepath' into this repository and replace the original
+        Copy file at `filepath' into this annex and replace the original
         file by a fake one pointed to it.
 
         If the same content is already present, do nothing.
-
-        Push is done to the S3 annex
         """
         s3 = self.get_push_s3_client()
         if s3 is None:
@@ -371,27 +278,9 @@ class Annex:
 
             s3.upload_file(filepath, self.push_s3_bucket, key)
 
-    def push(self, filepath):
-        """
-        Copy file at `filepath' into this repository and replace the original
-        file by a fake one pointed to it.
-
-        If the same content is already present, do nothing.
-        """
-        # Compute hash
-        digest = hashfile(filepath)
-
-        self._push_to_s3(filepath, digest)
-
-        # Verify permission are correct before updating original file
-        os.chmod(filepath, self.RMODE)
-
-        # Create fake pointer file
-        with open(filepath, 'w', encoding='utf-8') as fakefile:
-            fakefile.write(digest)
-
     def backup(self, packages, output_file=None):
         """
         Create a full backup of package list
         """
+        logging.error("Backup not implemented for S3 annex")
         sys.exit(errno.ENOTSUP)
