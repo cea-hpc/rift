@@ -38,10 +38,11 @@ import shutil
 import tarfile
 import tempfile
 import time
-import yaml
 
 from datetime import datetime as dt
 from urllib.parse import urlparse
+
+import yaml
 
 from rift.annex.GenericAnnex import GenericAnnex
 from rift.Config import OrderedLoader
@@ -71,7 +72,7 @@ class DirectoryAnnex(GenericAnnex):
     # Read and Write file modes
     WMODE = 0o664
 
-    def __init__(self, config, annex_path, staging_annex_path):
+    def __init__(self, _, annex_path, staging_annex_path):
         url = urlparse(annex_path, allow_fragments=False)
         self.annex_path = url.path
 
@@ -218,17 +219,16 @@ class DirectoryAnnex(GenericAnnex):
                                                       prefix='rift-annex-backup',
                                                       suffix='.tar.gz').name
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            with tarfile.open(output_file, "w:gz") as tar:
-                for _file in filelist:
-                    digest = get_digest_from_path(_file)
-                    annex_file = os.path.join(self.annex_path, digest)
-                    annex_file_info = os.path.join(self.annex_path, get_info_from_digest(digest))
-                    tar.add(annex_file, arcname=os.path.basename(annex_file))
-                    tar.add(annex_file_info, arcname=os.path.basename(annex_file_info))
+        with tarfile.open(output_file, "w:gz") as tar:
+            for _file in filelist:
+                digest = get_digest_from_path(_file)
+                annex_file = os.path.join(self.annex_path, digest)
+                annex_file_info = os.path.join(self.annex_path, get_info_from_digest(digest))
+                tar.add(annex_file, arcname=os.path.basename(annex_file))
+                tar.add(annex_file_info, arcname=os.path.basename(annex_file_info))
 
-                    print(f"> {pkg_nb}/{total_packages} ({round((pkg_nb*100)/total_packages,2)})%\r"
-                        , end="")
-                    pkg_nb += 1
+                print(f"> {pkg_nb}/{total_packages} ({round((pkg_nb*100)/total_packages,2)})%\r"
+                      , end="")
+                pkg_nb += 1
 
         return output_file

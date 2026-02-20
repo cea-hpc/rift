@@ -67,7 +67,7 @@ class GenericAnnex(ABC):
         return False
 
     @abstractmethod
-    def get(self, identifier, destpatch):
+    def get(self, identifier, destpath):
         """
         Get the entry from annex whose IS is `identifier` and copy it to
         destpath.
