@@ -9,8 +9,9 @@ import shutil
 import tarfile
 import textwrap
 
-from rift.annex import *
-from rift.annex._base import hashfile, get_info_from_digest, get_digest_from_path
+from rift.annex import Annex
+from rift.annex.Utils import (hashfile, get_info_from_digest, get_digest_from_path, is_pointer, 
+                              is_binary)
 from rift.Config import Config, Staff, Modules
 from rift.package import ProjectPackages
 from rift.package.rpm import PackageRPM
@@ -152,14 +153,14 @@ class AnnexTest(RiftTestCase):
 
         correct_identifier = '7CF2DB5EC261A0FA27A502D3196A6F60'
         temp_file = make_temp_file(correct_identifier)
-        self.assertTrue(Annex.is_pointer(temp_file.name))
+        self.assertTrue(is_pointer(temp_file.name))
 
     def test_is_pointer_valid_identifier_with_line_feed(self):
         """ Test if is_pointer correctly detect a valid identifier with a line feed """
 
         correct_identifier = '7CF2DB5EC261A0FA27A502D3196A6F60\n'
         temp_file = make_temp_file(correct_identifier)
-        self.assertTrue(Annex.is_pointer(temp_file.name))
+        self.assertTrue(is_pointer(temp_file.name))
 
     def test_is_pointer_valid_identifier_with_carriage_return(self):
         """
@@ -168,7 +169,7 @@ class AnnexTest(RiftTestCase):
 
         correct_identifier = '7CF2DB5EC261A0FA27A502D3196A6F60\r\n'
         temp_file = make_temp_file(correct_identifier)
-        self.assertTrue(Annex.is_pointer(temp_file.name))
+        self.assertTrue(is_pointer(temp_file.name))
 
     def test_is_pointer_valid_identifier_with_whitespace(self):
         """
@@ -177,14 +178,14 @@ class AnnexTest(RiftTestCase):
 
         correct_identifier = '7CF2DB5EC261A0FA27A502D3196A6F60 '
         temp_file = make_temp_file(correct_identifier)
-        self.assertTrue(Annex.is_pointer(temp_file.name))
+        self.assertTrue(is_pointer(temp_file.name))
 
     def test_is_pointer_invalid_identifier(self):
         """ Test if is_pointer correctly detect a invalid identifier """
 
         incorrect_identifier = 'rift annex test'
         temp_file = make_temp_file(incorrect_identifier)
-        self.assertFalse(Annex.is_pointer(temp_file.name))
+        self.assertFalse(is_pointer(temp_file.name))
 
     def test_get(self):
         """ Test get method """

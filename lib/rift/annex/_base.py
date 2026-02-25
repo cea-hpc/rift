@@ -34,12 +34,11 @@ Class and function to detect binary files and push them into a file repository
 called an annex.
 """
 
-import hashlib
 import logging
 import os
 import shutil
-import string
 import sys
+import tempfile
 
 from urllib.parse import urlparse
 
@@ -48,55 +47,7 @@ from rift.TempDir import TempDir
 from rift.annex.Directory import DirectoryAnnex
 from rift.annex.Server import ServerAnnex
 from rift.annex.S3 import S3Annex
-
-# List of ASCII printable characters
-_TEXTCHARS = bytearray([9, 10, 13] + list(range(32, 127)))
-
-# Suffix of metadata filename
-_INFOSUFFIX = '.info'
-
-def get_digest_from_path(path):
-    """Get file id from the givent path"""
-    return open(path, encoding='utf-8').read()
-
-
-def get_info_from_digest(digest):
-    """Get file info id"""
-    return digest + _INFOSUFFIX
-
-
-def is_binary(filepath, blocksize=65536):
-    """
-    Look for non printable characters in the first blocksize bytes of filepath.
-
-    Note it only looks for the first bytes. If binary data appeared farther in
-    that file, it will be wrongly detected as a non-binary one.
-
-    If there is a very small number of binary characters compared to the whole
-    file, we still consider it as non-binary to avoid using Annex uselessly.
-    """
-    with open(filepath, 'rb') as srcfile:
-        data = srcfile.read(blocksize)
-        binchars = data.translate(None, _TEXTCHARS)
-        if len(data) == 0:
-            result = False
-        # If there is very few binary characters among the file, consider it as
-        # plain us-ascii.
-        elif float(len(binchars)) / float(len(data)) < 0.01:
-            result = False
-        else:
-            result = bool(binchars)
-    return result
-
-def hashfile(filepath, iosize=65536):
-    """Compute a digest of filepath content."""
-    hasher = hashlib.sha3_256()
-    with open(filepath, 'rb') as srcfile:
-        buf = srcfile.read(iosize)
-        while len(buf) > 0:
-            hasher.update(buf)
-            buf = srcfile.read(iosize)
-    return hasher.hexdigest()
+from rift.annex.Utils import hashfile, is_pointer, get_digest_from_path
 
 
 class Annex:
@@ -154,30 +105,6 @@ class Annex:
                 logging.error("invalid value for config option: 'annex'")
                 logging.error("the annex should be either a file:// path or http(s):// url")
                 sys.exit(1)
-
-    @classmethod
-    def is_pointer(cls, filepath):
-        """
-        Return true if content of file at filepath looks like a valid digest
-        identifier.
-        """
-        try:
-            with open(filepath, encoding='utf-8') as fh:
-                identifier = fh.read()
-                # Remove possible trailing whitespace, newline and carriage return
-                # characters.
-                identifier = identifier.rstrip()
-
-        except UnicodeDecodeError:
-            # Binary fileis cannot be decoded with UTF-8
-            return False
-
-        # Check size corresponds to MD5 (32) or SHA3 256 (64).
-        if len(identifier) in (32, 64):
-            return all(byte in string.hexdigits for byte in identifier)
-
-        # If the identifier is not a valid Rift Annex pointer
-        return False
 
     def make_restore_cache(self):
         """
@@ -255,7 +182,7 @@ class Annex:
             filepath = os.path.join(dirpath, filename)
 
             # Is a pointer to a binary file?
-            if self.is_pointer(filepath):
+            if is_pointer(filepath):
 
                 # We have our first binary file, we need a temp directory
                 if tmpdir.path is None:
@@ -307,4 +234,18 @@ class Annex:
         """
         Create a full backup of package list
         """
-        return self.set_annex.backup(packages, output_file)
+        filelist = []
+
+        for package in packages:
+            package.load()
+            for source in package.sources:
+                source_file = os.path.join(package.sourcesdir, source)
+                if is_pointer(source_file):
+                    filelist.append(source_file)
+
+        if output_file is None:
+            output_file = tempfile.NamedTemporaryFile(delete=False,
+                                                      prefix='rift-annex-backup',
+                                                      suffix='.tar.gz').name
+
+        return self.set_annex.backup(filelist, output_file)

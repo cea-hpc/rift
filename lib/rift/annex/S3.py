@@ -51,13 +51,7 @@ import yaml
 from rift import RiftError
 from rift.auth import Auth
 from rift.annex.GenericAnnex import GenericAnnex
-
-# Suffix of metadata filename
-_INFOSUFFIX = '.info'
-
-def get_info_from_digest(digest):
-    """Get file info id"""
-    return digest + _INFOSUFFIX
+from rift.annex.Utils import get_info_from_digest, _INFOSUFFIX
 
 
 class S3Annex(GenericAnnex):
@@ -70,10 +64,6 @@ class S3Annex(GenericAnnex):
 
     For now, files are stored in a flat namespace.
     """
-    # Read and Write file modes
-    RMODE = 0o644
-    WMODE = 0o664
-
     def __init__(self, config, annex_path=None, staging_annex_path=None):
         url = urlparse(annex_path, allow_fragments=False)
         self.annex_path = url.path
@@ -272,7 +262,7 @@ class S3Annex(GenericAnnex):
 
             s3.upload_file(filepath, self.push_s3_bucket, key)
 
-    def backup(self, packages, output_file=None):
+    def backup(self, filelist, output_file):
         """
         Create a full backup of package list
         """

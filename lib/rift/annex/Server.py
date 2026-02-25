@@ -47,20 +47,8 @@ from urllib.parse import urlparse
 
 from rift import RiftError
 from rift.annex.GenericAnnex import GenericAnnex
-
-# List of ASCII printable characters
-_TEXTCHARS = bytearray([9, 10, 13] + list(range(32, 127)))
-
-# Suffix of metadata filename
-_INFOSUFFIX = '.info'
-
-def get_digest_from_path(path):
-    """Get file id from the givent path"""
-    return open(path, encoding='utf-8').read()
-
-def get_info_from_digest(digest):
-    """Get file info id"""
-    return digest + _INFOSUFFIX
+from rift.annex.Utils import ( get_digest_from_path, get_info_from_digest,
+                               _INFOSUFFIX )
 
 
 class ServerAnnex(GenericAnnex):
@@ -151,27 +139,13 @@ class ServerAnnex(GenericAnnex):
         logging.info("Push not implemented for server annex")
         sys.exit(errno.ENOTSUP)
 
-    def backup(self, packages, output_file=None):
+    def backup(self, filelist, output_file):
         """
         Create a full backup of package list
         """
-        filelist = []
-
-        for package in packages:
-            package.load()
-            for source in package.sources:
-                source_file = os.path.join(package.sourcesdir, source)
-                if self.is_pointer(source_file):
-                    filelist.append(source_file)
-
         # Manage progession
         total_packages = len(filelist)
         pkg_nb = 0
-
-        if output_file is None:
-            output_file = tempfile.NamedTemporaryFile(delete=False,
-                                                      prefix='rift-annex-backup',
-                                                      suffix='.tar.gz').name
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             with tarfile.open(output_file, "w:gz") as tar:

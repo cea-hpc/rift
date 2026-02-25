@@ -45,18 +45,9 @@ from urllib.parse import urlparse
 import yaml
 
 from rift.annex.GenericAnnex import GenericAnnex
+from rift.annex.Utils import ( get_digest_from_path, get_info_from_digest,
+                               _INFOSUFFIX )
 from rift.Config import OrderedLoader
-
-# Suffix of metadata filename
-_INFOSUFFIX = '.info'
-
-def get_digest_from_path(path):
-    """Get file id from the givent path"""
-    return open(path, encoding='utf-8').read()
-
-def get_info_from_digest(digest):
-    """Get file info id"""
-    return digest + _INFOSUFFIX
 
 
 class DirectoryAnnex(GenericAnnex):
@@ -196,28 +187,13 @@ class DirectoryAnnex(GenericAnnex):
         shutil.copyfile(filepath, destpath)
         os.chmod(destpath, self.WMODE)
 
-    def backup(self, packages, output_file=None):
+    def backup(self, filelist, output_file):
         """
         Create a full backup of package list
         """
-
-        filelist = []
-
-        for package in packages:
-            package.load()
-            for source in package.sources:
-                source_file = os.path.join(package.sourcesdir, source)
-                if self.is_pointer(source_file):
-                    filelist.append(source_file)
-
         # Manage progession
         total_packages = len(filelist)
         pkg_nb = 0
-
-        if output_file is None:
-            output_file = tempfile.NamedTemporaryFile(delete=False,
-                                                      prefix='rift-annex-backup',
-                                                      suffix='.tar.gz').name
 
         with tarfile.open(output_file, "w:gz") as tar:
             for _file in filelist:
@@ -227,8 +203,9 @@ class DirectoryAnnex(GenericAnnex):
                 tar.add(annex_file, arcname=os.path.basename(annex_file))
                 tar.add(annex_file_info, arcname=os.path.basename(annex_file_info))
 
-                print(f"> {pkg_nb}/{total_packages} ({round((pkg_nb*100)/total_packages,2)})%\r"
-                      , end="")
+                percentage = round((pkg_nb * 100) / total_packages, 2)
+                print(f"> {pkg_nb}/{total_packages} ({percentage})%\r",
+                      end="")
                 pkg_nb += 1
 
         return output_file
