@@ -62,14 +62,7 @@ class ServerAnnex(GenericAnnex):
     For now, files are stored in a flat namespace.
     """
     def __init__(self, _, annex_path=None, staging_annex_path=None):
-        url = urlparse(annex_path, allow_fragments=False)
-        self.annex_path = url.path
-
-        if staging_annex_path is not None:
-            url = urlparse(staging_annex_path, allow_fragments=False)
-            self.staging_annex_path = url.path
-        else:
-            self.staging_annex_path = self.annex_path
+        super().__init__(annex_path, staging_annex_path)
 
     def get_cached_path(self, path):
         """

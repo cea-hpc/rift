@@ -34,14 +34,23 @@ Generic class and functions to detect binary files and push them into a
 repository called an annex.
 """
 
-import string
-
 from abc import ABC, abstractmethod
+from urllib.parse import urlparse
 
 class GenericAnnex(ABC):
     """
-    XXX: name or description not final
+    Generic implemention of an annex and the methods it should define
     """
+    def __init__(self, annex_path, staging_annex_path):
+        url = urlparse(annex_path, allow_fragments=False)
+        self.annex_path = url.path
+
+        if staging_annex_path is not None:
+            url = urlparse(staging_annex_path, allow_fragments=False)
+            self.staging_annex_path = url.path
+        else:
+            self.staging_annex_path = self.annex_path
+
     @abstractmethod
     def get(self, identifier, destpath):
         """
