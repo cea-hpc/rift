@@ -34,13 +34,12 @@ Class and function to detect binary files and push them into a file repository
 called an annex.
 """
 
+import errno
 import logging
 import os
 import shutil
 import sys
 import tempfile
-
-from urllib.parse import urlparse
 
 from rift import RiftError
 from rift.TempDir import TempDir
@@ -64,9 +63,9 @@ class Annex:
     RMODE = 0o644
 
     def __init__(self, config, set_annex=None, staging_annex=None):
-         self.restore_cache = config.get('annex_restore_cache')
-         if self.restore_cache is not None:
-             self.restore_cache = os.path.expanduser(self.restore_cache)
+        self.restore_cache = config.get('annex_restore_cache')
+        if self.restore_cache is not None:
+            self.restore_cache = os.path.expanduser(self.restore_cache)
 
          # Set/Staging annex paths
         if set_annex is None:
@@ -116,6 +115,11 @@ class Annex:
         """
         return os.path.join(self.restore_cache, path)
 
+    def copy_to_cache(self, identifier, new_file_path):
+        """Copy a newly-obtained file to the cache"""
+        cached_path = self.get_cached_path(identifier)
+        shutil.copyfile(new_file_path, cached_path)
+
     def get(self, identifier, destpath):
         """Get a file identified by identifier and copy it at destpath."""
         # 1. See if we can restore from cache
@@ -130,11 +134,17 @@ class Annex:
 
         # 2. See if object is in the set_annex
         if self.set_annex.get(identifier, destpath):
+            if self.restore_cache:
+                self.copy_to_cache(identifier, destpath)
+
             return
 
         logging.info("did not find object in set_annex, will search staging_annex next")
 
         if self.staging_annex and self.staging_annex.get(identifier, destpath):
+            if self.restore_cache:
+                self.copy_to_cache(identifier, destpath)
+
             return
 
         sys.exit(errno.ENOENT)

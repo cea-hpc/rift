@@ -43,7 +43,7 @@ from rpm import error as RpmError # pylint: disable=no-name-in-module
 from unidiff import parse_unidiff
 
 from rift import RiftError, __version__
-from rift.annex import Annex, is_binary
+from rift.annex import Annex, is_binary, is_pointer
 from rift.Config import Config, Staff, Modules, _DEFAULT_VARIANT
 from rift.Gerrit import Review
 from rift.auth import Auth
@@ -367,7 +367,7 @@ def action_annex(args, config, staff, modules):
 
     elif args.annex_cmd == 'push':
         for srcfile in args.files:
-            if Annex.is_pointer(srcfile):
+            if is_pointer(srcfile):
                 message(f"{srcfile}: already pointing to annex")
             elif is_binary(srcfile):
                 annex.push(srcfile)
@@ -377,7 +377,7 @@ def action_annex(args, config, staff, modules):
 
     elif args.annex_cmd == 'restore':
         for srcfile in args.files:
-            if Annex.is_pointer(srcfile):
+            if is_pointer(srcfile):
                 annex.get_by_path(srcfile, srcfile)
                 message(f"{srcfile}: fetched from annex")
             else:

@@ -37,18 +37,16 @@ called an annex.
 import errno
 import logging
 import os
-import requests
 import shutil
 import sys
 import tarfile
 import tempfile
 
-from urllib.parse import urlparse
+import requests
 
 from rift import RiftError
 from rift.annex.GenericAnnex import GenericAnnex
-from rift.annex.Utils import ( get_digest_from_path, get_info_from_digest,
-                               _INFOSUFFIX )
+from rift.annex.Utils import get_digest_from_path, get_info_from_digest
 
 
 class ServerAnnex(GenericAnnex):
@@ -62,7 +60,7 @@ class ServerAnnex(GenericAnnex):
     For now, files are stored in a flat namespace.
     """
     def __init__(self, _, annex_path):
-        super().__init__(annex_path)
+        self.annex_path = annex_path
 
     def get_cached_path(self, path):
         """
@@ -91,15 +89,9 @@ class ServerAnnex(GenericAnnex):
                             f.write(chunk)
                             chunk = res.raw.read(8192)
 
-                        if self.restore_cache:
-                            cached_path = self.get_cached_path(identifier)
-                            shutil.move(tmp_file, cached_path)
-                            logging.debug('Extracting %s to %s', identifier, destpath)
-                            cached_path = self.get_cached_path(identifier)
-                            shutil.copyfile(cached_path, destpath)
-                        else:
-                            logging.debug('Extracting %s to %s', identifier, destpath)
-                            shutil.move(tmp_file, destpath)
+                        logging.debug('Extracting %s to %s',
+                                      identifier, destpath)
+                        shutil.move(tmp_file, destpath)
 
                         return True
                 elif res.status_code != 404:

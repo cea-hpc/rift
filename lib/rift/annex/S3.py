@@ -65,7 +65,7 @@ class S3Annex(GenericAnnex):
     For now, files are stored in a flat namespace.
     """
     def __init__(self, config, annex_path):
-        super().__init__(annex_path)
+        self.annex_path = annex_path
 
         url = urlparse(self.annex_path, allow_fragments=False)
         self.annex_type = url.scheme
@@ -75,6 +75,7 @@ class S3Annex(GenericAnnex):
         self.read_s3_bucket = parts[0]
         self.read_s3_prefix = "/".join(parts[1:])
 
+        self.push_s3_client = None
         self.push_s3_endpoint = self.read_s3_endpoint
         self.push_s3_bucket = self.read_s3_bucket
         self.push_s3_prefix = self.read_s3_prefix
@@ -129,12 +130,7 @@ class S3Annex(GenericAnnex):
             return False
 
         logging.debug('Extracting %s to %s', identifier, destpath)
-        if self.restore_cache:
-            cached_path = self.get_cached_path(identifier)
-            shutil.move(tmp_file.name, cached_path)
-            shutil.copyfile(cached_path, destpath)
-        else:
-            shutil.move(tmp_file.name, destpath)
+        shutil.move(tmp_file.name, destpath)
 
         return True
 

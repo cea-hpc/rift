@@ -41,10 +41,6 @@ class GenericAnnex(ABC):
     """
     Generic implemention of an annex and the methods it should define
     """
-    def __init__(self, annex_path):
-        url = urlparse(annex_path, allow_fragments=False)
-        self.annex_path = url.path
-
     @abstractmethod
     def get(self, identifier, destpath):
         """

@@ -36,7 +36,6 @@ import logging
 import os
 import shutil
 import tarfile
-import tempfile
 import time
 
 from datetime import datetime as dt
@@ -64,7 +63,8 @@ class DirectoryAnnex(GenericAnnex):
     WMODE = 0o664
 
     def __init__(self, _, annex_path):
-        super().__init__(annex_path)
+        url = urlparse(annex_path, allow_fragments=False)
+        self.annex_path = url.path
 
     def get(self, identifier, destpath):
         """Get a file identified by identifier and copy it at destpath."""
