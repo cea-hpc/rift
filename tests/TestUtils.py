@@ -211,7 +211,9 @@ class RiftProjectTestCase(RiftTestCase):
         # ./project.conf
         self.projectconf = os.path.join(self.projdir, Config._DEFAULT_FILES[0])
         with open(self.projectconf, "w") as conf:
-            conf.write("annex:           %s\n" % self.annexdir)
+            conf.write("set_annex:\n")
+            conf.write("  address:       %s\n" % self.annexdir)
+            conf.write("  type:          directory\n")
             conf.write("vm:\n")
             conf.write("  image:         test.img\n")
             conf.write("repos:           {}\n")
