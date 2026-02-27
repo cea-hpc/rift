@@ -50,8 +50,8 @@ import yaml
 
 from rift import RiftError
 from rift.auth import Auth
-from rift.annex.GenericAnnex import GenericAnnex
-from rift.annex.Utils import get_info_from_digest, _INFOSUFFIX
+from rift.annex.generic_annex import GenericAnnex
+from rift.annex.utils import get_info_from_digest, _INFOSUFFIX
 
 
 class S3Annex(GenericAnnex):
@@ -71,6 +71,7 @@ class S3Annex(GenericAnnex):
         self.annex_type = url.scheme
 
         parts = url.path.lstrip("/").split("/")
+        self.read_s3_client = None
         self.read_s3_endpoint = f"{url.scheme}://{url.netloc}"
         self.read_s3_bucket = parts[0]
         self.read_s3_prefix = "/".join(parts[1:])
@@ -111,7 +112,7 @@ class S3Annex(GenericAnnex):
         # Checking annex push, expecting annex push path to be an s3-providing http(s) url
         key = os.path.join(self.push_s3_prefix, identifier)
 
-        s3 = self.get_read_s3_client
+        s3 = self.get_push_s3_client()
         # s3.meta.events.register('choose-signer.s3.*', botocore.handlers.disable_signing)
 
         success = False
@@ -146,7 +147,7 @@ class S3Annex(GenericAnnex):
         """
         # s3 list
         # if http(s) uri is s3-compliant, then listing is easy
-        s3 = self.get_read_s3_client
+        s3 = self.get_push_s3_client()
 
         # disable signing if accessing anonymously
         s3.meta.events.register('choose-signer.s3.*', botocore.handlers.disable_signing)

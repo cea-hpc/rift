@@ -43,8 +43,8 @@ from urllib.parse import urlparse
 
 import yaml
 
-from rift.annex.GenericAnnex import GenericAnnex
-from rift.annex.Utils import ( get_digest_from_path, get_info_from_digest,
+from rift.annex.generic_annex import GenericAnnex
+from rift.annex.utils import ( get_digest_from_path, get_info_from_digest,
                                _INFOSUFFIX )
 from rift.Config import OrderedLoader
 

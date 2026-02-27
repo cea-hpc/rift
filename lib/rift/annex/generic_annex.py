@@ -35,7 +35,6 @@ repository called an annex.
 """
 
 from abc import ABC, abstractmethod
-from urllib.parse import urlparse
 
 class GenericAnnex(ABC):
     """

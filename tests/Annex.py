@@ -10,7 +10,7 @@ import tarfile
 import textwrap
 
 from rift.annex import Annex
-from rift.annex.Utils import (hashfile, get_info_from_digest, get_digest_from_path, is_pointer, 
+from rift.annex.utils import (hashfile, get_info_from_digest, get_digest_from_path, is_pointer,
                               is_binary)
 from rift.Config import Config, Staff, Modules
 from rift.package import ProjectPackages

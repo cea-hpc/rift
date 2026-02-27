@@ -43,10 +43,10 @@ import tempfile
 
 from rift import RiftError
 from rift.TempDir import TempDir
-from rift.annex.Directory import DirectoryAnnex
-from rift.annex.Server import ServerAnnex
-from rift.annex.S3 import S3Annex
-from rift.annex.Utils import hashfile, is_pointer, get_digest_from_path
+from rift.annex.directory import DirectoryAnnex
+from rift.annex.server import ServerAnnex
+from rift.annex.s3 import S3Annex
+from rift.annex.utils import hashfile, is_pointer, get_digest_from_path
 
 
 class Annex:
@@ -92,9 +92,9 @@ class Annex:
         annex_type = annex.get('type')
         if annex_type == 'directory':
             return DirectoryAnnex(config, annex.get('address'))
-        elif annex_type == 'server':
+        if annex_type == 'server':
             return ServerAnnex(config, annex.get('address'))
-        elif annex_type == 's3':
+        if annex_type == 's3':
             return S3Annex(config, annex.get('address'))
 
         return None
