@@ -18,12 +18,14 @@ class ProjectPackagesTest(RiftProjectTestCase):
     def fill_project_dir(self, packages):
         open(os.path.join(self.projdir, Config._DEFAULT_FILES[0]), 'a').close()
         packages_dir = os.path.join(self.projdir, self.config.get('packages_dir'))
-        for package in packages:
+        for package, formats in packages.items():
             os.mkdir(os.path.join(packages_dir, package))
+            if 'rpm' in formats:
+                open(os.path.join(packages_dir, package, f"{package}.spec"), 'a').close()
 
     def test_list(self):
         """ Test ProjectPackages list() """
-        packages_names = ['foo', 'bar']
+        packages_names = {'foo': ['rpm'], 'bar': ['rpm']}
         self.fill_project_dir(packages_names)
         packages = list(ProjectPackages.list(self.config, self.staff, self.modules))
         for package in packages:
@@ -33,12 +35,12 @@ class ProjectPackagesTest(RiftProjectTestCase):
 
     def test_list_empty(self):
         """ Test ProjectPackages list() empty """
-        self.fill_project_dir([])
+        self.fill_project_dir({})
         self.assertCountEqual(ProjectPackages.list(self.config, self.staff, self.modules), [])
 
     def test_list_with_names(self):
         """ Test ProjectPackages list() with names"""
-        packages_names = ['foo', 'bar']
+        packages_names = {'foo': ['rpm'], 'bar': ['rpm']}
         list_names = ['bar', 'baz']
         self.fill_project_dir(packages_names)
         packages = list(ProjectPackages.list(self.config, self.staff, self.modules, list_names))
@@ -52,13 +54,17 @@ class ProjectPackagesTest(RiftProjectTestCase):
 
     def test_get_virtual(self):
         """ Test ProjectPackages get() virtual package"""
-        package = ProjectPackages.get("pkg", self.config, self.staff, self.modules)
-        self.assertIsInstance(package, PackageVirtual)
-        self.assertEqual(package.name, "pkg")
+        packages = ProjectPackages.get('pkg', self.config, self.staff, self.modules)
+        self.assertIsInstance(packages, list)
+        self.assertEqual(len(packages), 1)
+        self.assertIsInstance(packages[0], PackageVirtual)
+        self.assertEqual(packages[0].name, 'pkg')
 
     def test_get_rpm(self):
         """ Test ProjectPackages get() RPM package"""
-        self.fill_project_dir(['pkg'])
-        package = ProjectPackages.get("pkg", self.config, self.staff, self.modules)
-        self.assertIsInstance(package, PackageRPM)
-        self.assertEqual(package.name, "pkg")
+        self.fill_project_dir({'pkg': ['rpm']})
+        packages = ProjectPackages.get('pkg', self.config, self.staff, self.modules)
+        self.assertIsInstance(packages, list)
+        self.assertEqual(len(packages), 1)
+        self.assertIsInstance(packages[0], PackageRPM)
+        self.assertEqual(packages[0].name, 'pkg')

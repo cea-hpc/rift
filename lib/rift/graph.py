@@ -61,7 +61,10 @@ class PackageDependencyNode:
         """
         # Check depends in info.yaml
         if self.package.depends is not None:
-            return node.package.name in self.package.depends
+            return (
+                node.package.format == self.package.format and
+                node.package.name in self.package.depends
+            )
         # If dependencies are not defined in info.yaml, look at build requires
         # and produced subpackages found in spec file.
         return any(
@@ -359,7 +362,10 @@ class PackagesDependencyGraph:
         """
         self.path = []  # Start with empty path
         for node in self.nodes:
-            if node.package.name == package.name:
+            if (
+                node.package.name == package.name and
+                node.package.format == package.format
+            ):
                 return self._solve(node, "User request")
 
         # Package not found in graph, return empty list.

@@ -43,8 +43,7 @@ class PatchTest(RiftProjectTestCase):
         """ Test detect removed package in patch"""
         pkgname = 'pkg'
         pkgvers = 1.0
-        self.make_pkg(name=pkgname, version=pkgvers)
-        pkgsrc = os.path.join('packages', 'pkgname', 'sources',
+        pkgsrc = os.path.join('packages', pkgname, 'sources',
                               '{0}-{1}.tar.gz'.format(pkgname, pkgvers))
         patch = make_temp_file("""
 diff --git a/packages/pkg/info.yaml b/packages/pkg/info.yaml
@@ -105,7 +104,8 @@ index 43bf48d..0000000
             )
             self.assertEqual(len(updated), 0)
             self.assertEqual(len(removed), 1)
-            self.assertTrue('pkg' in removed.keys())
+            self.assertEqual(removed[0].name, 'pkg')
+            self.assertEqual(removed[0].format, '_virtual')
 
     def test_tests_directory(self):
         """ Test if package tests directory structure is fine """
@@ -130,7 +130,8 @@ index 0000000..68344bf
             )
             self.assertEqual(len(updated), 1)
             self.assertEqual(len(removed), 0)
-            self.assertTrue('pkg' in updated.keys())
+            self.assertEqual(updated[0].name, 'pkg')
+            self.assertEqual(updated[0].format, 'rpm')
 
     def test_invalid_file(self):
         """Test invalid project file is detected in patch"""
@@ -352,7 +353,8 @@ rename to packages/pkgnew/sources/pkgnew-1.0.tar.gz
             )
         self.assertEqual(len(updated), 1)
         self.assertEqual(len(removed), 0)
-        self.assertTrue('pkgnew' in updated.keys())
+        self.assertEqual(updated[0].name, 'pkgnew')
+        self.assertEqual(updated[0].format, 'rpm')
 
     def test_rename_and_update_package(self):
         """ Test if renaming and updating a package trigger a build """
@@ -399,4 +401,5 @@ rename to packages/pkgnew/sources/pkgnew-1.0.tar.gz
             )
         self.assertEqual(len(updated), 1)
         self.assertEqual(len(removed), 0)
-        self.assertTrue('pkgnew' in updated.keys())
+        self.assertEqual(updated[0].name, 'pkgnew')
+        self.assertEqual(updated[0].format, 'rpm')

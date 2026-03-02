@@ -25,6 +25,7 @@ from rift.Controller import (
 from rift.Config import _DEFAULT_VARIANT
 from rift.package.rpm import PackageRPM, ActionableArchPackageRPM
 from rift.TestResults import TestResults, TestCase
+from rift.package._virtual import PackageVirtual
 from rift.RPM import RPM, Spec
 from rift import RiftError, DeclError
 
@@ -355,7 +356,7 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
                               mock_validate_pkgs, mock_remove_packages):
         """ Test validdiff action calls expected functions """
         mock_get_packages_from_patch.return_value = (
-            {'pkg': PackageRPM('pkg', self.config, self.staff, self.modules)}, {}
+            [PackageRPM('pkg', self.config, self.staff, self.modules)], []
         )
         self.assertEqual(main(['validdiff', '/dev/null']), 0)
         mock_get_packages_from_patch.assert_called_once()
@@ -383,7 +384,7 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
 
         # Define a list of packages to remove
         pkgs_to_remove = [
-            PackageRPM('pkg', self.config, self.staff, self.modules)
+            PackageVirtual('pkg', self.config, self.staff, self.modules)
         ]
 
         # Define working_repo in configuration
@@ -406,7 +407,10 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
     @patch('rift.Controller.ProjectArchRepositories')
     def test_remove_packages_noop(self, mock_parepository_class):
         """remove_packages() is noop if no publish arg or no working_repo"""
-        pkgs_to_remove = []
+
+        pkgs_to_remove = [
+            PackageVirtual('pkg', self.config, self.staff, self.modules)
+        ]
         args = Mock()
 
         # publish is False, remove_packages() must be noop

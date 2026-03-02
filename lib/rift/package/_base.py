@@ -103,6 +103,9 @@ class Package(ABC):
         self.changelog_time = None
         self.buildrequires = None
 
+    def __eq__(self, other):
+        return self.name == other.name and self.format == other.format
+
     def check(self):
         """Load package and check info."""
         message('Validate package info...')

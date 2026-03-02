@@ -45,11 +45,11 @@ from rift.Config import Staff, Modules
 
 def get_packages_from_patch(patch, config, modules, staff):
     """
-    Return 2-tuple of dicts of updated and removed packages extracted from given
+    Return 2-tuple of lists of updated and removed packages extracted from given
     patch.
     """
-    updated = {}
-    removed = {}
+    updated = []
+    removed = []
     patchedfiles = parse_unidiff(patch)
     if not patchedfiles:
         raise RiftError("Invalid patch detected (empty commit ?)")
@@ -63,24 +63,24 @@ def get_packages_from_patch(patch, config, modules, staff):
         )
         if not modifies_packages:
             continue
-        pkg = _patched_file_updated_package(
-            patchedfile,
-            config=config,
-            modules=modules,
-            staff=staff
-        )
-        if pkg is not None and pkg not in updated:
-            logging.info('Patch updates package %s', pkg.name)
-            updated[pkg.name] = pkg
-        pkg = _patched_file_removed_package(
-            patchedfile,
-            config=config,
-            modules=modules,
-            staff=staff
-        )
-        if pkg is not None and pkg not in removed:
-            logging.info('Patch deletes package %s', pkg.name)
-            removed[pkg.name] = pkg
+        for pkg in _patched_file_updated_packages(
+                patchedfile,
+                config=config,
+                modules=modules,
+                staff=staff
+            ):
+            if pkg not in updated:
+                logging.info('Patch updates package %s[%s]', pkg.name, pkg.format)
+                updated.append(pkg)
+        for pkg in _patched_file_removed_packages(
+                patchedfile,
+                config=config,
+                modules=modules,
+                staff=staff
+            ):
+            if pkg not in removed:
+                logging.info('Patch deletes package %s[%s]', pkg.name, pkg.format)
+                removed.append(pkg)
 
     return updated, removed
 
@@ -140,9 +140,11 @@ def _validate_patched_file(patched_file, config, modules, staff):
     return True
 
 
-def _patched_file_updated_package(patched_file, config, modules, staff):
+def _patched_file_updated_packages(patched_file, config, modules, staff):
     """
-    Return Package updated by patched_file, or None if either:
+    Return list of PackageBase children updated by patched_file. An empty list
+    is returned if no package is updated. Package is considered updated except
+    when:
 
     - The patched_file modifies a package file that does not impact package
       build result.
@@ -158,56 +160,75 @@ def _patched_file_updated_package(patched_file, config, modules, staff):
 
     if patched_file.is_deleted_file:
         logging.debug('Ignoring removed file: %s', filepath)
-        return None
+        return []
 
     # Drop config.get('packages_dir') from list
     names.pop(0)
 
-    pkg = ProjectPackages.get(names.pop(0), config, staff, modules)
+    # Get the specified package in all its supported formats
+    pkgs = ProjectPackages.get(names.pop(0), config, staff, modules)
 
-    # info.yaml
-    if fullpath == pkg.metafile:
-        logging.info('Ignoring meta file')
-        return None
+    result = []
 
-    # README file
-    if fullpath in pkg.docfiles:
-        logging.debug('Ignoring documentation file: %s', fullpath)
-        return None
+    known_file = False
 
-    # backup buildfile
-    if fullpath == f"{pkg.buildfile}.orig":
-        logging.debug('Ignoring backup buildfile')
-        return None
+    for pkg in pkgs:
 
-    # buildfile
-    if fullpath == pkg.buildfile:
-        logging.info('Detected buildfile file')
+        # info.yaml
+        if fullpath == pkg.metafile:
+            logging.info('Ignoring meta file')
+            known_file = True
+            continue
 
-    # rpmlint config file
-    elif names in [RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2]:
-        logging.debug('Detecting rpmlint config file')
+        # README file
+        if fullpath in pkg.docfiles:
+            logging.debug('Ignoring documentation file: %s', fullpath)
+            known_file = True
+            continue
 
-    # sources/
-    elif fullpath.startswith(pkg.sourcesdir) and len(names) == 2:
-        logging.debug('Detecting source file: %s', names[1])
+        # backup buildfile
+        if fullpath == f"{pkg.buildfile}.orig":
+            logging.debug('Ignoring backup buildfile')
+            known_file = True
+            continue
 
-    # tests/
-    elif fullpath.startswith(pkg.testsdir):
-        logging.debug('Detecting test script: %s', filepath)
+        # buildfile
+        if fullpath == pkg.buildfile:
+            logging.info('Detected buildfile file')
+            known_file = True
 
-    else:
+        # rpmlint config file
+        elif names in [RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2]:
+            logging.debug('Detecting rpmlint config file')
+            known_file = True
+
+        # sources/
+        elif fullpath.startswith(pkg.sourcesdir) and len(names) == 2:
+            logging.debug('Detecting source file: %s', names[1])
+            known_file = True
+
+        # tests/
+        elif fullpath.startswith(pkg.testsdir):
+            logging.debug('Detecting test script: %s', filepath)
+            known_file = True
+        else:
+            logging.debug("Unknown file pattern %s for package format %s",
+                          filepath, pkg.format)
+            continue
+        result.append(pkg)
+
+    if not known_file:
         raise RiftError(
             f"Unknown file pattern in '{pkg.name}' directory: {filepath}"
         )
 
-    return pkg
+    return result
 
 
-def _patched_file_removed_package(patched_file, config, modules, staff):
+def _patched_file_removed_packages(patched_file, config, modules, staff):
     """
-    Return Package removed by the patched_file or None if patched_file does not
-    remove any package.
+    Return list of PackageBase children removed by the patched_file or empty
+    list if patched_file does not remove any package.
     """
     filepath = patched_file.path
     names = filepath.split(os.path.sep)
@@ -215,11 +236,13 @@ def _patched_file_removed_package(patched_file, config, modules, staff):
 
     if not patched_file.is_deleted_file:
         logging.debug('Ignoring not removed file: %s', filepath)
-        return None
+        return []
 
-    pkg = ProjectPackages.get(names[1], config, staff, modules)
+    pkgs = ProjectPackages.get(names[1], config, staff, modules)
 
-    if fullpath == pkg.metafile:
-        return pkg
+    result = []
+    for pkg in pkgs:
+        if fullpath == pkg.metafile:
+            result.append(pkg)
 
-    return None
+    return result

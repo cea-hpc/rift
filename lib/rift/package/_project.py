@@ -34,6 +34,7 @@
 
 import os
 
+from rift import RiftError
 from rift.package._virtual import PackageVirtual
 from rift.package.rpm import PackageRPM
 
@@ -55,16 +56,35 @@ class ProjectPackages:
                      if os.path.isdir(os.path.join(pkgdir, path))]
 
         for name in names:
-            yield ProjectPackages.get(name, config, staff, modules)
+            yield from ProjectPackages._get(name, config, staff, modules)
+
+    @staticmethod
+    def _get(name, config, staff, modules):
+        """
+        Generate PackageBase children objects corresponding to the given package
+        name. If package directory does not exist, return PackageVirtual object,
+        else generate concrete PackageBase child objects for which build file is
+        present. Raise RiftError if package directory is present without
+        supported package buildfile.
+        """
+        pkgdir = os.path.join(config.project_path(config.get('packages_dir')), name)
+        if not os.path.isdir(pkgdir):
+            yield PackageVirtual(name, config, staff, modules)
+            return  # stop here when directory does not exist
+        package_format_found = False
+        for package_class in [PackageRPM]:
+            pkg = package_class(name, config, staff, modules)
+            if os.path.exists(os.path.join(pkgdir, pkg.buildfile)):
+                package_format_found = True
+                yield pkg
+        if not package_format_found:
+            raise RiftError(f"Unable to determine format of package {name} due "
+                    f"to missing build file in {pkgdir}")
 
     @staticmethod
     def get(name, config, staff, modules):
         """
-        Return PackageBase child object corresponding to the given package name.
-        If package directory does not exist, return PackageVirtual object, else
-        return PackageRPM object.
+        Return list of PackageBase concrete children objects corresponding to
+        the given package name.
         """
-        pkgdir = os.path.join(config.project_path(config.get('packages_dir')), name)
-        if not os.path.isdir(pkgdir):
-            return PackageVirtual(name, config, staff, modules)
-        return PackageRPM(name, config, staff, modules)
+        return list(ProjectPackages._get(name, config, staff, modules))

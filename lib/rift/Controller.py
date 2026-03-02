@@ -330,7 +330,9 @@ def action_check(args, config):
         if args.file is None:
             raise RiftError("You must specifiy a file path (-f)")
 
-        pkg = ProjectPackages.get('dummy', config, staff, modules)
+        # If the package supports multiple format, check only the first as
+        # the info file is the name for all formats.
+        pkg = ProjectPackages.get('dummy', config, staff, modules)[0]
         pkg.sourcesdir = '/'
         pkg.load_info(args.file)
         logging.info('Info file is OK.')
@@ -808,8 +810,7 @@ def action_validdiff(args, config):
     # Re-validate all updated packages for all architectures supported by the
     # project.
     for arch in config.get('arch'):
-        results.extend(validate_pkgs(config, args, updated.values(), arch))
-
+        results.extend(validate_pkgs(config, args, updated, arch))
 
     if getattr(args, 'junit', False):
         logging.info('Writing test results in %s', args.junit)
@@ -828,7 +829,7 @@ def action_validdiff(args, config):
     # Remove from working repository packages detected as removed in patch for
     # all architectures supported by the project.
     for arch in config.get('arch'):
-        remove_packages(config, args, removed.values(), arch)
+        remove_packages(config, args, removed, arch)
 
     return rc
 
@@ -840,10 +841,11 @@ def action_gitlab(args, config, staff, modules):
         path = f.path
         names = path.split(os.path.sep)
         if names[0] == config.get('packages_dir'):
-            pkg = ProjectPackages.get(names[1], config, staff, modules)
-            if os.path.abspath(path) == pkg.buildfile and not f.is_deleted_file:
-                pkg.load()
-                pkg.check()
+            pkgs = ProjectPackages.get(names[1], config, staff, modules)
+            for pkg in pkgs:
+                if os.path.abspath(path) == pkg.buildfile and not f.is_deleted_file:
+                    pkg.load()
+                    pkg.check()
 
 def action_gerrit(args, config, staff, modules):
     """Review a patchset for Gerrit (specfiles)"""
@@ -855,15 +857,16 @@ def action_gerrit(args, config, staff, modules):
         filepath = patchedfile.path
         names = filepath.split(os.path.sep)
         if names[0] == config.get('packages_dir'):
-            pkg = ProjectPackages.get(names[1], config, staff, modules)
-            if (filepath == os.path.relpath(pkg.buildfile) and
-                not patchedfile.is_deleted_file):
-                pkg.load()
-                try:
-                    pkg.analyze(review, pkg.dir)
-                except NotImplementedError:
-                    logging.info("Skipping package format %s which does not "
-                                 "support static analysis", pkg.format)
+            pkgs = ProjectPackages.get(names[1], config, staff, modules)
+            for pkg in pkgs:
+                if (filepath == os.path.relpath(pkg.buildfile) and
+                    not patchedfile.is_deleted_file):
+                    pkg.load()
+                    try:
+                        pkg.analyze(review, pkg.dir)
+                    except NotImplementedError:
+                        logging.info("Skipping package format %s which does "
+                                     "not support static analysis", pkg.format)
 
     # Push review
     review.msg_header = 'rift static analysis'
@@ -931,18 +934,23 @@ def action_changelog(args, config):
     if args.maintainer is None:
         raise RiftError("You must specify a maintainer")
 
-    pkg = ProjectPackages.get(args.package, config, staff, modules)
-    pkg.load()
+    pkgs = ProjectPackages.get(args.package, config, staff, modules)
+    package_found = False
+    for pkg in pkgs:
+        pkg.load()
+        try:
+            pkg.add_changelog_entry(args.maintainer, args.comment, args.bump)
+            package_found = True
+        except NotImplementedError:
+            logging.info(
+                "Skipping package format %s which does not support changelog",
+                pkg.format
+            )
 
-    pkg = ProjectPackages.get(args.package, config, staff, modules)
-    pkg.load()
-    try:
-        pkg.add_changelog_entry(args.maintainer, args.comment, args.bump)
-    except NotImplementedError:
-        logging.info(
-            "Skipping package format %s which does not support changelog",
-            pkg.format
-        )
+    if not package_found:
+        logging.error("Unable to find package %s with changelog to update",
+                      args.package)
+        return 1
 
     return 0
 
@@ -967,7 +975,9 @@ def get_packages_in_graph(args, config, staff, modules):
         packages = []
         for pkg in ProjectPackages.list(config, staff, modules, args.packages):
             pkg.load()
-            if pkg.module == args.module:
+            # Checks package respects module filter and avoid duplicate names
+            # that could be caused by packages in multiple formats.
+            if pkg.module == args.module and pkg.name not in packages:
                 packages.append(pkg.name)
         return packages
     # Else (module arg undefined), use packages args (possibly empty, ie.
@@ -990,28 +1000,33 @@ def action_create_import(args, config):
     if args.maintainer is None:
         raise RiftError("You must specify a maintainer")
 
-    pkg = ProjectPackages.get(pkgname, config, *staff_modules(config))
-    if args.command == 'reimport':
-        pkg.load()
+    pkgs = ProjectPackages.get(pkgname, config, *staff_modules(config))
 
-    if args.module:
-        pkg.module = args.module
-    if args.maintainer not in pkg.maintainers:
-        pkg.maintainers.append(args.maintainer)
-    if args.reason:
-        pkg.reason = args.reason
-    if args.origin:
-        pkg.origin = args.origin
+    for pkg in pkgs:
+        if args.command == 'reimport':
+            pkg.load()
 
-    pkg.check_info()
-    pkg.write()
+        if args.module:
+            pkg.module = args.module
+        if args.maintainer not in pkg.maintainers:
+            pkg.maintainers.append(args.maintainer)
+        if args.reason:
+            pkg.reason = args.reason
+        if args.origin:
+            pkg.origin = args.origin
 
-    if args.command in ('create', 'import'):
-        message(f"Package '{pkg.name}' has been created")
+        pkg.check_info()
 
-    if args.command in ('import', 'reimport'):
-        rpm.extract_srpm(pkg.dir, pkg.sourcesdir)
-        message(f"Package '{pkg.name}' has been {args.command}ed")
+        if args.command in ('create', 'import'):
+            # Write package metadata file only with create and import commands.
+            # Do not overwrite the file with reimport because it may discard
+            # metadata for other formats.
+            pkg.write()
+            message(f"Package '{pkg.name}' has been created")
+
+        if args.command in ('import', 'reimport'):
+            rpm.extract_srpm(pkg.dir, pkg.sourcesdir)
+            message(f"Package '{pkg.name}' has been {args.command}ed")
 
     return 0
 
