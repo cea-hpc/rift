@@ -391,6 +391,10 @@ class RiftProjectTestCase(RiftTestCase):
 def gen_rpm_spec(**kwargs):
     return jinja2.Template(SPEC_TPL).render(**kwargs)
 
+def read_file(filepath):
+    """Read a text file and return its content."""
+    return open(filepath).read()
+
 
 #
 # Temp files

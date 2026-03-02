@@ -38,6 +38,7 @@ import shutil
 import textwrap
 import time
 import re
+import platform
 
 from rift import RiftError
 from rift.package._base import Package, ActionableArchPackage, Test
@@ -95,7 +96,8 @@ class PackageRPM(Package):
         its main attributes."""
         # load infos.yaml with parent class
         super().load(infopath)
-        self.spec = Spec(self.buildfile, config=self._config)
+        arch_pkg = self.for_arch(platform.machine())
+        self.spec = Spec(self.buildfile, arch_pkg.mock, arch_pkg.repos.all, config=self._config)
         self.version = self.spec.version
         self.release = self.spec.release
         self.arch = self.spec.arch
@@ -270,7 +272,16 @@ class ActionableArchPackageRPM(ActionableArchPackage):
 
             tests = list(self.package.tests())
             if not kwargs.get('noauto', False):
-                tests.insert(0, BasicTest(self.package, variant, config=self.config))
+                tests.insert(
+                    0,
+                    BasicTest(
+                        self.package,
+                        self.mock,
+                        self.repos.all,
+                        variant,
+                        config=self.config
+                    )
+                )
             for test in tests:
                 case = TestCase(test.name, self.name, variant, self.arch)
                 now = time.time()
@@ -351,11 +362,11 @@ class BasicTest(Test):
         - config: rift configuration
     """
 
-    def __init__(self, pkg, variant, config=None):
+    def __init__(self, pkg, mock, repos, variant, config=None):
         if pkg.rpmnames:
             rpmnames = pkg.rpmnames
         else:
-            rpmnames = Spec(pkg.buildfile, config=config, variant=variant).pkgnames
+            rpmnames = Spec(pkg.buildfile, mock, repos, config=config, variant=variant).pkgnames
 
         try:
             for name in pkg.ignore_rpms:

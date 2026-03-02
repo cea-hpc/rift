@@ -11,7 +11,7 @@ import textwrap
 from io import StringIO
 
 from .TestUtils import (
-    make_temp_file, make_temp_dir, gen_rpm_spec, RiftTestCase, RiftProjectTestCase, SubPackage
+    make_temp_file, make_temp_dir, gen_rpm_spec, read_file, RiftTestCase, RiftProjectTestCase, SubPackage
 )
 
 from .VM import GLOBAL_CACHE, VALID_IMAGE_URL, PROXY
@@ -123,20 +123,21 @@ class ControllerProjectActionImportTest(RiftProjectTestCase):
             main(['import', self.bin_rpm, '-m', 'Great module',
                   '-r', 'Good reason', '--maintainer', 'Myself'])
 
-    def test_import(self):
+    @patch('rift.package.rpm.Mock')
+    def test_import(self, mock_mock):
         """simple import"""
         main(['import', self.src_rpm, '-m', 'Great module', '-r', 'Good reason',
               '--maintainer', 'Myself'])
         pkg = PackageRPM('pkg', self.config, self.staff, self.modules)
+        # mock Mock.read_spec to return spec file content directly read on host
+        mock_mock.return_value.read_spec = read_file
         pkg.load()
         self.assertEqual(pkg.module, 'Great module')
         self.assertEqual(pkg.reason, 'Good reason')
         self.assertCountEqual(pkg.maintainers, ['Myself'])
-        spec = Spec(filepath=pkg.buildfile)
-        spec.load()
-        self.assertEqual(spec.changelog_name, 'Myself <buddy@somewhere.org> - 1.0-1')
-        self.assertEqual(spec.version, '1.0')
-        self.assertEqual(spec.release, '1')
+        self.assertEqual(pkg.spec.changelog_name, 'Myself <buddy@somewhere.org> - 1.0-1')
+        self.assertEqual(pkg.spec.version, '1.0')
+        self.assertEqual(pkg.spec.release, '1')
         self.assertTrue(os.path.exists(f"{pkg.buildfile}.orig"))
         shutil.rmtree(os.path.dirname(pkg.metafile))
 
@@ -169,20 +170,21 @@ class ControllerProjectActionReimportTest(RiftProjectTestCase):
         with self.assertRaisesRegex(RiftError, "You must specify a maintainer"):
             main(['reimport', self.src_rpm, '-m', 'Great module', '-r', 'Good reason'])
 
-    def test_reimport(self):
+    @patch('rift.package.rpm.Mock')
+    def test_reimport(self, mock_mock):
         """simple reimport"""
         self.make_pkg(name='pkg')
+        # mock Mock.read_spec to return spec file content directly read on host
+        mock_mock.return_value.read_spec = read_file
         main(['reimport', self.src_rpm, '--maintainer', 'Myself'])
         pkg = PackageRPM('pkg', self.config, self.staff, self.modules)
         pkg.load()
         self.assertEqual(pkg.module, 'Great module')
         self.assertEqual(pkg.reason, 'Missing feature')
         self.assertCountEqual(pkg.maintainers, ['Myself'])
-        spec = Spec(filepath=pkg.buildfile)
-        spec.load()
-        self.assertEqual(spec.changelog_name, 'Myself <buddy@somewhere.org> - 1.0-1')
-        self.assertEqual(spec.version, '1.0')
-        self.assertEqual(spec.release, '1')
+        self.assertEqual(pkg.spec.changelog_name, 'Myself <buddy@somewhere.org> - 1.0-1')
+        self.assertEqual(pkg.spec.version, '1.0')
+        self.assertEqual(pkg.spec.release, '1')
         self.assertTrue(os.path.exists(f"{pkg.buildfile}.orig"))
         os.unlink(f"{pkg.buildfile}.orig")
 
@@ -195,22 +197,30 @@ class ControllerProjectActionQueryTest(RiftProjectTestCase):
         """simple 'rift query' is ok """
         self.assertEqual(main(['query']), 0)
 
-    def test_action_query_on_pkg(self):
+    @patch('rift.package.rpm.Mock')
+    def test_action_query_on_pkg(self, mock_mock):
         """ Test query on one package """
         self.make_pkg()
+        # mock Mock.read_spec to return spec file content directly read on host
+        mock_mock.return_value.read_spec = read_file
         self.assertEqual(main(['query', 'pkg']), 0)
 
-    def test_action_query_on_bad_pkg(self):
+    @patch('rift.package.rpm.Mock')
+    def test_action_query_on_bad_pkg(self, mock_mock):
         """ Test query on multiple packages with one errorneous package """
         self.make_pkg()
         ## A package with no name should be wrong but the command should not fail
         self.make_pkg(name='pkg2', metadata={})
+        mock_mock.return_value.read_spec = read_file
         self.assertEqual(main(['query']), 0)
 
+    @patch('rift.package.rpm.Mock')
     @patch('sys.stdout', new_callable=StringIO)
-    def test_action_query_output_default(self, mock_stdout):
+    def test_action_query_output_default(self, mock_stdout, mock_mock):
         self.make_pkg(name="pkg1")
         self.make_pkg(name="pkg2", version='2.1', release='3')
+        # mock Mock.read_spec to return spec file content directly read on host
+        mock_mock.return_value.read_spec = read_file
         self.assertEqual(main(['query']), 0)
         self.assertIn(
             "NAME MODULE       MAINTAINERS FORMAT VERSION RELEASE MODULEMANAGER",
@@ -222,10 +232,13 @@ class ControllerProjectActionQueryTest(RiftProjectTestCase):
             """),
             mock_stdout.getvalue())
 
+    @patch('rift.package.rpm.Mock')
     @patch('sys.stdout', new_callable=StringIO)
-    def test_action_query_output_format(self, mock_stdout):
+    def test_action_query_output_format(self, mock_stdout, mock_mock):
         self.make_pkg(name="pkg1")
         self.make_pkg(name="pkg2", version='2.1', release='3')
+        # mock Mock.read_spec to return spec file content directly read on host
+        mock_mock.return_value.read_spec = read_file
         self.assertEqual(
             main([
                 'query', '--format',
@@ -324,9 +337,12 @@ class ControllerProjectActionCheckTest(RiftProjectTestCase):
             exit_code = main(['check', 'spec'])
             self.assertEqual(exit_code, 1)
 
-    def test_check_spec(self):
+    @patch('rift.Controller.Mock')
+    def test_check_spec(self, mock_mock):
         """simple check spec"""
         self.make_pkg()
+        # mock Mock.read_spec to return spec file content directly read on host
+        mock_mock.return_value.read_spec = read_file
         with self.assertLogs(level='INFO') as log:
             exit_code = main(
                 ['check', 'spec', '-f', self.pkgspecs['pkg']]
@@ -969,7 +985,8 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         # return an empty list.
         self.assertEqual(pkgs, [])
 
-    def test_get_packages_to_build_package_order(self):
+    @patch('rift.package.rpm.Mock')
+    def test_get_packages_to_build_package_order(self, mock_mock):
         """ Test get_packages_to_build() returns correctly ordered list of reverse dependencies. """
         self.make_pkg(
             name='libone',
@@ -995,6 +1012,8 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         args = Mock()
         args.skip_deps = False
         args.packages = ['libone']
+        # mock Mock.read_spec to return spec file content directly read on host
+        mock_mock.return_value.read_spec = read_file
         pkgs = get_packages_to_build(
             self.config, self.staff, self.modules, args
         )
@@ -1013,7 +1032,8 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
             [pkg.name for pkg in pkgs], ['libtwo', 'libone', 'my-software']
         )
 
-    def test_get_packages_to_build_cyclic_deps(self):
+    @patch('rift.package.rpm.Mock')
+    def test_get_packages_to_build_cyclic_deps(self, mock_mock):
         """ Test get_packages_to_build() returns correctly ordered list of reverse dependencies. """
         self.make_pkg(
             name='libone',
@@ -1038,6 +1058,8 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         args = Mock()
         args.skip_deps = False
         args.packages = ['libone']
+        # mock Mock.read_spec to return spec file content directly read on host
+        mock_mock.return_value.read_spec = read_file
         with self.assertLogs(level="DEBUG") as cm:
             pkgs = get_packages_to_build(
                 self.config, self.staff, self.modules, args
@@ -1856,7 +1878,8 @@ class ControllerProjectActionGraphTest(RiftProjectTestCase):
     Tests class for Controller action graph
     """
 
-    def test_get_packages_in_graph(self):
+    @patch('rift.package.rpm.Mock')
+    def test_get_packages_in_graph(self, mock_mock):
         """ Test get_packages_in_graph(). """
         self.make_pkg(
             name='libone',
@@ -1873,6 +1896,8 @@ class ControllerProjectActionGraphTest(RiftProjectTestCase):
         args = Mock()
         args.module = 'Great module'
         args.packages = []
+        # mock Mock.read_spec to return spec file content directly read on host
+        mock_mock.return_value.read_spec = read_file
         self.assertCountEqual(
             get_packages_in_graph(args, self.config, self.staff, self.modules),
             ['libone', 'libtwo']
@@ -1910,7 +1935,8 @@ class ControllerProjectActionGitlabTest(RiftProjectTestCase):
         with self.assertRaisesRegex(SystemExit, "2"):
             main(cmd)
 
-    def test_gitlab(self):
+    @patch('rift.package.rpm.Mock')
+    def test_gitlab(self, mock_mock):
         """simple gitlab"""
         self.make_pkg()
         patch = make_temp_file(
@@ -1928,10 +1954,13 @@ class ControllerProjectActionGitlabTest(RiftProjectTestCase):
                  Group:          System Environment/Base
                  License:        GPL
                 """))
+        # mock Mock.read_spec to return spec file content directly read on host
+        mock_mock.return_value.read_spec = read_file
         # Test no error is raised
         main(['gitlab', patch.name])
 
-    def test_gitlab_check_failed(self):
+    @patch('rift.package.rpm.Mock')
+    def test_gitlab_check_failed(self, mock_mock):
         """gitlab check error"""
         # Make package and inject rpmlint error ($RPM_BUILD_ROOT and
         # RPM_SOURCE_DIR in buildsteps) in RPM spec file, with both rpmlint v1
@@ -1962,6 +1991,8 @@ class ControllerProjectActionGitlabTest(RiftProjectTestCase):
                  Group:          System Environment/Base
                  License:        GPL
                 """))
+        # mock Mock.read_spec to return spec file content directly read on host
+        mock_mock.return_value.read_spec = read_file
         # Test error is raised
         with self.assertRaisesRegex(RiftError, "rpmlint reported errors"):
             main(['gitlab', patch.name])
@@ -1980,8 +2011,9 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
             with self.assertRaisesRegex(SystemExit, "2"):
                 main(cmd)
 
+    @patch('rift.package.rpm.Mock')
     @patch('rift.Controller.Review')
-    def test_gerrit(self, mock_review):
+    def test_gerrit(self, mock_review, mock_mock):
         """simple gerrit"""
         self.make_pkg()
         patch = make_temp_file(
@@ -1999,13 +2031,16 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
                  Group:          System Environment/Base
                  License:        GPL
                 """))
+        # mock Mock.read_spec to return spec file content directly read on host
+        mock_mock.return_value.read_spec = read_file
         main(['gerrit', '--change', '1', '--patchset', '2', patch.name])
         # Check review has not been invalidated and pushed
         mock_review.return_value.invalidate.assert_not_called()
         mock_review.return_value.push.assert_called_once()
 
+    @patch('rift.package.rpm.Mock')
     @patch('rift.Controller.Review')
-    def test_gerrit_review_invalidated(self, mock_review):
+    def test_gerrit_review_invalidated(self, mock_review, mock_mock):
         """gerrit review invalidated"""
         # Make package and inject rpmlint error ($RPM_BUILD_ROOT and
         # RPM_SOURCE_DIR in buildsteps) in RPM spec file, with both rpmlint v1
@@ -2036,6 +2071,8 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
                  Group:          System Environment/Base
                  License:        GPL
                 """))
+        # mock Mock.read_spec to return spec file content directly read on host
+        mock_mock.return_value.read_spec = read_file
         main(['gerrit', '--change', '1', '--patchset', '2', patch.name])
         # Check review has been invalidated and pushed
         mock_review.return_value.invalidate.assert_called_once()
@@ -2069,32 +2106,40 @@ class ControllerProjectActionChangelogTest(RiftProjectTestCase):
             "Package 'pkg' directory does not exist"):
             main(['changelog', 'pkg', '-c', 'basic change', '-t', 'Myself'])
 
-    def test_action_changelog(self):
+    @patch('rift.package.rpm.Mock')
+    def test_action_changelog(self, mock_mock):
         """simple changelog"""
         self.make_pkg()
+        # mock Mock.read_spec to return spec file content directly read on host
+        mock_mock.return_value.read_spec = read_file
         self.assertEqual(
             main(['changelog', 'pkg', '-c', 'basic change', '-t', 'Myself']), 0)
-        spec = Spec(filepath=self.pkgspecs['pkg'])
-        spec.load()
-        self.assertEqual(spec.changelog_name, 'Myself <buddy@somewhere.org> - 1.0-1')
-        self.assertEqual(spec.version, '1.0')
-        self.assertEqual(spec.release, '1')
+        pkg = PackageRPM('pkg', self.config, self.staff, self.modules)
+        pkg.load()
+        self.assertEqual(pkg.spec.changelog_name, 'Myself <buddy@somewhere.org> - 1.0-1')
+        self.assertEqual(pkg.spec.version, '1.0')
+        self.assertEqual(pkg.spec.release, '1')
 
-    def test_action_changelog_bump(self):
+    @patch('rift.package.rpm.Mock')
+    def test_action_changelog_bump(self, mock_mock):
         """simple changelog with bump"""
         self.make_pkg()
+        # mock Mock.read_spec to return spec file content directly read on host
+        mock_mock.return_value.read_spec = read_file
         self.assertEqual(
             main(['changelog', 'pkg', '-c', 'basic change', '-t', 'Myself', '--bump']),
             0)
-        spec = Spec(filepath=self.pkgspecs['pkg'])
-        spec.load()
-        self.assertEqual(spec.changelog_name, 'Myself <buddy@somewhere.org> - 1.0-2')
-        self.assertEqual(spec.version, '1.0')
-        self.assertEqual(spec.release, '2')
+        pkg = PackageRPM('pkg', self.config, self.staff, self.modules)
+        pkg.load()
+        self.assertEqual(pkg.spec.changelog_name, 'Myself <buddy@somewhere.org> - 1.0-2')
+        self.assertEqual(pkg.spec.version, '1.0')
+        self.assertEqual(pkg.spec.release, '2')
 
-    def test_action_changelog_unknown_maintainer(self):
+    @patch('rift.package.rpm.Mock')
+    def test_action_changelog_unknown_maintainer(self, mock_mock):
         """changelog with unknown maintainer"""
         self.make_pkg()
+        mock_mock.return_value.read_spec = read_file
         with self.assertRaisesRegex(
             RiftError, "Unknown maintainer Fail, cannot be found in staff"
         ):

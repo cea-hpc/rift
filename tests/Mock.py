@@ -194,3 +194,57 @@ class MockTest(RiftProjectTestCase):
             merge_out_err=True,
             cwd='/'
         )
+
+    @patch('rift.Mock.run_command')
+    def test_read_spec(self, mock_run_command):
+        mock_run_command.return_value = RunResult(
+            0, "standard output", "standard error"
+        )
+        mock = Mock(config=self.config, arch='x86_64', proj_vers=1.0)
+        mock.init([])
+        result = mock.read_spec('/dev/package.spec')
+        mock_run_command.assert_called_with(
+            [
+                'mock', '--config-opts', 'print_main_output=yes',
+                f"--configdir={mock._tmpdir.path}",
+                "--plugin-option=bind_mount:dirs="
+                "[('/dev/package.spec', '/dev/package.spec')]",
+                'chroot',
+                'rpmspec',
+                '--parse',
+                '/dev/package.spec'
+            ],
+            live_output=True,
+            capture_output=True,
+            merge_out_err=False,
+            cwd='/'
+        )
+        mock.clean()
+        self.assertEqual(result, "standard output")
+
+    @patch('rift.Mock.run_command')
+    def test_read_spec_exec_error(self, mock_run_command):
+        mock = Mock(config=self.config, arch='x86_64', proj_vers=1.0)
+        # First run_command call for init OK
+        mock_run_command.return_value = RunResult(
+            0, "standard output", "standard error"
+        )
+        mock.init([])
+        # Second run_command call for rpmspec with non-zero return code
+        mock_run_command.return_value = RunResult(
+            1, "standard output", "standard error"
+        )
+        with self.assertRaisesRegex(RiftError, "standard error"):
+            mock.read_spec('/dev/package.spec')
+        mock.clean()
+
+    @patch('rift.Mock.run_command')
+    def test_read_spec_filter_output(self, mock_run_command):
+        output = "error: foo\nwarning: bar\nstandard output\nsh: baz\nrpm: qux\n"
+        mock_run_command.return_value = RunResult(0, output, "standard error")
+        mock = Mock(config=self.config, arch='x86_64', proj_vers=1.0)
+        mock.init([])
+        result = mock.read_spec('/dev/package.spec')
+        mock.clean()
+        self.assertEqual(result, "standard output")
+

@@ -164,7 +164,7 @@ class Mock():
             f"--configdir={self._tmpdir.path}"
         ] + self._build_macro_args()
 
-    def _exec(self, cmd):
+    def _exec(self, cmd, merge_out_err=True):
         """
         Execute mock command in argument, check its return code and raise
         RiftError with its output in case of error.
@@ -175,11 +175,13 @@ class Mock():
             cmd,
             live_output=logging.getLogger().isEnabledFor(logging.INFO),
             capture_output=True,
-            merge_out_err=True,
+            merge_out_err=merge_out_err,
             cwd='/'
         )
         if proc.returncode != 0:
-            raise RiftError(proc.out)
+            raise RiftError(proc.out if merge_out_err else proc.err)
+
+        return proc
 
     def init(self, repolist):
         """
@@ -189,6 +191,37 @@ class Mock():
         """
         self._init_tmp_conf(repolist)
         self._exec(['--init'])
+
+    def read_spec(self, filepath):
+        """
+        Interpret RPM spec file in chroot by running rpmspec command. Return output of
+        rpmspec command with some prefixed messages filtered out to make it parsable
+        by RPM library.
+        """
+        proc = self._exec(
+            [
+                f"--plugin-option=bind_mount:dirs=[('{filepath}', '{filepath}')]",
+                'chroot',
+                'rpmspec',
+                '--parse',
+                filepath
+            ],
+            merge_out_err=False
+        )
+
+        lines = []
+
+        rpmspec_ignore_prefixes = ("error: ", "warning: ", "rpm: ", "sh: ")
+        for line in proc.out.splitlines():
+            # filter out rpmspec errors and warings
+            ignore_line = False
+            for prefix in rpmspec_ignore_prefixes:
+                if line.startswith(prefix):
+                    ignore_line = True
+            if not ignore_line:
+                lines.append(line)
+
+        return "\n".join(lines)
 
     def resultrpms(self, pattern='*.rpm', sources=True):
         """

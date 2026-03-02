@@ -6,21 +6,24 @@ import os
 import shutil
 from unittest.mock import patch
 
-from .TestUtils import make_temp_dir, RiftTestCase
+from .TestUtils import make_temp_dir, read_file, RiftTestCase
 from rift.Repository import ConsumableRepository, LocalRepository, ProjectArchRepositories
 from rift.Config import _DEFAULT_REPO_CMD, _DEFAULT_REPOS_VARIANTS, Config
 from rift.RPM import RPM
 from rift import RiftError
 
+
 class LocalRepositoryTest(RiftTestCase):
     """
     Tests class for Repository
     """
+    def setUp(self):
+        self.config = Config()
 
     def test_init(self):
         """ Test LocalRepository instanciation with a specific configuration """
         arch = 'x86_64'
-        _config = { 'arch': [arch], 'createrepo': 'mycustom_create_repo' }
+        self.config.update({ 'arch': [arch], 'createrepo': 'mycustom_create_repo' })
         _options = {
             'module_hotfixes': True,
             'excludepkgs': 'somepkg',
@@ -29,7 +32,7 @@ class LocalRepositoryTest(RiftTestCase):
         repo_name = 'nowhere'
         repo = LocalRepository(
             '/{}'.format(repo_name),
-            _config,
+            self.config,
             options=_options
         )
 
@@ -47,14 +50,14 @@ class LocalRepositoryTest(RiftTestCase):
         self.assertEqual(repo.consumables[arch].module_hotfixes, True)
         self.assertEqual(repo.consumables[arch].excludepkgs, 'somepkg')
         self.assertEqual(repo.consumables[arch].proxy, 'myproxy')
-        self.assertEqual(repo.createrepo, _config['createrepo'])
+        self.assertEqual(repo.createrepo, self.config.get('createrepo'))
 
     def test_init_multiple_archs(self):
         """ Test LocalRepository instanciation with multiple architectures """
         archs = ['x86_64', 'aarch64']
-        _config = { 'arch': archs }
+        self.config.update({ 'arch': archs })
         repo_name = 'nowhere'
-        repo = LocalRepository('/{}'.format(repo_name), _config)
+        repo = LocalRepository('/{}'.format(repo_name), self.config)
 
         self.assertEqual(repo.createrepo, _DEFAULT_REPO_CMD)
         self.assertEqual(list(repo.consumables.keys()), archs)
@@ -70,10 +73,10 @@ class LocalRepositoryTest(RiftTestCase):
     def test_init_rpms_dir(self):
         """ Test LocalRepository rpm_dirs """
         archs = ['x86_64', 'aarch64']
-        _config = { 'arch': archs }
+        self.config.update({ 'arch': archs })
         repo_name = 'nowhere'
         path = f"/{repo_name}"
-        repo = LocalRepository(path, _config)
+        repo = LocalRepository(path, self.config)
 
         self.assertEqual(repo.rpms_dir(archs[0]), os.path.join(path, archs[0]))
         self.assertEqual(repo.rpms_dir(archs[1]), os.path.join(path, archs[1]))
@@ -90,10 +93,9 @@ class LocalRepositoryTest(RiftTestCase):
         # Emulate successful createrepo execution
         mock_popen.return_value.__enter__.return_value.returncode = 0
         arch = 'x86_64'
-        _config = { 'arch': [arch] }
-        repo_name = 'nowhere'
+        self.config.update({ 'arch': [arch] })
         local_repo_path = make_temp_dir()
-        repo = LocalRepository(local_repo_path, _config)
+        repo = LocalRepository(local_repo_path, self.config)
         repo.create()
         self.assertTrue(os.path.exists(repo.srpms_dir))
         self.assertTrue(os.path.exists(repo.rpms_dir(arch)))
@@ -106,10 +108,9 @@ class LocalRepositoryTest(RiftTestCase):
         mock_popen.return_value.__enter__.return_value.returncode = 1
         mock_popen.return_value.__enter__.return_value.communicate.return_value = ["output"]
         arch = 'x86_64'
-        _config = { 'arch': [arch] }
-        repo_name = 'nowhere'
+        self.config.update({ 'arch': [arch] })
         local_repo_path = make_temp_dir()
-        repo = LocalRepository(local_repo_path, _config)
+        repo = LocalRepository(local_repo_path, self.config)
         with self.assertRaisesRegex(RiftError, '^output$'):
             repo.create()
         shutil.rmtree(local_repo_path)
@@ -120,10 +121,9 @@ class LocalRepositoryTest(RiftTestCase):
         # Emulate successful createrepo execution
         mock_popen.return_value.__enter__.return_value.returncode = 0
         arch = 'x86_64'
-        _config = { 'arch': [arch] }
-        repo_name = 'nowhere'
+        self.config.update({ 'arch': [arch] })
         local_repo_path = make_temp_dir()
-        repo = LocalRepository(local_repo_path, _config)
+        repo = LocalRepository(local_repo_path, self.config)
         repo.create()  # create() calls update()
         # createrepo must have been executed twice, one for SRPMS and the other
         # for x86_64.
@@ -140,10 +140,9 @@ class LocalRepositoryTest(RiftTestCase):
         # Emulate createrepo execution failure
         mock_popen.return_value.__enter__.return_value.returncode = 0
         arch = 'x86_64'
-        _config = { 'arch': [arch] }
-        repo_name = 'nowhere'
+        self.config.update({ 'arch': [arch] })
         local_repo_path = make_temp_dir()
-        repo = LocalRepository(local_repo_path, _config)
+        repo = LocalRepository(local_repo_path, self.config)
         repo.create()
         mock_popen.return_value.__enter__.return_value.returncode = 1
         mock_popen.return_value.__enter__.return_value.communicate.return_value = ["output"]
@@ -175,10 +174,9 @@ class LocalRepositoryTest(RiftTestCase):
     def test_add(self):
         """ Test LocalRepository add """
         archs = ['x86_64', 'aarch64']
-        _config = { 'arch': archs }
-        repo_name = 'nowhere'
+        self.config.update({ 'arch': archs })
         local_repo_path = make_temp_dir()
-        repo = LocalRepository(local_repo_path, _config)
+        repo = LocalRepository(local_repo_path, self.config)
 
         # Create repository and add packages
         repo.create()
@@ -205,16 +203,20 @@ class LocalRepositoryTest(RiftTestCase):
 
         shutil.rmtree(local_repo_path)
 
-    def test_search(self):
+    @patch('rift.Repository.Mock')
+    def test_search(self, mock_mock):
         """Test search packages on a repository"""
         archs = ['x86_64', 'aarch64']
-        _config = { 'arch': archs }
+        self.config.update({ 'arch': archs })
         local_repo_path = make_temp_dir()
-        repo = LocalRepository(local_repo_path, _config)
+        repo = LocalRepository(local_repo_path, self.config)
 
         # Create repository and add packages
         repo.create()
         (src_rpm, bin_rpm) = self._add_packages(repo)
+
+        # mock Mock.read_spec() to read spec file on host directly
+        mock_mock.return_value.read_spec = read_file
 
         # Test multiple search in repository
 
@@ -246,16 +248,20 @@ class LocalRepositoryTest(RiftTestCase):
         # Cleanup temporary repository
         shutil.rmtree(local_repo_path)
 
-    def test_delete(self):
+    @patch('rift.Repository.Mock')
+    def test_delete(self, mock_mock):
         """Test delete packages on a repository"""
         archs = ['x86_64', 'aarch64']
-        _config = { 'arch': archs }
+        self.config.update({ 'arch': archs })
         local_repo_path = make_temp_dir()
-        repo = LocalRepository(local_repo_path, _config)
+        repo = LocalRepository(local_repo_path, self.config)
 
         # Create repository and add packages
         repo.create()
         (src_rpm, bin_rpm) = self._add_packages(repo)
+
+        # mock Mock.read_spec() to read spec file on host directly
+        mock_mock.return_value.read_spec = read_file
 
         # Search and retrieve packages from repo
         pkgs = repo.search('pkg')
@@ -354,7 +360,7 @@ class ConsumableRepositoryTest(RiftTestCase):
         with self.assertRaisesRegex(
             RiftError, "^Unable to return path of remote repository$"
         ):
-            path = repo.path
+            _ = repo.path
         with self.assertRaisesRegex(
             RiftError, "^Unable to return path of remote repository$"
         ):
