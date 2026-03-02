@@ -367,16 +367,6 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
         """remove_packages() search, delete and update repository."""
         mock_parepository_objects = mock_parepository_class.return_value
 
-        # Preparer Repository.search() return value
-        rpm = RPM(
-            os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                'materials',
-                'pkg-1.0-1.src.rpm',
-            )
-        )
-        mock_parepository_objects.working.search.return_value = [ rpm ]
-
         # Enable publish arg
         args = Mock()
         args.publish = True
@@ -392,19 +382,15 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
         # Call remove_packages()
         remove_packages(self.config, args, pkgs_to_remove, 'x86_64')
 
-        # Check Repository object has been instanciated
+        # Check ProjectArchRepository object has been instanciated
         mock_parepository_class.assert_called()
-        # Check Repository.search() has been called
-        mock_parepository_objects.working.search.assert_called_once_with(
+        # Check ProjectArchRepository.delete_matching() has been called
+        mock_parepository_objects.delete_matching.assert_called_once_with(
             pkgs_to_remove[0].name
         )
-        # Check Repository.delete() has been called
-        mock_parepository_objects.working.delete.assert_called_once_with(rpm)
-        # Check Repository.update() has been called
-        mock_parepository_objects.working.update.assert_called_once()
 
-    @patch('rift.Controller.ProjectArchRepositories')
-    def test_remove_packages_noop(self, mock_parepository_class):
+    @patch('rift.Controller.ProjectArchRepositories.delete_matching')
+    def test_remove_packages_noop(self, mock_delete_matching):
         """remove_packages() is noop if no publish arg or no working_repo"""
         pkgs_to_remove = []
         args = Mock()
@@ -413,16 +399,13 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
         args.publish = False
         self.config.options['working_repo'] = '/path/to/working/repo'
         remove_packages(self.config, args, pkgs_to_remove, 'x86_64')
-        mock_parepository_class.assert_called_once()
-        mock_parepository_class.working.assert_not_called()
+        mock_delete_matching.assert_not_called()
 
         # working_repo is not defined, remove_packages() must be noop
         args.publish = True
         del self.config.options['working_repo']
-        mock_parepository_class.reset_mock()
         remove_packages(self.config, args, pkgs_to_remove, 'x86_64')
-        mock_parepository_class.assert_called_once()
-        mock_parepository_class.working.assert_not_called()
+        mock_delete_matching.assert_not_called()
 
 
 class ControllerProjectActionBuildTest(RiftProjectTestCase):

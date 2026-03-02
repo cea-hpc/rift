@@ -23,7 +23,7 @@ from rift.Config import (
     _DEFAULT_VM_PORT_RANGE_MAX,
     _DEFAULT_VARIANT,
 )
-from rift.Repository import ConsumableRepository
+from rift.repository.rpm import ConsumableRepository
 from rift.VM import VM, ARCH_EFI_BIOS, gen_virtiofs_args
 from rift.package import Test
 from rift import RiftError

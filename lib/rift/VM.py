@@ -60,7 +60,7 @@ from jinja2 import Template
 
 from rift import RiftError
 from rift.Config import _DEFAULT_VIRTIOFSD, _DEFAULT_VARIANT
-from rift.Repository import ProjectArchRepositories
+from rift.repository import ProjectArchRepositories
 from rift.TempDir import TempDir
 from rift.utils import last_modified, download_file, setup_dl_opener, message
 from rift.run import run_command
@@ -136,7 +136,9 @@ class VM():
         if extra_repos is None:
             extra_repos = []
 
-        self._repos = ProjectArchRepositories(config, arch).all + extra_repos
+        self._repos = ProjectArchRepositories(
+            config, arch
+        ).for_format('rpm').all + extra_repos
 
         self.address = vm_config.get('address')
         self.port = self.default_port(vm_config.get('port_range'))

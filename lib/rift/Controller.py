@@ -48,7 +48,8 @@ from rift.Config import Config, Staff, Modules, _DEFAULT_VARIANT
 from rift.Gerrit import Review
 from rift.auth import Auth
 from rift.package import ProjectPackages
-from rift.Repository import ProjectArchRepositories, LocalRepository
+from rift.repository import ProjectArchRepositories
+from rift.repository.rpm import LocalRepository
 from rift.graph import PackagesDependencyGraph
 from rift.RPM import RPM, Spec
 from rift.TempDir import TempDir
@@ -542,12 +543,8 @@ def remove_packages(config, args, pkgs_to_remove, arch):
         return
 
     for pkg in pkgs_to_remove:
-        found_pkgs = repos.working.search(pkg.name)
-        for found_pkg in found_pkgs:
-            repos.working.delete(found_pkg)
+        repos.delete_matching(pkg.name)
 
-    # Update repository metadata
-    repos.working.update()
 
 def action_vm(args, config):
     """Action for 'vm' sub-commands."""
@@ -1118,7 +1115,7 @@ def get_packages_to_build(config, staff, modules, args):
 
 def create_staging_repo(config):
     """
-    Create and return staging temporary repository with a 2-tuple containing
+    Create and return staging RPM temporary repository with a 2-tuple containing
     (Repository, TempDir) objects.
     """
     logging.info('Creating temporary repository')

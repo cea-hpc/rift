@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from .TestUtils import RiftTestCase, make_temp_dir
 from rift.Config import Config
-from rift.Repository import LocalRepository
+from rift.repository.rpm import LocalRepository
 from rift.RPM import RPM
 from rift.sync import (
     RepoSyncFactory,

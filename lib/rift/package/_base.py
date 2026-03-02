@@ -44,6 +44,7 @@ import yaml
 from rift import RiftError
 from rift.Config import OrderedLoader
 from rift.utils import message
+from rift.repository import ProjectArchRepositories
 
 _META_FILE = 'info.yaml'
 _SOURCES_DIR = 'sources'
@@ -295,6 +296,9 @@ class ActionableArchPackage(ABC):
         self.config = package._config
         self.package = package
         self.arch = arch
+        self.repos = ProjectArchRepositories(
+            self.config, self.arch
+        ).for_format(self.package.format)
 
     @abstractmethod
     def build(self, **kwargs):

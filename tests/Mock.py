@@ -8,7 +8,8 @@ from unittest.mock import patch, MagicMock
 
 from .TestUtils import RiftProjectTestCase
 from rift.Mock import Mock
-from rift.Repository import ConsumableRepository, ProjectArchRepositories
+from rift.repository import ProjectArchRepositories
+from rift.repository.rpm import ConsumableRepository
 from rift.RPM import RPM
 from rift.TempDir import TempDir
 from rift.run import RunResult
@@ -133,7 +134,7 @@ class MockTest(RiftProjectTestCase):
         src_rpm_path = os.path.join(
             TESTS_DIR, 'materials', 'pkg-1.0-1.src.rpm'
         )
-        repos = ProjectArchRepositories(self.config, 'x86_64')
+        repos = ProjectArchRepositories(self.config, 'x86_64').for_format('rpm')
         srpm = RPM(src_rpm_path)
         mock.build_rpms(srpm, _DEFAULT_VARIANT, repos, False)
         mock_run_command.assert_called_once_with(
@@ -164,7 +165,7 @@ class MockTest(RiftProjectTestCase):
         src_rpm_path = os.path.join(
             TESTS_DIR, 'materials', 'pkg-1.0-1.src.rpm'
         )
-        repos = ProjectArchRepositories(self.config, 'x86_64')
+        repos = ProjectArchRepositories(self.config, 'x86_64').for_format('rpm')
         repos.for_variant = MagicMock(
             return_value=[
                 ConsumableRepository('http://repo1', name='variant1-repo1'),
