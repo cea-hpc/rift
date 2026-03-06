@@ -329,7 +329,7 @@ class ControllerProjectActionCheckTest(RiftProjectTestCase):
         self.make_pkg()
         with self.assertLogs(level='INFO') as log:
             exit_code = main(
-                ['check', 'spec', '-f', self.pkgspecs['pkg']]
+                ['check', 'spec', '-f', self.buildfiles['pkg:rpm']]
             )
         self.assertEqual(exit_code, 0)
         self.assertIn(
@@ -1937,7 +1937,7 @@ class ControllerProjectActionGitlabTest(RiftProjectTestCase):
         # RPM_SOURCE_DIR in buildsteps) in RPM spec file, with both rpmlint v1
         # and v2.
         self.make_pkg()
-        with open(self.pkgspecs['pkg'], "w") as spec:
+        with open(self.buildfiles['pkg:rpm'], "w") as spec:
             spec.write(
                 gen_rpm_spec(
                     name='pkg',
@@ -2011,7 +2011,7 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
         # RPM_SOURCE_DIR in buildsteps) in RPM spec file, with both rpmlint v1
         # and v2.
         self.make_pkg()
-        with open(self.pkgspecs['pkg'], "w") as spec:
+        with open(self.buildfiles['pkg:rpm'], "w") as spec:
             spec.write(
                 gen_rpm_spec(
                     name='pkg',
@@ -2074,7 +2074,7 @@ class ControllerProjectActionChangelogTest(RiftProjectTestCase):
         self.make_pkg()
         self.assertEqual(
             main(['changelog', 'pkg', '-c', 'basic change', '-t', 'Myself']), 0)
-        spec = Spec(filepath=self.pkgspecs['pkg'])
+        spec = Spec(filepath=self.buildfiles['pkg:rpm'])
         spec.load()
         self.assertEqual(spec.changelog_name, 'Myself <buddy@somewhere.org> - 1.0-1')
         self.assertEqual(spec.version, '1.0')
@@ -2086,7 +2086,7 @@ class ControllerProjectActionChangelogTest(RiftProjectTestCase):
         self.assertEqual(
             main(['changelog', 'pkg', '-c', 'basic change', '-t', 'Myself', '--bump']),
             0)
-        spec = Spec(filepath=self.pkgspecs['pkg'])
+        spec = Spec(filepath=self.buildfiles['pkg:rpm'])
         spec.load()
         self.assertEqual(spec.changelog_name, 'Myself <buddy@somewhere.org> - 1.0-2')
         self.assertEqual(spec.version, '1.0')
