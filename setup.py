@@ -32,7 +32,7 @@
 #
 
 from lib.rift import __version__
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(name='rift',
       version=__version__,
@@ -41,7 +41,7 @@ setup(name='rift',
       author='Aurelien Cedeyn',
       author_email='aurelien.cedeyn@cea.fr',
       package_dir={'': 'lib'},
-      packages=['rift', 'rift.package', 'rift.annex'],
+      packages=find_packages('lib'),
       install_requires=['boto3>=1.18.65', 'xmltodict'],
       py_modules = ['unidiff'],
       data_files = [
