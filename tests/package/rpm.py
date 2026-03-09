@@ -8,7 +8,7 @@ import tempfile
 
 from rift import RiftError
 from rift.package.rpm import PackageRPM, ActionableArchPackageRPM
-from rift.Repository import LocalRepository
+from rift.repository.rpm import LocalRepository
 from rift.run import RunResult
 from rift.TestResults import TestResults
 from rift.Config import _DEFAULT_VARIANT

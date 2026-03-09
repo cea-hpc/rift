@@ -114,7 +114,6 @@ class RepoSyncBase:
         """
         Create local directory for this repository if it does not exist.
         """
-        print("makedirs on '" + str(self.output))
         if not os.path.exists(self.output):
             os.makedirs(self.output)
 
