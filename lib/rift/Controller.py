@@ -911,7 +911,7 @@ def action_sync(args, config):
                         "parameters found", arch, name
                 )
                 continue
-            synchronizer = RepoSyncFactory.get(config, name, output, sync)
+            synchronizer = RepoSyncFactory.get(config, name, output, sync, arch)
             if synchronizer.source in synchronized_sources:
                 logging.debug(
                     "Skipping already synchronized source %s",

@@ -57,11 +57,14 @@ SyncPatterns = collections.namedtuple('SyncPatterns', ['include', 'exclude'])
 
 class RepoSyncBase:
     """Common parent to all RepoSync* classes."""
-    def __init__(self, config, name, output, sync):
+    def __init__(self, config, name, output, sync, arch=None):
         self.config = config
         self.name = name
         subdir = sync.get('subdir', '').lstrip('/')
-        self.output = os.path.join(output, self.name, subdir)
+        if arch is not None:
+            self.output = os.path.join(output, self.name, subdir, arch)
+        else:
+            self.output = os.path.join(output, self.name, subdir)
         self.source = urllib.parse.urlparse(os.path.join(sync['source'], subdir))
         self.logfile = os.path.join(
             output,
@@ -111,14 +114,15 @@ class RepoSyncBase:
         """
         Create local directory for this repository if it does not exist.
         """
+        print("makedirs on '" + str(self.output))
         if not os.path.exists(self.output):
             os.makedirs(self.output)
 
 
 class RepoSyncLftp(RepoSyncBase):
     """Synchronize remote repositories with LFTP."""
-    def __init__(self, config, name, output, sync):
-        super().__init__(config, name, output, sync)
+    def __init__(self, config, name, output, sync, arch=None):
+        super().__init__(config, name, output, sync, arch)
         self.include_arg = ' '.join(
             [f"--include={pattern}" for pattern in self.patterns.include]
         )
@@ -160,8 +164,8 @@ class RepoSyncIndexed(RepoSyncBase):
     declared in index.
     """
 
-    def __init__(self, config, name, output, sync):
-        super().__init__(config, name, output, sync)
+    def __init__(self, config, name, output, sync, arch=None):
+        super().__init__(config, name, output, sync, arch)
         self.indexed_files = []
 
     def _relpath_matches(self, relpath):
@@ -224,8 +228,8 @@ class RepoSyncEpel(RepoSyncIndexed):
 
     PUB_ROOT = "/pub/epel"
 
-    def __init__(self, config, name, output, sync):
-        super().__init__(config, name, output, sync)
+    def __init__(self, config, name, output, sync, arch=None):
+        super().__init__(config, name, output, sync, arch)
         self.pub_url = f"{self.base_url}{self.PUB_ROOT}"
 
     def _process_line(self, line):
@@ -347,7 +351,7 @@ class RepoSyncDnf(RepoSyncIndexed):
 
         url = package.remote_location()
         self.log_write(f"download {url}")
-        logging.info("Downloading file %s", url)
+        logging.info("Downloading file '%s' to '%s'", url, output_directory)
         download_file(url, output_file)
 
     def _run(self):
@@ -429,9 +433,9 @@ class RepoSyncFactory:
             )
 
     @staticmethod
-    def get(config, name, output, sync):
+    def get(config, name, output, sync, arch=None):
         """Return the concrete RepoSync* class corresponding to the method."""
         RepoSyncFactory.check_valid_method(sync['method'])
         return RepoSyncFactory.METHODS[sync['method']](
-            config, name, output, sync
+            config, name, output, sync, arch
         )
