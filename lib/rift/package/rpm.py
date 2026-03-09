@@ -213,7 +213,7 @@ class ActionableArchPackageRPM(ActionableArchPackage):
         # environment.
         staging = kwargs.get('staging')
         if staging:
-            mock_repos += staging.consumables[self.arch]
+            mock_repos.append(staging.consumables[self.arch])
 
         message('Preparing Mock environment...')
         self.mock.init(mock_repos)

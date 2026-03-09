@@ -4,9 +4,11 @@
 from unittest.mock import Mock, patch
 import os
 import textwrap
+import tempfile
 
 from rift import RiftError
 from rift.package.rpm import PackageRPM, ActionableArchPackageRPM
+from rift.Repository import LocalRepository
 from rift.run import RunResult
 from rift.TestResults import TestResults
 from rift.Config import _DEFAULT_VARIANT
@@ -425,7 +427,7 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         self.setup_package()
         self.pkg.build()
         # Check build() has called expected Mock methods.
-        mock_mock_init.assert_called_once()
+        mock_mock_init.assert_called_once_with([])
         mock_mock_build_srpm.assert_called_once()
         mock_mock_build_rpms.assert_any_call(
             mock_mock_build_srpm.return_value, _DEFAULT_VARIANT, self.pkg.repos, False
@@ -440,10 +442,31 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         self.setup_package()
         self.pkg.build(sign=True)
         # Check build() has called expected Mock methods.
-        mock_mock_init.assert_called_once()
+        mock_mock_init.assert_called_once_with([])
         mock_mock_build_srpm.assert_called_once()
         mock_mock_build_rpms.assert_any_call(
             mock_mock_build_srpm.return_value, _DEFAULT_VARIANT, self.pkg.repos, True
+        )
+
+    @patch('rift.package.rpm.Mock.build_rpms')
+    @patch('rift.package.rpm.Mock.build_srpm')
+    @patch('rift.package.rpm.Mock.init')
+    def test_build_staging(self, mock_mock_init, mock_mock_build_srpm, mock_mock_build_rpms):
+        """ Test ActionableArchPackageRPM build with staging repository"""
+        self.setup_package()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            staging = LocalRepository(
+                path=tmpdir,
+                config=self.config,
+                name='staging',
+            )
+            staging.create()
+            self.pkg.build(staging=staging)
+        # Check build() has called expected Mock methods.
+        mock_mock_init.assert_called_once_with([staging.consumables['x86_64']])
+        mock_mock_build_srpm.assert_called_once()
+        mock_mock_build_rpms.assert_any_call(
+            mock_mock_build_srpm.return_value, _DEFAULT_VARIANT, self.pkg.repos, False
         )
 
     @patch('rift.package.rpm.message')
@@ -463,7 +486,7 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         self.pkg.package.variants = variants
         self.pkg.build()
         # Check build() has called expected Mock methods.
-        mock_mock_init.assert_called_once()
+        mock_mock_init.assert_called_once_with([])
         mock_mock_build_srpm.assert_called_once()
         for variant in variants:
             mock_mock_build_rpms.assert_any_call(
@@ -486,6 +509,44 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         self.assertIsInstance(results, TestResults)
         self.assertEqual(len(results), 1)
         self.assertEqual(results.global_result, True)
+        # Check VM initialized (w/o extra repository)
+        mock_vm.assert_called_once_with(self.config, 'x86_64', extra_repos=[])
+        # Check VM run_test() called once for basic test
+        mock_vm_obj.run_test.assert_called_with(
+            mock_basic_test.return_value, _DEFAULT_VARIANT
+        )
+        # Check VM is stopped after the tests
+        mock_vm_obj.stop.assert_called_once()
+        mock_banner.assert_called_once_with(
+            'Starting tests of package pkg on architecture x86_64'
+        )
+
+    @patch('rift.package.rpm.banner')
+    @patch('rift.package.rpm.BasicTest')
+    @patch('rift.package.rpm.time.sleep')
+    @patch('rift.package.rpm.VM')
+    def test_test_staging(self, mock_vm, mock_time_sleep, mock_basic_test, mock_banner):
+        """ Test ActionableArchPackageRPM test """
+        # mock time.sleep() to avoid waiting sleep timeout when VM is stopped
+        mock_vm_obj = mock_vm.return_value
+        mock_vm_obj.running.return_value = False
+        mock_vm_obj.run_test.return_value = RunResult(0, None, None)
+        self.setup_package()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            staging = LocalRepository(
+                path=tmpdir,
+                config=self.config,
+                name='staging',
+            )
+            staging.create()
+            results = self.pkg.test(staging=staging)
+        self.assertIsInstance(results, TestResults)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results.global_result, True)
+        # Check VM initialized with staging extra repository
+        mock_vm.assert_called_once_with(
+            self.config, 'x86_64', extra_repos=[staging.consumables['x86_64']]
+        )
         # Check VM run_test() called once for basic test
         mock_vm_obj.run_test.assert_called_with(
             mock_basic_test.return_value, _DEFAULT_VARIANT
