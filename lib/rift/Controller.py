@@ -911,7 +911,13 @@ def action_sync(args, config):
                         "parameters found", arch, name
                 )
                 continue
+            # Use repo URL as fallback source when source is not defined in
+            # sync config.
             if sync.get('source') is None:
+                logging.debug(
+                    "Using repository URL %s as synchronization source",
+                    repo.get('url')
+                )
                 sync['source'] = repo.get('url')
             synchronizer = RepoSyncFactory.get(config, name, output, sync, arch)
             if synchronizer.source in synchronized_sources:
