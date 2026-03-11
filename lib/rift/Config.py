@@ -182,7 +182,7 @@ class Config():
                             'values': ['lftp', 'epel', 'dnf']
                         },
                         'source': {
-                            'required': True,
+                            'required': False,
                         },
                         'subdir': {},
                         'include': {

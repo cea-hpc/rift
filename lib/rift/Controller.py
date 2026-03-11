@@ -911,6 +911,8 @@ def action_sync(args, config):
                         "parameters found", arch, name
                 )
                 continue
+            if sync.get('source') is None:
+                sync['source'] = repo.get('url')
             synchronizer = RepoSyncFactory.get(config, name, output, sync, arch)
             if synchronizer.source in synchronized_sources:
                 logging.debug(
