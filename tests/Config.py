@@ -687,7 +687,7 @@ class ConfigTest(RiftTestCase):
         config = Config()
         with self.assertRaisesRegex(
             DeclError,
-            r"Key source is required in dict parameter sync"
+            r"Key url is required in dict parameter repos"
         ):
             config.load(cfgfile.name)
 
