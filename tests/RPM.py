@@ -6,15 +6,18 @@ import time
 import rpm
 import shutil
 import subprocess
+from unittest.mock import MagicMock
 
 from .TestUtils import (
     make_temp_dir,
     gen_rpm_spec,
+    read_file,
     RiftTestCase,
     RiftProjectTestCase,
 )
 from rift import RiftError
 from rift.RPM import Spec, Variable, RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2, RPM, rpmlint_v2
+from rift.Mock import Mock
 
 class SpecTest(RiftTestCase):
     """
@@ -35,8 +38,10 @@ class SpecTest(RiftTestCase):
         self.files = ""
         self.exclusive_arch = None
         self.variants = None
+        self.mock = MagicMock(autospec=Mock)
+        # mock Mock.read_spec to return spec file content directly read on host
+        self.mock.read_spec.side_effect = read_file
         self.update_spec()
-
 
     def update_spec(self):
         with open(self.spec, "w") as spec:
@@ -59,10 +64,9 @@ class SpecTest(RiftTestCase):
         os.unlink(self.spec)
         os.rmdir(self.directory)
 
-
     def test_init(self):
         """ Test Spec instanciation """
-        spec = Spec(self.spec)
+        spec = Spec(self.spec, self.mock, None)
         self.assertIn(self.name, spec.pkgnames)
         self.assertEqual(len(spec.pkgnames), 1)
         self.assertIn(self.name, spec.provides)
@@ -72,16 +76,18 @@ class SpecTest(RiftTestCase):
         self.assertEqual(spec.arch, self.arch)
         self.assertIn("{0}-{1}.tar.gz".format(self.name, self.version), spec.sources)
         self.assertEqual(len(spec.lines), 50)
+        # Check Mock.read_spec() has been called to load spec file.
+        self.mock.read_spec.assert_called_once_with(self.spec)
 
     def test_init_variant(self):
         """ Test Spec instanciation """
         self.variants = ['variant1', 'variant2']
         self.update_spec()
-        spec = Spec(self.spec, variant='variant1')
+        spec = Spec(self.spec, self.mock, None, variant='variant1')
         self.assertIn(self.name, spec.pkgnames)
         self.assertEqual(len(spec.pkgnames), 2)
         self.assertCountEqual(spec.pkgnames, ['pkg', 'pkg-variant1'])
-        spec = Spec(self.spec, variant='variant2')
+        spec = Spec(self.spec, self.mock, None, variant='variant2')
         self.assertIn(self.name, spec.pkgnames)
         self.assertEqual(len(spec.pkgnames), 2)
         self.assertCountEqual(spec.pkgnames, ['pkg', 'pkg-variant2'])
@@ -89,12 +95,12 @@ class SpecTest(RiftTestCase):
     def test_init_fails(self):
         """ Test Spec instanciation with error """
         path = '/nowhere.spec'
-        self.assert_except(RiftError, "{0} does not exist".format(path), Spec, path)
+        self.assert_except(RiftError, "{0} does not exist".format(path), Spec, path, self.mock, None)
 
 
     def test_specfile_check(self):
         """ Test specfile check function """
-        self.assertIsNone(Spec(self.spec).check())
+        self.assertIsNone(Spec(self.spec, self.mock, None).check())
 
 
     def test_specfile_check_with_rpmlint_v1(self):
@@ -105,13 +111,13 @@ class SpecTest(RiftTestCase):
         self.files = "/lib/test"
         self.update_spec()
         with self.assertRaisesRegex(RiftError, 'rpmlint reported errors'):
-            Spec(self.spec).check()
+            Spec(self.spec, self.mock, None).check()
 
         # Create rpmlint config to ignore hardcoded library path
         rpmlintfile = os.sep.join([self.directory, RPMLINT_CONFIG_V1])
         with open(rpmlintfile, "w") as rpmlint:
             rpmlint.write('addFilter("E: hardcoded-library-path")')
-        self.assertIsNone(Spec(self.spec).check())
+        self.assertIsNone(Spec(self.spec, self.mock, None).check())
         os.unlink(rpmlintfile)
 
     def test_specfile_check_with_rpmlint_v2(self):
@@ -122,18 +128,18 @@ class SpecTest(RiftTestCase):
         self.update_spec()
 
         with self.assertRaisesRegex(RiftError, 'rpmlint reported errors'):
-            Spec(self.spec).check()
+            Spec(self.spec, self.mock, None).check()
 
         # Create rpmlint config file to ignore rpm-buildroot-usage
         rpmlintfile = os.sep.join([self.directory, RPMLINT_CONFIG_V2])
         with open(rpmlintfile, "w") as rpmlint:
             rpmlint.write('Filters = ["rpm-buildroot-usage"]')
-        self.assertIsNone(Spec(self.spec).check())
+        self.assertIsNone(Spec(self.spec, self.mock, None).check())
         os.unlink(rpmlintfile)
 
     def test_bump_release(self):
         """ Test bump_release """
-        spec = Spec(self.spec)
+        spec = Spec(self.spec, self.mock, None)
         spec.release = '1'
         spec.bump_release()
         self.assertEqual(spec.release, '2')
@@ -154,7 +160,7 @@ class SpecTest(RiftTestCase):
 
     def test_add_changelog_entry(self):
         """ Test add_changelog_entry """
-        spec = Spec(self.spec)
+        spec = Spec(self.spec, self.mock, None)
         comment = "- New feature"
         userstr = "John Doe"
         date = time.strftime("%a %b %d %Y", time.gmtime())
@@ -168,7 +174,7 @@ class SpecTest(RiftTestCase):
 
     def test_add_changelog_entry_bump(self):
         """ Test add_changelog_entry with bump release"""
-        spec = Spec(self.spec)
+        spec = Spec(self.spec, self.mock, None)
         comment = "- New feature (Bumped)"
         userstr = "John Doe"
         date = time.strftime("%a %b %d %Y", time.gmtime())
@@ -183,7 +189,7 @@ class SpecTest(RiftTestCase):
 
     def test_parse_vars(self):
         """ Test spec variables parsing """
-        spec = Spec(self.spec)
+        spec = Spec(self.spec, self.mock, None)
         self.assertTrue(str(spec.variables['foo']) == '1.%{bar}')
         self.assertTrue(spec.variables['foo'].value == '1.%{bar}')
         self.assertTrue(spec.variables['foo'].name == 'foo')
@@ -195,7 +201,7 @@ class SpecTest(RiftTestCase):
 
     def test_match_var(self):
         """ Tests variable detection in pattern """
-        spec = Spec(self.spec)
+        spec = Spec(self.spec, self.mock, None)
         foo = spec.variables['foo']
         bar = spec.variables['bar']
         self.assertTrue(spec._match_var('%{foo}', r'^1') == foo)
@@ -213,13 +219,13 @@ class SpecTest(RiftTestCase):
         """ Test supports_arch() with ExclusiveArch"""
         self.exclusive_arch = "x86_64"
         self.update_spec()
-        spec = Spec(self.spec)
+        spec = Spec(self.spec, self.mock, None)
         self.assertTrue(spec.supports_arch('x86_64'))
         self.assertFalse(spec.supports_arch('aarch64'))
 
     def test_supports_arch_wo_exclusive_arch(self):
         """ Test supports_arch() without ExclusiveArch"""
-        spec = Spec(self.spec)
+        spec = Spec(self.spec, self.mock, None)
         self.assertTrue(spec.supports_arch('x86_64'))
         self.assertTrue(spec.supports_arch('aarch64'))
 
