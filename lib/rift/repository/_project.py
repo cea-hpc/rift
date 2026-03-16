@@ -32,8 +32,12 @@
 
 """Module to manage repositories in projects."""
 
+import logging
+
 from rift import RiftError
-from rift.repository.rpm import ArchRepositoriesRPM
+from rift.TempDir import TempDir
+from rift.repository.rpm import ArchRepositoriesRPM, StagingRepositoryRPM
+
 
 class ProjectArchRepositories:
     """
@@ -69,6 +73,32 @@ class ProjectArchRepositories:
     def for_format(self, _format):
         """Get concrete repository object for the provided format."""
         if _format not in ProjectArchRepositories.FORMAT_CLASSES:
-            raise RiftError(f"Unsupport repository format {_format}")
+            raise RiftError(f"Unsupported repository format {_format}")
         return self.FORMAT_CLASSES[_format](
             self.config, self.working_dir, self.arch)
+
+
+class StagingRepository:
+    """Handle staging repositories for all supported packages formats."""
+    FORMAT_CLASSES = {
+        'rpm': StagingRepositoryRPM
+    }
+
+    def __init__(self, config):
+        self.config = config
+        logging.info('Creating temporary staging repository')
+        self.stagedir = TempDir('stagedir')
+        self.stagedir.create()
+        self._repos = {}
+        for _format, _class in self.FORMAT_CLASSES.items():
+            self._repos[_format] = self.FORMAT_CLASSES[_format](
+                self.config, self.stagedir.path
+            )
+
+    def for_format(self, _format):
+        if _format not in self._repos:
+            raise RiftError(f"Unsupported staging repository format {_format}")
+        return self._repos[_format]
+
+    def delete(self):
+        self.stagedir.delete()

@@ -4,11 +4,10 @@
 from unittest.mock import Mock, patch
 import os
 import textwrap
-import tempfile
 
 from rift import RiftError
 from rift.package.rpm import PackageRPM, ActionableArchPackageRPM
-from rift.repository.rpm import LocalRepository
+from rift.repository import StagingRepository
 from rift.run import RunResult
 from rift.TestResults import TestResults
 from rift.Config import _DEFAULT_VARIANT
@@ -454,16 +453,13 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
     def test_build_staging(self, mock_mock_init, mock_mock_build_srpm, mock_mock_build_rpms):
         """ Test ActionableArchPackageRPM build with staging repository"""
         self.setup_package()
-        with tempfile.TemporaryDirectory() as tmpdir:
-            staging = LocalRepository(
-                path=tmpdir,
-                config=self.config,
-                name='staging',
-            )
-            staging.create()
-            self.pkg.build(staging=staging)
+        staging = StagingRepository(self.config)
+        self.pkg.build(staging=staging)
+        staging.delete()
         # Check build() has called expected Mock methods.
-        mock_mock_init.assert_called_once_with([staging.consumables['x86_64']])
+        mock_mock_init.assert_called_once_with(
+            [staging.for_format('rpm').repo.consumables['x86_64']]
+        )
         mock_mock_build_srpm.assert_called_once()
         mock_mock_build_rpms.assert_any_call(
             mock_mock_build_srpm.return_value, _DEFAULT_VARIANT, self.pkg.repos, False
@@ -532,20 +528,17 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         mock_vm_obj.running.return_value = False
         mock_vm_obj.run_test.return_value = RunResult(0, None, None)
         self.setup_package()
-        with tempfile.TemporaryDirectory() as tmpdir:
-            staging = LocalRepository(
-                path=tmpdir,
-                config=self.config,
-                name='staging',
-            )
-            staging.create()
-            results = self.pkg.test(staging=staging)
+        staging = StagingRepository(self.config)
+        results = self.pkg.test(staging=staging)
+        staging.delete()
         self.assertIsInstance(results, TestResults)
         self.assertEqual(len(results), 1)
         self.assertEqual(results.global_result, True)
         # Check VM initialized with staging extra repository
         mock_vm.assert_called_once_with(
-            self.config, 'x86_64', extra_repos=[staging.consumables['x86_64']]
+            self.config,
+            'x86_64',
+            extra_repos=[staging.for_format('rpm').repo.consumables['x86_64']]
         )
         # Check VM run_test() called once for basic test
         mock_vm_obj.run_test.assert_called_with(
@@ -653,11 +646,11 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
     @patch('rift.package.rpm.Mock.publish')
     def test_publish_staging_repo(self, mock_mock_publish):
         """ Test ActionableArchPackageRPM publish in staging repository """
-        mock_repository = Mock()
+        mock_staging_repo = Mock()
         self.setup_package()
-        self.pkg.publish(staging=mock_repository)
-        mock_mock_publish.assert_called_once_with(mock_repository)
-        mock_repository.update.assert_called_once()
+        self.pkg.publish(staging=mock_staging_repo)
+        mock_mock_publish.assert_called_once_with(mock_staging_repo.for_format().repo)
+        mock_staging_repo.for_format().repo.update.assert_called_once()
 
     @patch('rift.package.rpm.Mock.publish')
     def test_publish_no_update(self, mock_mock_publish):

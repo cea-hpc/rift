@@ -30,7 +30,7 @@
 # knowledge of the CeCILL license and that you accept its terms.
 #
 
-"""Module to hold abstract repository base class."""
+"""Module to hold abstract repository base classes."""
 
 from abc import ABC, abstractmethod
 
@@ -51,3 +51,12 @@ class ArchRepositoriesBase(ABC):
         from repositories. Must be overriden in concrete format specific
         classes.
         """
+
+
+class StagingRepositoryBase(ABC):
+    """
+    Abstract base class to manipulate staging repository for a specific format.
+    """
+    @abstractmethod
+    def __init__(self, repo):
+        self.repo = repo

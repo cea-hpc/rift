@@ -7,8 +7,12 @@ import shutil
 from unittest.mock import Mock, call, patch
 
 from ..TestUtils import make_temp_dir, RiftTestCase
-from rift.repository.rpm import ConsumableRepository, LocalRepository, ArchRepositoriesRPM
-from rift.package.rpm import PackageRPM
+from rift.repository.rpm import (
+    ConsumableRepository,
+    LocalRepository,
+    ArchRepositoriesRPM,
+    StagingRepositoryRPM,
+)
 from rift.Config import _DEFAULT_REPO_CMD, _DEFAULT_REPOS_VARIANTS, Config
 from rift.RPM import RPM
 from rift import RiftError
@@ -538,3 +542,17 @@ class ArchRepositoriesRPMTest(RiftTestCase):
                 [repo.name for repo in repos.for_variant(variant)],
                 expected_result
             )
+
+class StagingRepositoryRPMTest(RiftTestCase):
+    """
+    Tests class for StagingRepositoryRPM
+    """
+    def setUp(self):
+        self.config = Config()
+
+    def test_init(self):
+        tmp_dir = make_temp_dir()
+        staging = StagingRepositoryRPM(self.config, tmp_dir)
+        self.assertTrue(os.path.exists(os.path.join(tmp_dir, "rpm")))
+        self.assertIsInstance(staging.repo, LocalRepository)
+        shutil.rmtree(tmp_dir)
