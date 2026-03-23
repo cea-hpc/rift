@@ -656,7 +656,6 @@ class VMBuildTest(RiftProjectTestCase):
         # RiftProjectTestCase.
         self.config.options['vm']['images_cache'] = GLOBAL_CACHE
         self.config.options['proxy'] = PROXY
-        self.wrong_url = 'https://127.0.0.1/fail'
         self.valid_url = VALID_IMAGE_URL['x86_64']
         self.copy_cloud_init_tpl()
         self.ensure_vm_images_cache_dir()
@@ -681,19 +680,27 @@ class VMBuildTest(RiftProjectTestCase):
     def test_build_wrong_url(self):
         """Test VM build with URL error"""
         vm = VM(self.config, 'x86_64')
-        with self.assertRaisesRegex(
-            RiftError,
-            f"^URL error while downloading {self.wrong_url}: .*$",
+        with patch(
+            'rift.utils.urllib.request.urlretrieve',
+            side_effect=urllib.error.URLError('fake URL error')
         ):
-            vm.build(self.wrong_url, False, False, vm.image_local)
-        with self.assertRaisesRegex(
-            RiftError,
-            f"^HTTP error while downloading {self.valid_url}.unfound: HTTP "
-            "Error 404: Not Found$",
+            with self.assertRaisesRegex(
+                RiftError,
+                "^URL error while downloading http://test: .*$",
+            ):
+                vm.build("http://test", False, False, vm.image_local)
+        with patch(
+            'rift.utils.urllib.request.urlretrieve',
+            side_effect=urllib.error.HTTPError(404, "404", 'Not Found', None, None)
         ):
-            vm.build(
-                self.valid_url + '.unfound', False, False, vm.image_local
-            )
+            with self.assertRaisesRegex(
+                RiftError,
+                "^HTTP error while downloading http://test: HTTP "
+                "Error 404: Not Found$",
+            ):
+                vm.build(
+                    'http://test', False, False, vm.image_local
+                )
 
     def test_build_missing_cloudinit_tpl(self):
         """Test VM build with missing cloud-init template"""

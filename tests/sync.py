@@ -4,6 +4,7 @@
 
 import os
 import shutil
+import urllib
 from unittest.mock import patch
 
 from .TestUtils import RiftTestCase, make_temp_dir
@@ -361,24 +362,32 @@ class RepoSyncEpelTest(RiftTestCase):
         """ Test RepoSyncEpelTest synchronization raises RiftError with wrong URLs. """
         sync = {
             'method': 'epel',
-            'source': 'https://127.0.0.1/fail',
+            'source': 'http://test',
             'include': [],
             'exclude': [],
         }
         synchronizer = RepoSyncEpel(self.config, 'repo', self.output, sync)
-        with self.assertRaisesRegex(
-            RiftError,
-            r"^URL error while downloading https://127.0.0.1/.*: .*$",
+        with patch(
+            'rift.utils.urllib.request.urlretrieve',
+            side_effect=urllib.error.URLError('fake URL error'),
         ):
-            synchronizer.run()
-        sync['source'] =  'https://google.com/failure'
+            with self.assertRaisesRegex(
+                RiftError,
+                r"^URL error while downloading http://test/.*: .*$",
+            ):
+                synchronizer.run()
         synchronizer = RepoSyncEpel(self.config, 'repo', self.output, sync)
-        with self.assertRaisesRegex(
-            RiftError,
-            r"^HTTP error while downloading https://google.com/.*: "
-            "HTTP Error 404: Not Found$",
+        with patch(
+            'rift.utils.urllib.request.urlretrieve',
+            side_effect=urllib.error.HTTPError(404, "404", 'Not Found', None, None),
         ):
-            synchronizer.run()
+            with self.assertRaisesRegex(
+                RiftError,
+                r"^HTTP error while downloading http://test/.*: "
+                "HTTP Error 404: Not Found$",
+            ):
+                synchronizer.run()
+
 
 class RepoSyncDnfTest(RiftTestCase):
     """
