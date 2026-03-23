@@ -43,6 +43,7 @@ import time
 import itertools
 import datetime
 import locale
+import tempfile
 
 import rpm
 
@@ -206,8 +207,10 @@ class RPM():
 class Spec():
     """Access information from a Specfile and build SRPMS."""
 
-    def __init__(self, filepath=None, config=None, variant=None):
+    def __init__(self, filepath, mock, repos, config=None, variant=None):
         self.filepath = filepath
+        self.mock = mock
+        self.repos = repos
         self.srpmname = None
         self.pkgnames = []
         self.provides = []
@@ -239,6 +242,10 @@ class Spec():
                 rpm.addMacro(macro, value)
         if self.variant is not None and self.variant != _DEFAULT_VARIANT:
             rpm.addMacro(f"with_{self.variant}", "1")
+        # Disable automatic expansion of debug_package macro to avoid double
+        # expansion when parsing output of `rpmspec --parse` leading to
+        # "package *-debuginfo already exists" error eventually.
+        rpm.addMacro("debug_package", "%{nil}")
 
     def _parse_vars(self):
         self.variables = {}
@@ -260,18 +267,25 @@ class Spec():
         if not os.path.exists(self.filepath):
             raise RiftError(f"{self.filepath} does not exist")
         try:
-            rpm.reloadConfig()
-            self._set_macros()
-            # Get current timezone, so it can be restored after parsing the spec
-            # file.
-            current_timezone = str(datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo)
-            spec = rpm.TransactionSet().parseSpec(self.filepath)
-            # As a workaround RPM library bug
-            # https://github.com/rpm-software-management/rpm/issues/1821,
-            # restore timezone after it has been changed to parse changelog.
-            # Note this is fixed in RPM >= 4.19.
-            os.environ['TZ'] = str(current_timezone)
-            time.tzset()
+            # run rpmspec in mock's chroot
+            self.mock.init(self.repos)
+            content = self.mock.read_spec(self.filepath)
+            self.mock.clean()
+            with tempfile.NamedTemporaryFile(mode='w+') as fp:
+                fp.write(content)
+                fp.seek(0)
+                rpm.reloadConfig()
+                self._set_macros()
+                # Get current timezone, so it can be restored after parsing the spec
+                # file.
+                current_timezone = str(datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo)
+                spec = rpm.TransactionSet().parseSpec(fp.name)
+                # As a workaround RPM library bug
+                # https://github.com/rpm-software-management/rpm/issues/1821,
+                # restore timezone after it has been changed to parse changelog.
+                # Note this is fixed in RPM >= 4.19.
+                os.environ['TZ'] = str(current_timezone)
+                time.tzset()
         except ValueError as exp:
             raise RiftError(f"{self.filepath}: {str(exp).strip()}") from exp
         self.pkgnames = [_header_values(pkg.header['name']) for pkg in spec.packages]

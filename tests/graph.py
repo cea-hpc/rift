@@ -8,7 +8,8 @@ from unittest.mock import patch
 
 from rift.graph import PackagesDependencyGraph
 from rift.package.rpm import PackageRPM
-from .TestUtils import RiftProjectTestCase, SubPackage
+from .TestUtils import RiftProjectTestCase, SubPackage, read_file
+
 
 class GraphTest(RiftProjectTestCase):
     """
@@ -19,11 +20,14 @@ class GraphTest(RiftProjectTestCase):
         pkg_name = 'fake'
         self.make_pkg(name=pkg_name)
         package = PackageRPM(pkg_name, self.config, self.staff, self.modules)
-        graph = PackagesDependencyGraph.from_project(
-            self.config,
-            self.staff,
-            self.modules
-        )
+        # mock Mock.read_spec to return spec file content directly read on host
+        with patch('rift.package.rpm.Mock') as mock_mock:
+            mock_mock.return_value.read_spec = read_file
+            graph = PackagesDependencyGraph.from_project(
+                self.config,
+                self.staff,
+                self.modules
+            )
         self.assertEqual(len(graph.nodes), 1)
         build_requirements = graph.solve(package)
         self.assertEqual(len(build_requirements), 1)
@@ -44,11 +48,14 @@ class GraphTest(RiftProjectTestCase):
         os.unlink(packages['failed'].metafile)
         # Build packages graph
         with self.assertLogs(level='WARNING') as cm:
-            graph = PackagesDependencyGraph.from_project(
-                self.config,
-                self.staff,
-                self.modules
-            )
+            # mock Mock.read_spec to return spec file content directly read on host
+            with patch('rift.package.rpm.Mock') as mock_mock:
+                mock_mock.return_value.read_spec = read_file
+                graph = PackagesDependencyGraph.from_project(
+                    self.config,
+                    self.staff,
+                    self.modules
+                )
         # Check warning message has been emitted
         self.assertEqual(
             cm.output,
@@ -76,11 +83,14 @@ class GraphTest(RiftProjectTestCase):
             fh.write("invalid content")
         # Build packages graph
         with self.assertLogs(level='WARNING') as cm:
-            graph = PackagesDependencyGraph.from_project(
-                self.config,
-                self.staff,
-                self.modules
-            )
+            # mock Mock.read_spec to return spec file content directly read on host
+            with patch('rift.package.rpm.Mock') as mock_mock:
+                mock_mock.return_value.read_spec = read_file
+                graph = PackagesDependencyGraph.from_project(
+                    self.config,
+                    self.staff,
+                    self.modules
+                )
         # Check warning message has been emitted
         self.assertEqual(
             cm.output,
@@ -98,11 +108,14 @@ class GraphTest(RiftProjectTestCase):
         """ Test graph dump """
         pkg_name = 'fake'
         self.make_pkg(name=pkg_name)
-        graph = PackagesDependencyGraph.from_project(
-            self.config,
-            self.staff,
-            self.modules
-        )
+        # mock Mock.read_spec to return spec file content directly read on host
+        with patch('rift.package.rpm.Mock') as mock_mock:
+            mock_mock.return_value.read_spec = read_file
+            graph = PackagesDependencyGraph.from_project(
+                self.config,
+                self.staff,
+                self.modules
+            )
         with self.assertLogs(level='INFO') as cm:
             graph.dump()
         self.assertEqual(
@@ -119,11 +132,14 @@ class GraphTest(RiftProjectTestCase):
         """ Test solve with package not in graph """
         pkg_name = 'one'
         self.make_pkg(name=pkg_name)
-        graph = PackagesDependencyGraph.from_project(
-            self.config,
-            self.staff,
-            self.modules
-        )
+        # mock Mock.read_spec to return spec file content directly read on host
+        with patch('rift.package.rpm.Mock') as mock_mock:
+            mock_mock.return_value.read_spec = read_file
+            graph = PackagesDependencyGraph.from_project(
+                self.config,
+                self.staff,
+                self.modules
+            )
         package = PackageRPM('another', self.config, self.staff, self.modules)
         build_requirements = graph.solve(package)
         self.assertEqual(len(build_requirements), 0)
@@ -149,11 +165,14 @@ class GraphTest(RiftProjectTestCase):
         )
 
         # Load graph
-        graph = PackagesDependencyGraph.from_project(
-            self.config,
-            self.staff,
-            self.modules
-        )
+        # mock Mock.read_spec to return spec file content directly read on host
+        with patch('rift.package.rpm.Mock') as mock_mock:
+            mock_mock.return_value.read_spec = read_file
+            graph = PackagesDependencyGraph.from_project(
+                self.config,
+                self.staff,
+                self.modules
+            )
         self.assertEqual(len(graph.nodes), 3)
 
         # Rebuild of my-software does not trigger rebuild of other packages.
@@ -228,11 +247,14 @@ class GraphTest(RiftProjectTestCase):
         )
 
         def load_graph():
-            graph = PackagesDependencyGraph.from_project(
-                self.config,
-                self.staff,
-                self.modules
-            )
+            # mock Mock.read_spec to return spec file content directly read on host
+            with patch('rift.package.rpm.Mock') as mock_mock:
+                mock_mock.return_value.read_spec = read_file
+                graph = PackagesDependencyGraph.from_project(
+                    self.config,
+                    self.staff,
+                    self.modules
+                )
             self.assertEqual(len(graph.nodes), 3)
             return graph
 
@@ -328,11 +350,14 @@ class GraphTest(RiftProjectTestCase):
         )
 
         def load_graph():
-            graph = PackagesDependencyGraph.from_project(
-                self.config,
-                self.staff,
-                self.modules
-            )
+            # mock Mock.read_spec to return spec file content directly read on host
+            with patch('rift.package.rpm.Mock') as mock_mock:
+                mock_mock.return_value.read_spec = read_file
+                graph = PackagesDependencyGraph.from_project(
+                    self.config,
+                    self.staff,
+                    self.modules
+                )
             self.assertEqual(len(graph.nodes), 2)
             return graph
 
@@ -377,11 +402,14 @@ class GraphTest(RiftProjectTestCase):
         )
 
         # Load graph
-        graph = PackagesDependencyGraph.from_project(
-            self.config,
-            self.staff,
-            self.modules
-        )
+        # mock Mock.read_spec to return spec file content directly read on host
+        with patch('rift.package.rpm.Mock') as mock_mock:
+            mock_mock.return_value.read_spec = read_file
+            graph = PackagesDependencyGraph.from_project(
+                self.config,
+                self.staff,
+                self.modules
+            )
         self.assertEqual(len(graph.nodes), 3)
 
         # For all three package, the resolution should return all three
@@ -416,11 +444,14 @@ class GraphTest(RiftProjectTestCase):
         )
 
         # Load graph
-        graph = PackagesDependencyGraph.from_project(
-            self.config,
-            self.staff,
-            self.modules
-        )
+        # mock Mock.read_spec to return spec file content directly read on host
+        with patch('rift.package.rpm.Mock') as mock_mock:
+            mock_mock.return_value.read_spec = read_file
+            graph = PackagesDependencyGraph.from_project(
+                self.config,
+                self.staff,
+                self.modules
+            )
         graph.draw(False, [])  # w/o external deps
         output = mock_stdout.getvalue()
 
@@ -456,11 +487,14 @@ class GraphTest(RiftProjectTestCase):
         )
 
         # Load graph
-        graph = PackagesDependencyGraph.from_project(
-            self.config,
-            self.staff,
-            self.modules
-        )
+        # mock Mock.read_spec to return spec file content directly read on host
+        with patch('rift.package.rpm.Mock') as mock_mock:
+            mock_mock.return_value.read_spec = read_file
+            graph = PackagesDependencyGraph.from_project(
+                self.config,
+                self.staff,
+                self.modules
+            )
         graph.draw(False, ['libone'])  # only libone and its deps
         output = mock_stdout.getvalue()
 
@@ -501,11 +535,14 @@ class GraphTest(RiftProjectTestCase):
         )
 
         # Load graph
-        graph = PackagesDependencyGraph.from_project(
-            self.config,
-            self.staff,
-            self.modules
-        )
+        # mock Mock.read_spec to return spec file content directly read on host
+        with patch('rift.package.rpm.Mock') as mock_mock:
+            mock_mock.return_value.read_spec = read_file
+            graph = PackagesDependencyGraph.from_project(
+                self.config,
+                self.staff,
+                self.modules
+            )
         graph.draw(True, [])  # w/ external deps
         output = mock_stdout.getvalue()
 

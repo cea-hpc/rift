@@ -2,12 +2,12 @@
 # Copyright (C) 2024 CEA
 #
 
-import datetime
 import os
 import time
 import shutil
 import tarfile
 import textwrap
+from unittest.mock import patch
 
 from rift.annex import Annex
 from rift.annex.utils import (hashfile, get_info_from_digest, get_digest_from_path, is_pointer,
@@ -16,7 +16,13 @@ from rift.Config import Config, Staff, Modules
 from rift.package import ProjectPackages
 from rift.package.rpm import PackageRPM
 
-from .TestUtils import make_temp_file, make_temp_filename, make_temp_dir, gen_rpm_spec, RiftTestCase
+from .TestUtils import (
+    make_temp_file,
+    make_temp_filename,
+    gen_rpm_spec,
+    read_file,
+    RiftTestCase,
+)
 
 _TEST_ANNEX_PATH = '/tmp/rift-test-annex'
 
@@ -275,7 +281,12 @@ class AnnexTest(RiftTestCase):
         self.annex.push(orphaned_file.name)
 
         # Backup the annex
-        annex_backup = self.annex.backup(ProjectPackages.list(self.config, self.staff, self.modules))
+        # mock Mock.read_spec to return spec file content directly read on host
+        with patch('rift.package.rpm.Mock') as mock_mock:
+            mock_mock.return_value.read_spec = read_file
+            annex_backup = self.annex.backup(
+                ProjectPackages.list(self.config, self.staff, self.modules)
+             )
 
         # Get the files present in the annex backup
         with tarfile.open(annex_backup, 'r') as backup:
