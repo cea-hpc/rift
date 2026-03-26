@@ -1,7 +1,7 @@
 #
 # Copyright (C) 2025 CEA
 #
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, ANY
 import os
 import textwrap
 
@@ -490,27 +490,48 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
             )
             mock_message.assert_any_call(f"Building RPMS variant {variant}...")
 
-    @patch('rift.package.rpm.banner')
-    @patch('rift.package.rpm.BasicTest')
     @patch('rift.package.rpm.time.sleep')
     @patch('rift.package.rpm.VM')
-    def test_test(self, mock_vm, mock_time_sleep, mock_basic_test, mock_banner):
-        """ Test ActionableArchPackageRPM test """
+    def test_test_local(self, mock_vm, mock_time_sleep):
+        """ Test ActionableArchPackageRPM local test """
+        # mock time.sleep() to avoid waiting sleep timeout when VM is stopped
+        mock_vm_obj = mock_vm.return_value
+        mock_vm_obj.running.return_value = False
+        mock_vm_obj.run_test.return_value = RunResult(0, None, None)
+        self.setup_package(tests=[PackageTestDef(name='0_test.sh', local=True)])
+        self.pkg.run_local_test = Mock(return_value=RunResult(0, None, None))
+        results = self.pkg.test()
+        self.assertIsInstance(results, TestResults)
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results.global_result, True)
+        # Check run_local_test() has been called once for local dummy test
+        self.pkg.run_local_test.assert_called_once()
+        # Check vm.run_test has been called once for basic test
+        mock_vm_obj.run_test.assert_called_once_with(ANY, _DEFAULT_VARIANT)
+        # Check VM is stopped after the tests
+        mock_vm_obj.stop.assert_called_once()
+
+    @patch('rift.package.rpm.banner')
+    @patch('rift.package.rpm.time.sleep')
+    @patch('rift.package.rpm.VM')
+    def test_test_vm(self, mock_vm, mock_time_sleep, mock_banner):
+        """ Test ActionableArchPackageRPM test in VM"""
         # mock time.sleep() to avoid waiting sleep timeout when VM is stopped
         mock_vm_obj = mock_vm.return_value
         mock_vm_obj.running.return_value = False
         mock_vm_obj.run_test.return_value = RunResult(0, None, None)
         self.setup_package(tests=[])
+        self.pkg.run_local_test = Mock(return_value=RunResult(0, None, None))
         results = self.pkg.test()
         self.assertIsInstance(results, TestResults)
         self.assertEqual(len(results), 1)
         self.assertEqual(results.global_result, True)
+        # Check run_local_test() has not been called.
+        self.pkg.run_local_test.assert_not_called()
         # Check VM initialized (w/o extra repository)
         mock_vm.assert_called_once_with(self.config, 'x86_64', extra_repos=[])
         # Check VM run_test() called once for basic test
-        mock_vm_obj.run_test.assert_called_with(
-            mock_basic_test.return_value, _DEFAULT_VARIANT
-        )
+        mock_vm_obj.run_test.assert_called_once_with(ANY, _DEFAULT_VARIANT)
         # Check VM is stopped after the tests
         mock_vm_obj.stop.assert_called_once()
         mock_banner.assert_called_once_with(
@@ -518,10 +539,9 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         )
 
     @patch('rift.package.rpm.banner')
-    @patch('rift.package.rpm.BasicTest')
     @patch('rift.package.rpm.time.sleep')
     @patch('rift.package.rpm.VM')
-    def test_test_staging(self, mock_vm, mock_time_sleep, mock_basic_test, mock_banner):
+    def test_test_staging(self, mock_vm, mock_time_sleep, mock_banner):
         """ Test ActionableArchPackageRPM test """
         # mock time.sleep() to avoid waiting sleep timeout when VM is stopped
         mock_vm_obj = mock_vm.return_value
@@ -547,14 +567,12 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         )
 
     @patch('rift.package.rpm.banner')
-    @patch('rift.package.rpm.BasicTest')
     @patch('rift.package.rpm.time.sleep')
     @patch('rift.package.rpm.VM')
-    def test_test_multiple_variants(
+    def test_test_vm_multiple_variants(
         self,
         mock_vm,
         mock_time_sleep,
-        mock_basic_test,
         mock_banner
     ):
         """ Test ActionableArchPackageRPM test """
@@ -570,9 +588,12 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         # test), ie. 4 results
         self.assertEqual(len(results), 4)
         self.assertEqual(results.global_result, True)
-        # Check VM run_test() called for basic test on all variants
+        # Check VM run_test() has been called 4 times, for autotest + dummy and
+        # 2 variants each.
+        self.assertEqual(mock_vm_obj.run_test.call_count, 4)
+        # Check VM run_test() called test on all variants
         for variant in variants:
-            mock_vm_obj.run_test.assert_any_call(mock_basic_test.return_value, variant)
+            mock_vm_obj.run_test.assert_any_call(ANY, variant)
             mock_banner.assert_any_call(
                 f"Starting tests of package pkg variant {variant} on architecture "
                 "x86_64"

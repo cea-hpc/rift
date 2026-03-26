@@ -3,6 +3,7 @@
 #
 import os
 import textwrap
+from unittest.mock import patch
 
 from rift import RiftError
 from rift.package import Package
@@ -173,6 +174,42 @@ class ActionableArchPackageTest(RiftProjectTestCase):
 
     def test_init_concrete(self):
         ActionableArchPackageTestingConcrete(self.pkg, 'x86_64')
+
+    @patch('rift.package._base.run_command')
+    def test_run_local_test(self, mock_run_command):
+        actionable_pkg = ActionableArchPackageTestingConcrete(self.pkg, 'x86_64')
+        command = make_temp_file(
+            textwrap.dedent("""\
+                #!/bin/sh
+                /bin/true
+                """),
+            suffix='.sh'
+        )
+        test = Test(command.name)
+        actionable_pkg.run_local_test(test)
+        mock_run_command.assert_called_once_with(
+            command.name, capture_output=True, shell=True)
+
+    @patch('rift.package._base.run_command')
+    def test_run_local_test_with_funcs(self, mock_run_command):
+        actionable_pkg = ActionableArchPackageTestingConcrete(self.pkg, 'x86_64')
+        command = make_temp_file(
+            textwrap.dedent("""\
+                #!/bin/sh
+                /bin/true
+                """),
+            suffix='.sh'
+        )
+        test = Test(command.name)
+        actionable_pkg.run_local_test(test, { 'hey': 'echo hey!'})
+        mock_run_command.assert_called_once_with(
+            f"hey() {{ echo hey!; }}; export -f hey; {command.name}",
+            capture_output=True, shell=True)
+
+    def test_clean(self):
+        """ Test clean method no-op on abstract class """
+        actionable_pkg = ActionableArchPackageTestingConcrete(self.pkg, 'x86_64')
+        actionable_pkg.clean()
 
 
 class TestTest(RiftProjectTestCase):
