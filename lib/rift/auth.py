@@ -143,14 +143,6 @@ class Auth:
         """
         Get OpenID Token
         """
-        # curl \
-        #  -d "client_id=minio" \
-        #  -d "grant_type=password" \
-        #  -d "username=$INTI_LOGIN" \
-        #  -d "password=$INTI_PASSWORD" \
-        #  -H "Content-Type: application/x-www-form-urlencoded" \
-        #  "https://idp.ccc.ocre.cea.fr/auth/realms/minio/protocol/openid-connect/token"
-
         token = self.config.get("idp_token")
         if token:
             logging.info("retrieved existing idp_token from auth file")
@@ -217,15 +209,6 @@ class Auth:
 
         Returns True on success, False on failure.
         """
-        # curl \
-        #  -s \
-        #  -X POST \
-        #  https://annexe-forge.ccc.ocre.cea.fr \
-        #  -H "Content-Type: application/x-www-form-urlencoded" \
-        #  -d "Version=2011-06-15" \
-        #  -d "Action=AssumeRoleWithWebIdentity" \
-        #  -d "DurationSeconds=86000" \
-        #  -d "WebIdentityToken=$ACCESS_TOKEN"
         access_key_id = self.config.get("access_key_id", "")
         secret_access_key = self.config.get("secret_access_key", "")
         session_token = self.config.get("session_token", "")
