@@ -38,6 +38,7 @@ import os
 import logging
 import shutil
 import glob
+import threading
 from subprocess import Popen, PIPE, STDOUT, run, CalledProcessError
 
 from rift import RiftError
@@ -45,6 +46,8 @@ from rift.repository._base import ArchRepositoriesBase, StagingRepositoryBase
 from rift.RPM import RPM, Spec
 from rift.TempDir import TempDir
 from rift.Config import _DEFAULT_REPO_CMD, _DEFAULT_REPOS_VARIANTS
+
+repo_lock = threading.Lock()
 
 class ConsumableRepository:
     """
@@ -149,13 +152,19 @@ class LocalRepository:
         """
         # Create main repository directory and the SRPM sub-directory.
         for path in (self.path, self.srpms_dir):
-            if not os.path.exists(path):
-                os.mkdir(path)
+            # Add lock to avoid race condition between arch build threads on
+            # existence test and mkdir().
+            with repo_lock:
+                if not os.path.exists(path):
+                    os.mkdir(path)
         # Create all architectures RPM sub-directories and their repodata.
         for arch in self.config.get('arch'):
             path = self.rpms_dir(arch)
-            if not os.path.exists(path):
-                os.mkdir(path)
+            # Add lock to avoid race condition between arch build threads on
+            # existence test and mkdir().
+            with repo_lock:
+                if not os.path.exists(path):
+                    os.mkdir(path)
         self.update()
 
     def update(self):
@@ -164,15 +173,17 @@ class LocalRepository:
         architectures RPMS repositories.
         """
         def run_update(path):
-            with Popen(
-                [self.createrepo, '-q', '--update', path],
-                stdout=PIPE,
-                stderr=STDOUT,
-                universal_newlines=True,
-            ) as popen:
-                stdout = popen.communicate()[0]
-                if popen.returncode != 0:
-                    raise RiftError(stdout)
+            # Add lock to avoid conflicts between parallel runs of createrepo.
+            with repo_lock:
+                with Popen(
+                    [self.createrepo, '-q', '--update', path],
+                    stdout=PIPE,
+                    stderr=STDOUT,
+                    universal_newlines=True,
+                ) as popen:
+                    stdout = popen.communicate()[0]
+                    if popen.returncode != 0:
+                        raise RiftError(stdout)
 
         run_update(self.srpms_dir)
         for arch in self.config.get('arch'):

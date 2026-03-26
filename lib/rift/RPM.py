@@ -50,6 +50,7 @@ import rpm
 from rift import RiftError
 from rift.annex import Annex, is_binary
 from rift.Config import _DEFAULT_VARIANT
+from rift.run import run_command
 import rift.utils
 
 RPMLINT_CONFIG_V1 = 'rpmlint'
@@ -493,10 +494,9 @@ class Spec():
                 raise RiftError(msg)
 
         cmd, env = self._check(configdir)
-        with Popen(cmd, stderr=PIPE, env=env, universal_newlines=True) as popen:
-            stderr = popen.communicate()[1]
-            if popen.returncode != 0:
-                raise RiftError(stderr or 'rpmlint reported errors')
+        proc = run_command(cmd, capture_output=True)
+        if proc.returncode:
+            raise RiftError(proc.err or 'rpmlint reported errors')
 
     def analyze(self, review, configdir=None):
         """Run `rpmlint' for this specfile and fill provided `review'."""

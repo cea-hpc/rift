@@ -45,16 +45,27 @@ RunResult = collections.namedtuple(
     'RunResult', ['returncode', 'out', 'err']
 )
 
-def _handle_process_output(process, live_output, buf_out, buf_err):
+def _handle_process_output(process, capture_output, live_output, merge_out_err):
     """Handle process output until it is terminated."""
+
+    buf_out = buf_err = None
+    # Initialize string buffers to store process output in memory
+    if capture_output:
+        buf_out = io.StringIO()
+        if merge_out_err:
+            buf_err = buf_out
+        else:
+            buf_err = io.StringIO()
 
     # Process output lines handlers
     def handle_stdout_line(line):
-        buf_out.write(line)
+        if capture_output:
+            buf_out.write(line)
         if live_output:
             sys.stdout.write(line)
     def handle_stderr_line(line):
-        buf_err.write(line)
+        if capture_output:
+            buf_err.write(line)
         if live_output:
             sys.stderr.write(line)
 
@@ -90,6 +101,9 @@ def _handle_process_output(process, live_output, buf_out, buf_err):
     # Ensure process is terminated
     process.wait()
 
+    return buf_out, buf_err
+
+
 def run_command(
         cmd,
         live_output=True,
@@ -108,10 +122,8 @@ def run_command(
     Initially based on:
     https://gist.github.com/nawatts/e2cdca610463200c12eac2a14efc0bfb
     """
-    if capture_output:
+    if capture_output or live_output:
         channel = subprocess.PIPE
-    elif live_output:
-        channel = None
     else:
         channel = subprocess.DEVNULL
 
@@ -127,21 +139,16 @@ def run_command(
         **kwargs
     ) as process:
 
-        # If capture is disabled, just return the command result with the return
-        # code and None values for output.
-        if not capture_output:
-            return RunResult(process.wait(), None, None)
+        if capture_output or live_output:
+            # Handle process output
+            buf_out, buf_err = _handle_process_output(
+                process, capture_output, live_output, merge_out_err
+            )
 
-        # Initialize string buffers to store process output in memory
-        buf_out = io.StringIO()
-        buf_err = None
-        if merge_out_err:
-            buf_err = buf_out
-        else:
-            buf_err = io.StringIO()
-
-        # Handle process output
-        _handle_process_output(process, live_output, buf_out, buf_err)
+    # If capture is disabled, just return the command result with the return
+    # code and None values for output.
+    if not capture_output:
+        return RunResult(process.wait(), None, None)
 
     # Get values for out/err buffers and close them
     out = buf_out.getvalue()

@@ -51,12 +51,12 @@ from rift.package import ProjectPackages
 from rift.repository import ProjectArchRepositories, StagingRepository
 from rift.graph import PackagesDependencyGraph
 from rift.RPM import RPM, Spec
-from rift.TempDir import TempDir
 from rift.TestResults import TestCase, TestResults
 from rift.TextTable import TextTable
 from rift.VM import VM
 from rift.sync import RepoSyncFactory
 from rift.patches import get_packages_from_patch
+from rift.threads import RiftThread
 from rift.utils import message, banner
 
 
@@ -643,6 +643,28 @@ def build_pkgs(args, pkgs, arch, staging):
 
     return results
 
+def build_architecture(config, args, pkgs, arch):
+    """Build pkgs for a specific architecture and return results."""
+
+    results = TestResults(f"build-{arch}")
+
+    # Create temporary staging repository to hold dependencies unless
+    # dependency tracking is disabled in project configuration or user set
+    # --skip-deps argument.
+    staging = None
+    if config.get('dependency_tracking') and not args.skip_deps:
+        staging = StagingRepository(config)
+
+    results.extend(build_pkgs(args, pkgs, arch, staging))
+
+    if staging:
+        staging.delete()
+
+    banner(f"All packages processed for architecture {arch}")
+
+    return results
+
+
 def action_build(args, config):
     """Action for 'build' command."""
 
@@ -664,30 +686,38 @@ def action_build(args, config):
         str([pkg.name for pkg in pkgs])
     )
 
-    # Build all packages for all project supported architectures
+    # List of build threads
+    threads = []
+
+    # Create parallel threads to build all packages for all project supported
+    # architectures.
     for arch in config.get('arch'):
+        threads.append(
+            RiftThread(
+                build_architecture, f"build-{arch}", args=(config, args, pkgs, arch)
+            )
+        )
 
-        # Create temporary staging repository to hold dependencies unless
-        # dependency tracking is disabled in project configuration or user set
-        # --skip-deps argument.
-        staging = None
-        if config.get('dependency_tracking') and not args.skip_deps:
-            staging = StagingRepository(config)
+    # Start all threads
+    for thread in threads:
+        message(f"Starting build thread {thread.name}")
+        thread.start()
 
-        results.extend(build_pkgs(args, pkgs, arch, staging))
-
-        if getattr(args, 'junit', False):
-            logging.info('Writing test results in %s', args.junit)
-            results.junit(args.junit)
-
-        if staging:
-            staging.delete()
-        banner(f"All packages processed for architecture {arch}")
+    # Wait for all threads to finish
+    for thread in threads:
+        thread.join()
+        results.extend(thread.results)
+        banner(f"Build thread {thread.name} output:")
+        print(thread.output.getvalue(), end='')
 
     banner('All architectures processed')
 
     if len(results) > 1:
         print(results.summary())
+
+    if getattr(args, 'junit', False):
+        logging.info('Writing test results in %s', args.junit)
+        results.junit(args.junit)
 
     if not results.global_result:
         return 2
@@ -765,16 +795,31 @@ def action_validate(args, config):
         "Ordered list of packages to validate: %s",
         str([pkg.name for pkg in pkgs])
     )
-    # Validate packages on all project supported architectures
+
+    # List of validate threads
+    threads = []
+
+    # Create parallel threads to validate packages on all project supported
+    # architectures.
     for arch in config.get('arch'):
-        results.extend(
-            validate_pkgs(
-                config,
-                args,
-                pkgs,
-                arch
+        threads.append(
+            RiftThread(
+                validate_pkgs, f"validate-{arch}", args=(config, args, pkgs, arch)
             )
         )
+
+    # Start all threads
+    for thread in threads:
+        message(f"Starting validate thread {thread.name}")
+        thread.start()
+
+    # Wait for all threads to finish
+    for thread in threads:
+        thread.join()
+        results.extend(thread.results)
+        banner(f"Validate thread {thread.name} output:")
+        print(thread.output.getvalue(), end='')
+
     banner('All packages checked on all architectures')
 
     if getattr(args, 'junit', False):
@@ -803,10 +848,30 @@ def action_validdiff(args, config):
         args.patch, config=config, modules=modules, staff=staff
     )
     results = TestResults('validate')
-    # Re-validate all updated packages for all architectures supported by the
-    # project.
+
+    # List of validate threads
+    threads = []
+
+    # Create parallel threads to re-validate all updated packages for all
+    # architectures supported by the project.
     for arch in config.get('arch'):
-        results.extend(validate_pkgs(config, args, updated, arch))
+        threads.append(
+            RiftThread(
+                validate_pkgs, f"validate-{arch}", args=(config, args, updated, arch)
+            )
+        )
+
+    # Start all threads
+    for thread in threads:
+        message(f"Starting validate thread {thread.name}")
+        thread.start()
+
+    # Wait for all threads to finish
+    for thread in threads:
+        thread.join()
+        results.extend(thread.results)
+        banner(f"Validate thread {thread.name} output:")
+        print(thread.output.getvalue(), end='')
 
     if getattr(args, 'junit', False):
         logging.info('Writing test results in %s', args.junit)
