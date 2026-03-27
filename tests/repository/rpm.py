@@ -378,6 +378,23 @@ class ConsumableRepositoryTest(RiftTestCase):
         repo =  ConsumableRepository('http://some/where/x86_64')
         self.assertEqual(repo.generic_url('x86_64'), 'http://some/where/$basearch')
 
+    def test_authenticated(self):
+        local_repo = ConsumableRepository(
+            "file:///repo/x86_64",
+            options={"auth": "idp_token"},
+        )
+        remote_without_auth_repo = ConsumableRepository(
+            "https://repo.example.org/x86_64",
+        )
+        remote_auth_repo = ConsumableRepository(
+            "https://repo.example.org/private/x86_64",
+            options={"auth": "idp_token"},
+        )
+
+        self.assertFalse(local_repo.authenticated())
+        self.assertFalse(remote_without_auth_repo.authenticated())
+        self.assertTrue(remote_auth_repo.authenticated())
+
 class ArchRepositoriesRPMTest(RiftTestCase):
     """
     Tests class for ArchRepositoriesRPM

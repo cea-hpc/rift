@@ -26,10 +26,10 @@ name={{ repo.name }}
 baseurl={{ repo.url }}
 priority={{ repo.priority }}
 enabled={% if 'main' in repo.variants %}1{% else %}0{% endif %}
-{%if repo.module_hotfixes %}
+{% if repo.module_hotfixes %}
 module_hotfixes={{ repo.module_hotfixes }}
 {% endif %}
-{%if repo.proxy %}
+{% if repo.proxy and not repo.authenticated %}
 proxy={{ repo.proxy }}
 {% endif %}
 {% endfor %}

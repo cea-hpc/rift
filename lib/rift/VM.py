@@ -64,6 +64,7 @@ from rift.repository import ProjectArchRepositories
 from rift.TempDir import TempDir
 from rift.utils import last_modified, download_file, setup_dl_opener, message
 from rift.run import run_command
+from rift.proxy import AuthenticatedRepositoryProxyRuntime
 
 __all__ = ['VM']
 
@@ -118,6 +119,8 @@ class VM():
 
     _PROJ_MOUNTPOINT = '/rift.project'
     NAME = 'rift1.domain'
+    # Host IP address for QEMU user-mode networking available inside the guest.
+    QEMU_USERNET_HOST = "10.0.2.2"
     SUPPORTED_FS = ('9p', 'virtiofs')
 
     def __init__(self, config, arch, tmpmode=True, extra_repos=None):
@@ -139,6 +142,7 @@ class VM():
         self._repos = ProjectArchRepositories(
             config, arch
         ).for_format('rpm').all + extra_repos
+        self._auth_proxy = AuthenticatedRepositoryProxyRuntime(config, self._repos)
 
         self.address = vm_config.get('address')
         self.port = self.default_port(vm_config.get('port_range'))
@@ -382,6 +386,27 @@ class VM():
 
         return cmd
 
+    def _repo_url_for_guest(self, repo, host):
+        """Return effective URL for a repository consumed inside the VM."""
+        if repo.is_file():
+            return f"file:///rift.{repo.name}/"
+        # If repository is authenticated, use URL to authenticated repository proxy
+        # instead of the repository URL.
+        if repo.authenticated():
+            return self._auth_proxy.repo_url(repo, host)
+        return repo.url
+
+    def _guest_no_proxy(self):
+        """
+        Value for no_proxy inside the guest (libcurl / dnf).
+
+        Always include the QEMU user-net host so requests to the host-side Rift
+        repository proxy are not sent through http_proxy.
+        """
+        if not self.no_proxy:
+            return self.QEMU_USERNET_HOST
+        return f"{self.no_proxy},{self.QEMU_USERNET_HOST}"
+
     def _download(self, force: bool):
         """
         Download local copy of VM image if it is remote URL. Download is skipped if
@@ -498,9 +523,7 @@ class VM():
                 mkdirs.append(f"/rift.{repo.name}")
                 fstab.append(f"{repo.name} /rift.{repo.name} {self.shared_fs_type} "
                              f"{options} 0 0")
-                url = f"file:///rift.{repo.name}/"
-            else:
-                url = repo.url
+            url = self._repo_url_for_guest(repo, self.QEMU_USERNET_HOST)
             prio = repo.priority or (prio - 1)
             repos.append(textwrap.dedent(f"""\
                 [{repo.name}]
@@ -514,7 +537,9 @@ class VM():
                 repos.append(f"excludepkgs={repo.excludepkgs}\n")
             if repo.module_hotfixes:
                 repos.append(f"module_hotfixes={repo.module_hotfixes}\n")
-            if repo.proxy:
+            # Set proxy for this repo if set in configuration and is not
+            # authenticated.
+            if repo.proxy and not repo.authenticated():
                 repos.append(f"proxy={repo.proxy}\n")
 
         # Build the full command line
@@ -544,6 +569,8 @@ class VM():
             # Uses repos from the Rift configuration
             /bin/rm -f /etc/yum.repos.d/*.repo
             echo "{joinl(repos)}" > /etc/yum.repos.d/rift.repo
+
+            export no_proxy={shlex.quote(self._guest_no_proxy())}
 
             if [ -x /usr/bin/dnf ] ; then
                 dnf -d1 makecache
@@ -726,6 +753,8 @@ class VM():
                 logging.debug("Sending TERM signal to helper process (%d)", pid)
                 helper.terminate()
 
+        # Stop authenticated repositories proxy
+        self._auth_proxy.stop()
 
         # Unlink temp VM image
         if unlink:
@@ -754,6 +783,8 @@ class VM():
         self._download(force)
 
         message('Launching VM ...')
+        # Start authenticated repositories proxy
+        self._auth_proxy.start()
         self.spawn()
         self.ready()
         self.prepare()
@@ -859,8 +890,7 @@ class VM():
             fh_user.write(
                 tpl.render(
                     proxy=self.proxy,
-                    no_proxy=self.no_proxy,
-                    repositories=self._repos
+                    no_proxy=self._guest_no_proxy(),
                 )
             )
 
@@ -942,6 +972,9 @@ class VM():
 
         # Download image if necessary
         base_image_path = self._dl_base_image(url, force)
+
+        # Start authenticated repositories proxy
+        self._auth_proxy.start()
 
         # Build cloud-init seed iso
         seed_iso_file = self._build_seed_iso()

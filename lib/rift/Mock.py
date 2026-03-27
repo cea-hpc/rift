@@ -51,6 +51,7 @@ from rift.TempDir import TempDir
 from rift.RPM import RPM
 from rift.run import run_command
 from rift.Config import _DEFAULT_VARIANT
+from rift.proxy import AuthenticatedRepositoryProxyRuntime
 
 # Global dictionary of re-entrant locks for each mock name.
 _mock_chroot_locks = {}
@@ -117,6 +118,7 @@ class Mock():
         self._config = config
         self._arch = arch
         self._tmpdir = None
+        self._repo_proxy = None
         self._mockname = f"rift-{self._arch}-{getpass.getuser()}"
         if proj_vers:
             self._mockname = f"{self._mockname}-{proj_vers}"
@@ -148,11 +150,15 @@ class Mock():
         for idx, repo in enumerate(repolist, start=1):
             assert repo.url is not None
             prio = repo.priority or (prio - 1)
+            repo_url = repo.generic_url(self._arch)
+            if self._repo_proxy and repo.authenticated():
+                repo_url = self._repo_proxy.repo_url(repo, "127.0.0.1")
             repo_ctx = {
                 'name': repo.name or f"repo{idx}",
                 'priority': prio,
-                'url': repo.generic_url(self._arch),
+                'url': repo_url,
                 'variants': repo.variants,
+                'authenticated': repo.authenticated(),
                 }
             if repo.module_hotfixes:
                 repo_ctx['module_hotfixes'] = repo.module_hotfixes
@@ -259,6 +265,8 @@ class Mock():
 
         This should be cleaned with clean().
         """
+        self._repo_proxy = AuthenticatedRepositoryProxyRuntime(self._config, repolist)
+        self._repo_proxy.start()
         self._init_tmp_conf(repolist)
         self._exec(['--init'])
 
@@ -366,6 +374,7 @@ class Mock():
             # Clear handle to avoid later init() skipping _init_tmp_conf()
             # and mock seeing --configdir=None.
             self._tmpdir = None
+        self._stop_repo_proxy()
         for rpm in self.resultrpms():
             os.unlink(rpm.filepath)
 
@@ -374,6 +383,13 @@ class Mock():
         with self.lock():
             self._init_tmp_conf()
             self._exec(['--scrub=all'])
+
+    def _stop_repo_proxy(self):
+        """Stop repository proxy runtime if currently active."""
+        if self._repo_proxy is None:
+            return
+        self._repo_proxy.stop()
+        self._repo_proxy = None
 
     def build_srpm(self, specpath, sourcedir, sign):
         """

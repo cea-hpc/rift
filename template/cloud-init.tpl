@@ -61,6 +61,4 @@ write_files:
         export http_proxy="{{ proxy }}"
         export ftp_proxy="{{ proxy }}"
 {%- endif %}
-{%- if no_proxy is not none  %}
         export no_proxy="{{ no_proxy }}"
-{%- endif %}

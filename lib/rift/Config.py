@@ -209,6 +209,10 @@ class Config():
                 'variants': {
                     'check': 'list',
                     'default': _DEFAULT_REPOS_VARIANTS,
+                },
+                'auth': {
+                    'check': 'enum',
+                    'values': ['idp_token'],
                 }
             }
         },

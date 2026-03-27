@@ -200,6 +200,30 @@ class Auth:
 
         return True
 
+    def get_idp_token_noninteractive(self):
+        """
+        Return cached OpenID token from environment or state file without
+        prompting user. Raise RiftError if token is missing or expired.
+        """
+
+        token = os.environ.get("RIFT_AUTH_IDP_TOKEN")
+        if token:
+            return token
+
+        if not os.path.isfile(self.credentials_file):
+            raise RiftError(
+                f"Missing authentication state file {self.credentials_file}. "
+                "Run 'rift auth' first."
+            )
+        self.restore_state()
+        token = self.config.get("idp_token")
+        if not token:
+            raise RiftError(
+                f"Missing idp_token in authentication state file {self.credentials_file}. "
+                "Run 'rift auth' first."
+            )
+        return token
+
     # Step 2: Get S3 credentials using token from (1)
     def get_s3_credentials(self):
         """
