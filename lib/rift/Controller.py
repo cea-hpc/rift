@@ -295,6 +295,8 @@ def make_parser():
     # sync
     subprs = subparsers.add_parser('sync', help='Synchronize remote repositories')
     subprs.add_argument('-o', '--output', help='Synchronization output directory')
+    subprs.add_argument('-m', '--max-size', type=int,
+                        help='Max size authorized for the download of each file, in bytes')
     subprs.add_argument('repositories', metavar='REPOSITORY', nargs='*',
                         help='repositories to synchronize (default: all)')
 
@@ -977,8 +979,10 @@ def action_sync(args, config):
     # configuration parameter as default value.
     if args.output:
         output = args.output
+        max_size = args.max_size
     else:
         output = config.get('sync_output')
+        max_size = None
     if output is None:
         raise RiftError(
             "Synchronization output directory must be defined with "
@@ -1019,7 +1023,8 @@ def action_sync(args, config):
                     repo.get('url')
                 )
                 sync['source'] = repo.get('url')
-            synchronizer = RepoSyncFactory.get(config, name, output, sync, arch)
+            synchronizer = RepoSyncFactory.get(config, name, output, sync,
+                                               max_size, arch)
             if synchronizer.source in synchronized_sources:
                 logging.debug(
                     "Skipping already synchronized source %s",
