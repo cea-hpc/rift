@@ -33,8 +33,10 @@
 Set of utilities used in multiple Rift modules.
 """
 
+import logging
 import os
 import urllib
+
 from datetime import datetime, timezone
 
 from rift import RiftError
@@ -51,12 +53,19 @@ def banner(title):
     """
     print(f"** {title} **")
 
-def download_file(url, output):
+def download_file(url, output, max_size=None):
     """
     Download file pointed by url and save it in output path. Convert
     potential urllib download errors into RiftError.
     """
     try:
+        if max_size is not None:
+            meta = urllib.request.urlopen(url).info()
+            if int(meta["Content-Length"]) > max_size:
+                logging.warn("'%s' has a size of '%s' bytes, larger than max size '%d', skipping download",
+                             url, meta["Content-Length"], max_size)
+                return
+
         urllib.request.urlretrieve(url, output)
     except urllib.error.HTTPError as error:
         raise RiftError(
