@@ -33,8 +33,10 @@
 Set of utilities used in multiple Rift modules.
 """
 
+import logging
 import os
 import urllib
+
 from datetime import datetime, timezone
 
 from rift import RiftError
@@ -51,21 +53,33 @@ def banner(title):
     """
     print(f"** {title} **")
 
-def download_file(url, output):
+def download_file(url, output, max_size=None):
     """
     Download file pointed by url and save it in output path. Convert
     potential urllib download errors into RiftError.
     """
     try:
+        if max_size is not None:
+            meta = urllib.request.urlopen(url).info()
+            if (isinstance(meta["Content-Length"], str) and
+                    int(meta["Content-Length"]) > max_size):
+                logging.warn("'%s' has a size of '%s' bytes, larger than max size '%d', skipping download",
+                             url, meta["Content-Length"], max_size)
+                return
+
         urllib.request.urlretrieve(url, output)
     except urllib.error.HTTPError as error:
-        raise RiftError(
-            f"HTTP error while downloading {url}: {str(error)}"
-        ) from error
+        logging.warn("Got HTTP error '%s' while downloading '%s', skipping it",
+                     str(error), url)
+        #raise RiftError(
+        #    f"HTTP error while downloading {url}: {str(error)}"
+        #) from error
     except urllib.error.URLError as error:
-        raise RiftError(
-            f"URL error while downloading {url}: {str(error)}"
-        ) from error
+        logging.warn("Got URL error '%s' while downloading '%s', skipping it",
+                     str(error), url)
+        #raise RiftError(
+        #    f"URL error while downloading {url}: {str(error)}"
+        #) from error
 
 def last_modified(url):
     """
