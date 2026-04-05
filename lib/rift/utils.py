@@ -69,13 +69,17 @@ def download_file(url, output, max_size=None):
 
         urllib.request.urlretrieve(url, output)
     except urllib.error.HTTPError as error:
-        raise RiftError(
-            f"HTTP error while downloading {url}: {str(error)}"
-        ) from error
+        logging.warn("Got HTTP error '%s' while downloading '%s', skipping it",
+                     str(error), url)
+        #raise RiftError(
+        #    f"HTTP error while downloading {url}: {str(error)}"
+        #) from error
     except urllib.error.URLError as error:
-        raise RiftError(
-            f"URL error while downloading {url}: {str(error)}"
-        ) from error
+        logging.warn("Got URL error '%s' while downloading '%s', skipping it",
+                     str(error), url)
+        #raise RiftError(
+        #    f"URL error while downloading {url}: {str(error)}"
+        #) from error
 
 def last_modified(url):
     """
