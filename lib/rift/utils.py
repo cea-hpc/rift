@@ -61,7 +61,8 @@ def download_file(url, output, max_size=None):
     try:
         if max_size is not None:
             meta = urllib.request.urlopen(url).info()
-            if int(meta["Content-Length"]) > max_size:
+            if (isinstance(meta["Content-Length"], str) and
+                    int(meta["Content-Length"]) > max_size):
                 logging.warn("'%s' has a size of '%s' bytes, larger than max size '%d', skipping download",
                              url, meta["Content-Length"], max_size)
                 return
