@@ -566,6 +566,17 @@ class VM():
         logging.debug("Running command in VM: %s", ' '.join(cmd))
         return run_command(cmd, **kwargs)
 
+    def connect(self):
+        """Connect to the Rift VM with ssh"""
+        cmd = ['ssh', '-oStrictHostKeyChecking=no', '-oLogLevel=ERROR',
+               '-oUserKnownHostsFile=/dev/null',
+               '-oBatchMode=yes', '-p', str(self.port),
+               'root@127.0.0.1']
+
+        joined_cmd = " ".join(cmd)
+        logging.debug("Connecting to Rift VM :%s", joined_cmd)
+        return os.system(joined_cmd) >> 8 # return code is leftshifted by 8 bits
+
     def copy(self, source, dest, stderr=None):
         """Copy files from or to VM"""
         cmd = ['scp', '-oStrictHostKeyChecking=no', '-oLogLevel=ERROR',
