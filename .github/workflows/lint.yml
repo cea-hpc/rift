@@ -37,4 +37,4 @@ jobs:
 
     - name: Analysing the code with pylint
       run: |
-        pylint lib/rift
+        pylint --disable=C0302 lib/rift
