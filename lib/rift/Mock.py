@@ -42,6 +42,8 @@ import getpass
 import logging
 import threading
 from contextlib import contextmanager
+import shlex
+from textwrap import dedent
 from jinja2 import Template
 
 from rift import RiftError
@@ -54,6 +56,50 @@ from rift.Config import _DEFAULT_VARIANT
 _mock_chroot_locks = {}
 # Mutex to serialize access to _mock_chroot_locks dictionary.
 _mock_chroot_global_mutex = threading.Lock()
+
+RPMLINT_CONFIG_V1 = 'rpmlint'
+RPMLINT_CONFIG_V2 = 'rpmlint.toml'
+
+
+def rpmlint_env(configdir=None):
+    """
+    Return a copy of the process environment with XDG_CONFIG_HOME set when
+    configdir is set (rpmlint config next to the spec uses that layout).
+    Otherwise return None (caller inherits the current environment).
+    """
+    if not configdir:
+        return None
+    env = os.environ.copy()
+    env['XDG_CONFIG_HOME'] = os.path.realpath(configdir)
+    return env
+
+
+def rpmlint_chroot_script(spec_filepath):
+    """
+    Return a shell script for ``bash -c`` that runs rpmlint with v1- or v2-style
+    argv depending on whether ``rpmlint --version`` looks like major version 2.
+    """
+    spec_dir = os.path.dirname(spec_filepath)
+    q_spec = shlex.quote(spec_filepath)
+    q_run_v1 = (
+        f"rpmlint -o 'NetworkEnabled False' -f "
+        f"{shlex.quote(os.path.join(spec_dir, RPMLINT_CONFIG_V1))} {q_spec}"
+    )
+    config_v2 = os.path.join(spec_dir, RPMLINT_CONFIG_V2)
+    if os.path.exists(config_v2):
+        q_run_v2 = f"rpmlint -c {shlex.quote(config_v2)} {q_spec}"
+    else:
+        q_run_v2 = f"rpmlint {q_spec}"
+    return dedent(f"""
+        set +e
+        VERLINE=$(rpmlint --version 2>/dev/null | head -1)
+        if echo "$VERLINE" | grep -q '^2'; then
+            {q_run_v2}
+        else
+            {q_run_v1}
+        fi
+        exit $?
+    """).strip()
 
 
 class Mock():
@@ -137,9 +183,8 @@ class Mock():
         already initialized.
         """
 
-        # If _tmpdir is already defined (ie. _init_tmp_conf() has already been
-        # called), do nothing.
-        if self._tmpdir is not None:
+        # Skip only when tmpdir exists and still has a path (not after clean()).
+        if self._tmpdir is not None and self._tmpdir.path is not None:
             return
 
         # Set empty repolist by default.
@@ -217,19 +262,26 @@ class Mock():
         self._init_tmp_conf(repolist)
         self._exec(['--init'])
 
+    def _bind_mount_dirs_opt(self, paths):
+        """Return mock bind_mount plugin option for dirs (host path = chroot path)."""
+        unique = sorted({os.path.realpath(p) for p in paths})
+        pairs = ",".join(f"('{p}', '{p}')" for p in unique)
+        return f'--plugin-option=bind_mount:dirs=[{pairs}]'
+
     def read_spec(self, filepath):
         """
         Interpret RPM spec file in chroot by running rpmspec command. Return output of
         rpmspec command with some prefixed messages filtered out to make it parsable
         by RPM library.
         """
+        filepath_rp = os.path.realpath(filepath)
         proc = self._exec(
             [
-                f"--plugin-option=bind_mount:dirs=[('{filepath}', '{filepath}')]",
+                self._bind_mount_dirs_opt([filepath_rp]),
                 'chroot',
                 'rpmspec',
                 '--parse',
-                filepath
+                filepath_rp
             ],
             merge_out_err=False
         )
@@ -248,6 +300,55 @@ class Mock():
 
         return "\n".join(lines)
 
+    def rpmlint(self, spec_filepath, configdir=None):
+        """
+        Install rpmlint in the chroot, run rpmlint on spec file in chroot, then
+        clean the chroot. Return RunResult of rpmlint command.
+        """
+        spec_fp = os.path.realpath(spec_filepath)
+        spec_dir = os.path.dirname(spec_fp)
+        mount_paths = {spec_dir}
+        if configdir:
+            mount_paths.add(os.path.realpath(configdir))
+        bind_opt = self._bind_mount_dirs_opt(mount_paths)
+
+        # Install rpmlint in the chroot.
+        self._exec(
+            [
+                '--no-clean',
+                '--no-cleanup-after',
+                '--quiet',
+                '--pm-cmd',
+                'install',
+                '-y',
+                'rpmlint',
+            ]
+        )
+
+        # Run rpmlint in the chroot. The self._exec() method is not used here
+        # because callers need return code and output of rpmlint command.
+        cmd = self._mock_base() + [
+            bind_opt,
+            '--quiet',
+            'chroot',
+            '--',
+            'bash',
+            '-c',
+            rpmlint_chroot_script(spec_fp),
+        ]
+        logging.debug('Running mock rpmlint chroot: %s', ' '.join(cmd[:8]))
+        try:
+            return run_command(
+                cmd,
+                capture_output=True,
+                merge_out_err=False,
+                cwd='/',
+                env=rpmlint_env(configdir),
+            )
+        finally:
+            # Clean the chroot to remove rpmlint.
+            self._exec(['--quiet', '--clean'])
+
     def resultrpms(self, pattern='*.rpm', sources=True):
         """
         Iterate over built RPMS matching `pattern' in mock result directory.
@@ -260,7 +361,11 @@ class Mock():
 
     def clean(self):
         """Clean temporary files and RPMS created for this instance."""
-        self._tmpdir.delete()
+        if self._tmpdir:
+            self._tmpdir.delete()
+            # Clear handle to avoid later init() skipping _init_tmp_conf()
+            # and mock seeing --configdir=None.
+            self._tmpdir = None
         for rpm in self.resultrpms():
             os.unlink(rpm.filepath)
 

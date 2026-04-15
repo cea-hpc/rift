@@ -11,7 +11,14 @@ import textwrap
 from io import StringIO
 
 from .TestUtils import (
-    make_temp_file, make_temp_dir, gen_rpm_spec, read_file, RiftTestCase, RiftProjectTestCase, SubPackage
+    make_temp_file,
+    make_temp_dir,
+    gen_rpm_spec,
+    read_file,
+    host_rpmlint,
+    RiftTestCase,
+    RiftProjectTestCase,
+    SubPackage,
 )
 
 from .VM import GLOBAL_CACHE, VALID_IMAGE_URL, PROXY
@@ -344,10 +351,11 @@ class ControllerProjectActionCheckTest(RiftProjectTestCase):
         self.make_pkg()
         # mock Mock.read_spec to return spec file content directly read on host
         mock_mock.return_value.read_spec = read_file
-        with self.assertLogs(level='INFO') as log:
-            exit_code = main(
-                ['check', 'spec', '-f', self.buildfiles['pkg:rpm']]
-            )
+        with patch.object(mock_mock.return_value, 'rpmlint', host_rpmlint):
+            with self.assertLogs(level='INFO') as log:
+                exit_code = main(
+                    ['check', 'spec', '-f', self.buildfiles['pkg:rpm']]
+                )
         self.assertEqual(exit_code, 0)
         self.assertIn(
             'INFO:root:Spec file is OK.',
@@ -1996,7 +2004,7 @@ class ControllerProjectActionGitlabTest(RiftProjectTestCase):
     def test_gitlab(self, mock_mock):
         """simple gitlab"""
         self.make_pkg()
-        patch = make_temp_file(
+        patch_file = make_temp_file(
             textwrap.dedent("""
                 diff --git a/packages/pkg/pkg.spec b/packages/pkg/pkg.spec
                 index d1a0d0e7..b3e36379 100644
@@ -2014,7 +2022,8 @@ class ControllerProjectActionGitlabTest(RiftProjectTestCase):
         # mock Mock.read_spec to return spec file content directly read on host
         mock_mock.return_value.read_spec = read_file
         # Test no error is raised
-        main(['gitlab', patch.name])
+        with patch.object(mock_mock.return_value, 'rpmlint', host_rpmlint):
+            main(['gitlab', patch_file.name])
 
     @patch('rift.package.rpm.Mock')
     def test_gitlab_check_failed(self, mock_mock):
@@ -2033,7 +2042,7 @@ class ControllerProjectActionGitlabTest(RiftProjectTestCase):
                     buildsteps="$RPM_SOURCE_DIR\n$RPM_BUILD_ROOT",
                 )
             )
-        patch = make_temp_file(
+        patch_file = make_temp_file(
             textwrap.dedent("""
                 diff --git a/packages/pkg/pkg.spec b/packages/pkg/pkg.spec
                 index d1a0d0e7..b3e36379 100644
@@ -2051,8 +2060,9 @@ class ControllerProjectActionGitlabTest(RiftProjectTestCase):
         # mock Mock.read_spec to return spec file content directly read on host
         mock_mock.return_value.read_spec = read_file
         # Test error is raised
-        with self.assertRaisesRegex(RiftError, "rpmlint reported errors"):
-            main(['gitlab', patch.name])
+        with patch.object(mock_mock.return_value, 'rpmlint', host_rpmlint):
+            with self.assertRaisesRegex(RiftError, "rpmlint reported errors"):
+                main(['gitlab', patch_file.name])
 
 
 class ControllerProjectActionGerritTest(RiftProjectTestCase):
@@ -2073,7 +2083,7 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
     def test_gerrit(self, mock_review, mock_mock):
         """simple gerrit"""
         self.make_pkg()
-        patch = make_temp_file(
+        patch_file = make_temp_file(
             textwrap.dedent("""
                 diff --git a/packages/pkg/pkg.spec b/packages/pkg/pkg.spec
                 index d1a0d0e7..b3e36379 100644
@@ -2090,7 +2100,8 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
                 """))
         # mock Mock.read_spec to return spec file content directly read on host
         mock_mock.return_value.read_spec = read_file
-        main(['gerrit', '--change', '1', '--patchset', '2', patch.name])
+        with patch.object(mock_mock.return_value, 'rpmlint', host_rpmlint):
+            main(['gerrit', '--change', '1', '--patchset', '2', patch_file.name])
         # Check review has not been invalidated and pushed
         mock_review.return_value.invalidate.assert_not_called()
         mock_review.return_value.push.assert_called_once()
@@ -2113,7 +2124,7 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
                     buildsteps="$RPM_SOURCE_DIR\n$RPM_BUILD_ROOT",
                 )
             )
-        patch = make_temp_file(
+        patch_file = make_temp_file(
             textwrap.dedent("""
                 diff --git a/packages/pkg/pkg.spec b/packages/pkg/pkg.spec
                 index d1a0d0e7..b3e36379 100644
@@ -2130,7 +2141,8 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
                 """))
         # mock Mock.read_spec to return spec file content directly read on host
         mock_mock.return_value.read_spec = read_file
-        main(['gerrit', '--change', '1', '--patchset', '2', patch.name])
+        with patch.object(mock_mock.return_value, 'rpmlint', host_rpmlint):
+            main(['gerrit', '--change', '1', '--patchset', '2', patch_file.name])
         # Check review has been invalidated and pushed
         mock_review.return_value.invalidate.assert_called_once()
         mock_review.return_value.push.assert_called_once()

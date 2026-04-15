@@ -23,7 +23,8 @@ from collections import namedtuple
 from contextlib import contextmanager
 
 from rift.Config import Config, Staff, Modules
-from rift.Mock import Mock
+from rift.Mock import Mock, rpmlint_env, rpmlint_chroot_script
+from rift.run import run_command
 
 MOCK_CONF = '''\
 config_opts.setdefault('plugin_conf', {})
@@ -462,6 +463,19 @@ def read_file(filepath):
     """Read a text file and return its content."""
     return open(filepath).read()
 
+def host_rpmlint(filepath, configdir=None):
+    """
+    Drop-in replacement for Mock.rpmlint() method that runs host
+    rpmlint.
+    """
+    spec_fp = os.path.realpath(filepath)
+    script = rpmlint_chroot_script(spec_fp)
+    return run_command(
+        ['bash', '-lc', script],
+        capture_output=True,
+        merge_out_err=False,
+        env=rpmlint_env(configdir),
+    )
 
 #
 # Temp files

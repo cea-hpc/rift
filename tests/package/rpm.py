@@ -21,6 +21,7 @@ from ..TestUtils import (
     gen_rpm_spec,
     read_file,
     nullcontext,
+    host_rpmlint,
 )
 
 
@@ -106,7 +107,8 @@ class PackageRPMTest(RiftProjectTestCase):
         with patch('rift.package.rpm.Mock') as mock_mock:
             mock_mock.return_value.read_spec.return_value = open(spec_file.name).read()
             pkg.load(infopath = pkgfile.name)
-        pkg.check()
+        with patch.object(pkg.spec.mock, 'rpmlint', host_rpmlint):
+            pkg.check()
 
     def test_check_missing_source(self):
         """ Test PackageRPM.check() detect missing source """
@@ -134,9 +136,10 @@ class PackageRPMTest(RiftProjectTestCase):
         with patch('rift.package.rpm.Mock') as mock_mock:
             mock_mock.return_value.read_spec = read_file
             pkg.load(infopath = pkgfile.name)
-        with self.assertRaisesRegex(RiftError,
-            r'Missing source file\(s\): pkg-1.0.tar.gz'):
-            pkg.check()
+        with patch.object(pkg.spec.mock, 'rpmlint', host_rpmlint):
+            with self.assertRaisesRegex(RiftError,
+                r'Missing source file\(s\): pkg-1.0.tar.gz'):
+                pkg.check()
 
     def test_check_unused_source(self):
         """ Test PackageRPM.check() detect unused source """
@@ -171,9 +174,10 @@ class PackageRPMTest(RiftProjectTestCase):
         with patch('rift.package.rpm.Mock') as mock_mock:
             mock_mock.return_value.read_spec = read_file
             pkg.load(infopath = pkgfile.name)
-        with self.assertRaisesRegex(RiftError,
-            r'Unused source file\(s\): unused-1.0.tar.gz'):
-            pkg.check()
+        with patch.object(pkg.spec.mock, 'rpmlint', host_rpmlint):
+            with self.assertRaisesRegex(RiftError,
+                r'Unused source file\(s\): unused-1.0.tar.gz'):
+                pkg.check()
 
     def test_subpackages(self):
         """ Test PackageRPM.subpackages() returns list of provides """
@@ -405,7 +409,8 @@ class PackageRPMTest(RiftProjectTestCase):
             mock_mock.return_value.read_spec = read_file
             pkg.load(infopath = pkgfile.name)
         review = Mock(spec=Review)
-        pkg.analyze(review, pkg.dir)
+        with patch.object(pkg.spec.mock, 'rpmlint', host_rpmlint):
+            pkg.analyze(review, pkg.dir)
         review.invalidate.assert_not_called()
 
     def test_analyze_invalidate(self):
@@ -438,7 +443,8 @@ class PackageRPMTest(RiftProjectTestCase):
             mock_mock.return_value.read_spec = read_file
             pkg.load(infopath = pkgfile.name)
         review = Mock(spec=Review)
-        pkg.analyze(review, pkg.dir)
+        with patch.object(pkg.spec.mock, 'rpmlint', host_rpmlint):
+            pkg.analyze(review, pkg.dir)
         review.invalidate.assert_called_once()
 
     def test_for_arch(self):

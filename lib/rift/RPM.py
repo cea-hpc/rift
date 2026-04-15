@@ -51,11 +51,7 @@ import rpm
 from rift import RiftError
 from rift.annex import Annex, is_binary
 from rift.Config import _DEFAULT_VARIANT
-from rift.run import run_command
 import rift.utils
-
-RPMLINT_CONFIG_V1 = 'rpmlint'
-RPMLINT_CONFIG_V2 = 'rpmlint.toml'
 
 
 def _header_values(values):
@@ -65,18 +61,6 @@ def _header_values(values):
     if isinstance(values, bytes):
         return values.decode("utf8")
     return str(values)
-
-
-def rpmlint_v2():
-    """Return True if rpmlint major version is 2."""
-    # check --version output
-    try:
-        proc = run(['rpmlint', '--version'], stdout=PIPE, check=True)
-    except CalledProcessError as err:
-        raise RiftError(
-            f"Unable to get rpmlint version: {str(err)}"
-        ) from err
-    return proc.stdout.decode().startswith("2")
 
 
 class RPM():
@@ -466,26 +450,6 @@ class Spec():
 
         return RPM(os.path.join(destdir, self.srpmname))
 
-    def _check(self, configdir=None):
-        if configdir:
-            env = os.environ.copy()
-            env['XDG_CONFIG_HOME'] = configdir
-        else:
-            env = None
-
-        if rpmlint_v2():
-            cmd = ['rpmlint', self.filepath]
-            config = os.path.join(os.path.dirname(self.filepath), RPMLINT_CONFIG_V2)
-            if os.path.exists(config):
-                cmd[1:1] = ['-c', config]
-        else:
-            # rpmlint v1. Does not fail when config file is missing.
-            cmd = ['rpmlint', '-o', 'NetworkEnabled False', '-f',
-                os.path.join(os.path.dirname(self.filepath), RPMLINT_CONFIG_V1),
-                self.filepath]
-        logging.debug('Running rpmlint: %s', ' '.join(cmd))
-        return cmd, env
-
     def check(self, pkg=None):
         """
         Check specfile content using `rpmlint' tool and check missing items
@@ -510,19 +474,27 @@ class Spec():
                 msg = f"Missing source file(s): {' '.join(set(self.sources) - pkg.sources)}"
                 raise RiftError(msg)
 
-        cmd, env = self._check(configdir)
-        proc = run_command(cmd, capture_output=True)
+        with self.mock.lock():
+            try:
+                self.mock.init(self.repos)
+                proc = self.mock.rpmlint(self.filepath, configdir)
+            finally:
+                self.mock.clean()
         if proc.returncode:
             raise RiftError(proc.err or 'rpmlint reported errors')
 
     def analyze(self, review, configdir=None):
         """Run `rpmlint' for this specfile and fill provided `review'."""
-        cmd, env = self._check(configdir)
-        with Popen(cmd, stdout=PIPE, stderr=PIPE, env=env, universal_newlines=True) as popen:
-            stdout, stderr = popen.communicate()
-            if popen.returncode not in (0, 64, 66):
-                raise RiftError(stderr or f"rpmlint returned {popen.returncode}")
+        with self.mock.lock():
+            try:
+                self.mock.init(self.repos)
+                proc = self.mock.rpmlint(self.filepath, configdir)
+            finally:
+                self.mock.clean()
+        if proc.returncode not in (0, 64, 66):
+            raise RiftError(proc.err or f"rpmlint returned {proc.returncode}")
 
+        stdout = proc.out or ''
         for line in stdout.splitlines():
             if line.startswith(self.filepath + ':'):
                 line = line[len(self.filepath + ':'):]
@@ -537,7 +509,7 @@ class Spec():
                 except (ValueError, KeyError):
                     pass
 
-        if popen.returncode != 0:
+        if proc.returncode != 0:
             review.invalidate()
 
     def supports_arch(self, arch):
