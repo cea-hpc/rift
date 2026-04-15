@@ -1,6 +1,7 @@
 #
 # Copyright (C) 2025 CEA
 #
+
 from unittest.mock import Mock, patch, ANY
 import os
 import textwrap
@@ -14,7 +15,12 @@ from rift.Config import _DEFAULT_VARIANT
 from rift.Gerrit import Review
 
 from ..TestUtils import (
-    RiftProjectTestCase, PackageTestDef, make_temp_file, gen_rpm_spec, read_file
+    RiftProjectTestCase,
+    PackageTestDef,
+    make_temp_file,
+    gen_rpm_spec,
+    read_file,
+    nullcontext,
 )
 
 
@@ -691,6 +697,7 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         self.setup_package()
         # mock Mock.read_spec() so BasicTest can extract rpm packages from spec file
         self.pkg.mock = Mock()
+        self.pkg.mock.lock.return_value = nullcontext()
         self.pkg.mock.read_spec.return_value = open(self.buildfiles['pkg:rpm']).read()
         results = self.pkg.test()
         self.assertIsInstance(results, TestResults)
@@ -720,6 +727,7 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         self.setup_package()
         # mock Mock.read_spec() so BasicTest can extract rpm packages from spec file
         self.pkg.mock = Mock()
+        self.pkg.mock.lock.return_value = nullcontext()
         self.pkg.mock.read_spec.return_value = open(self.buildfiles['pkg:rpm']).read()
         self.pkg.test(noquit=True)
         # Check VM is NOT stopped after the tests

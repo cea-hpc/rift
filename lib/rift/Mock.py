@@ -40,6 +40,8 @@ import shutil
 import glob
 import getpass
 import logging
+import threading
+from contextlib import contextmanager
 from jinja2 import Template
 
 from rift import RiftError
@@ -47,6 +49,11 @@ from rift.TempDir import TempDir
 from rift.RPM import RPM
 from rift.run import run_command
 from rift.Config import _DEFAULT_VARIANT
+
+# Global dictionary of re-entrant locks for each mock name.
+_mock_chroot_locks = {}
+# Mutex to serialize access to _mock_chroot_locks dictionary.
+_mock_chroot_global_mutex = threading.Lock()
 
 
 class Mock():
@@ -68,6 +75,24 @@ class Mock():
         if proj_vers:
             self._mockname = f"{self._mockname}-{proj_vers}"
         logging.debug(self._mockname)
+
+    @contextmanager
+    def lock(self):
+        """Serialize mock operations sharing this instance's chroot on disk."""
+        # Acquire mutex to avoid race condition between multiple threads trying
+        # to acquire lock for the same mock name.
+        with _mock_chroot_global_mutex:
+            # Acquire lock for this mock name.
+            _lock = _mock_chroot_locks.get(self._mockname)
+            # If no lock for this mock name, create a new one.
+            if _lock is None:
+                _lock = threading.RLock()
+                _mock_chroot_locks[self._mockname] = _lock
+        _lock.acquire()
+        try:
+            yield
+        finally:
+            _lock.release()
 
     def _build_template_ctx(self, repolist):
         """ Create a context to build mock template """
@@ -241,8 +266,9 @@ class Mock():
 
     def scrub(self):
         """Remove Mock environments (ie. chroots directories) from disk."""
-        self._init_tmp_conf()
-        self._exec(['--scrub=all'])
+        with self.lock():
+            self._init_tmp_conf()
+            self._exec(['--scrub=all'])
 
     def build_srpm(self, specpath, sourcedir, sign):
         """

@@ -481,3 +481,12 @@ def make_temp_file(text, delete=True, suffix=None):
     tmp.write(text.encode())
     tmp.flush()
     return tmp
+
+
+#
+# Context managers
+#
+@contextmanager
+def nullcontext():
+    """Context manager that does nothing."""
+    yield

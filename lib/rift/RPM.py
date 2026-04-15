@@ -44,7 +44,6 @@ import itertools
 import datetime
 import locale
 import tempfile
-import threading
 
 import rpm
 
@@ -57,8 +56,6 @@ import rift.utils
 
 RPMLINT_CONFIG_V1 = 'rpmlint'
 RPMLINT_CONFIG_V2 = 'rpmlint.toml'
-
-mock_lock = threading.Lock()
 
 
 def _header_values(values):
@@ -272,12 +269,9 @@ class Spec():
         if not os.path.exists(self.filepath):
             raise RiftError(f"{self.filepath} does not exist")
         try:
-            # Run rpmspec in mock's chroot.
-            #
-            # All architectures threads use the same host native mock
-            # environment to load spec file. Add lock to avoid concurrent access
-            # on the same mock build root.
-            with mock_lock:
+            # Run rpmspec in mock's chroot. Acquire lock to avoid concurrent
+            # access on the same mock build root.
+            with self.mock.lock():
                 self.mock.init(self.repos)
                 content = self.mock.read_spec(self.filepath)
                 self.mock.clean()

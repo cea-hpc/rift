@@ -217,22 +217,23 @@ class ActionableArchPackageRPM(ActionableArchPackage):
                 self.package.format
             ).repo.consumables[self.arch])
 
-        message('Preparing Mock environment...')
-        self.mock.init(mock_repos)
+        with self.mock.lock():
+            message('Preparing Mock environment...')
+            self.mock.init(mock_repos)
 
-        message("Building SRPM...")
-        sign = kwargs.get('sign', False)
-        srpm = self._build_srpm(sign)
-        logging.info("Built: %s", srpm.filepath)
+            message("Building SRPM...")
+            sign = kwargs.get('sign', False)
+            srpm = self._build_srpm(sign)
+            logging.info("Built: %s", srpm.filepath)
 
-        for variant in self.package.variants:
-            message(
-                "Building RPMS"
-                + (f" variant {variant}" if self.package.has_real_variants() else '')
-                + "..."
-            )
-            for rpm in self._build_rpms(srpm, variant, sign):
-                logging.info('Built: %s', rpm.filepath)
+            for variant in self.package.variants:
+                message(
+                    "Building RPMS"
+                    + (f" variant {variant}" if self.package.has_real_variants() else '')
+                    + "..."
+                )
+                for rpm in self._build_rpms(srpm, variant, sign):
+                    logging.info('Built: %s', rpm.filepath)
 
         message("RPMS successfully built")
 
@@ -335,7 +336,8 @@ class ActionableArchPackageRPM(ActionableArchPackage):
         if kwargs.get('noquit', False):
             message("Keep environment, VM is running. Use: rift vm connect")
         else:
-            self.mock.clean()
+            with self.mock.lock():
+                self.mock.clean()
 
     def _build_srpm(self, sign):
         """
