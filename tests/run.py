@@ -40,6 +40,18 @@ class RunTest(RiftTestCase):
         # Standard output must also be streamed into current process stdout.
         self.assertEqual(mock_stdout.getvalue(), "output_data\n")
 
+    @patch('sys.stdout', new_callable=StringIO)
+    def test_run_command_stdout(self, mock_stdout):
+        """ Test run_command() with standard output. """
+        proc = run_command(["/bin/echo", "output_data"])
+        # Standard output must be available in out attribute of RunResult named
+        # tuple.
+        self.assertEqual(proc.returncode, 0)
+        self.assertIsNone(proc.out)
+        self.assertIsNone(proc.err)
+        # Standard output must also be streamed into current process stdout.
+        self.assertEqual(mock_stdout.getvalue(), "output_data\n")
+
     @patch('sys.stderr', new_callable=StringIO)
     def test_run_command_capture_stderr(self, mock_stderr):
         """ Test run_command() with captured standard error. """
@@ -82,6 +94,16 @@ class RunTest(RiftTestCase):
         """ Test run_command() without live output. """
         # With live_output disabled, standard output and standard error must not
         # be redirected in current process stdout.
-        proc = run_command(["/bin/echo", "output_data"], live_output=False)
+        run_command(["/bin/echo", "output_data"], live_output=False)
         self.assertEqual(mock_stdout.getvalue(), "")
         self.assertEqual(mock_stderr.getvalue(), "")
+
+    def test_run_command_dont_manage_output(self):
+        """ Test run_command() with manage_output disabled. """
+        proc = run_command(["/bin/echo", "output_data"], manage_output=False)
+        self.assertEqual(proc.returncode, 0)
+        # Child stdout/stderr inherit OS fds 1 and 2; that is not the same as
+        # Python's sys.stdout/sys.stderr, so stream content cannot be asserted
+        # here.
+        self.assertIsNone(proc.out)
+        self.assertIsNone(proc.err)

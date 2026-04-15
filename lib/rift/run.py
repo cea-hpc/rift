@@ -109,6 +109,7 @@ def run_command(
         live_output=True,
         capture_output=False,
         merge_out_err=False,
+        manage_output=True,
         **kwargs
     ):
     """
@@ -122,7 +123,9 @@ def run_command(
     Initially based on:
     https://gist.github.com/nawatts/e2cdca610463200c12eac2a14efc0bfb
     """
-    if capture_output or live_output:
+    if not manage_output:
+        channel = None
+    elif capture_output or live_output:
         channel = subprocess.PIPE
     else:
         channel = subprocess.DEVNULL
@@ -139,7 +142,7 @@ def run_command(
         **kwargs
     ) as process:
 
-        if capture_output or live_output:
+        if manage_output and (capture_output or live_output):
             # Handle process output
             buf_out, buf_err = _handle_process_output(
                 process, capture_output, live_output, merge_out_err

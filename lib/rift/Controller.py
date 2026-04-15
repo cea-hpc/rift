@@ -581,7 +581,7 @@ def action_vm(args, config):
         raise RiftError(f"Project does not support architecture '{args.arch}'")
     vm = VM(config, args.arch)
     if args.vm_cmd == 'connect':
-        ret = vm.cmd(options=None).returncode
+        ret = vm.cmd(options=None, manage_output=False).returncode
     elif args.vm_cmd == 'console':
         ret = vm.console()
     elif args.vm_cmd == 'cmd':
