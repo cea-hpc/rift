@@ -6,18 +6,35 @@ import time
 import rpm
 import shutil
 import subprocess
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from .TestUtils import (
     make_temp_dir,
     gen_rpm_spec,
     read_file,
+    host_rpmlint,
     RiftTestCase,
     RiftProjectTestCase,
 )
 from rift import RiftError
-from rift.RPM import Spec, Variable, RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2, RPM, rpmlint_v2
-from rift.Mock import Mock
+from rift.RPM import Spec, Variable, RPM
+from rift.Mock import Mock, RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2
+
+
+def rpmlint_v2():
+    """Return True if host rpmlint major version is 2."""
+    try:
+        proc = subprocess.run(
+            ['rpmlint', '--version'],
+            stdout=subprocess.PIPE,
+            check=True,
+        )
+    except subprocess.CalledProcessError as err:
+        raise RiftError(
+            f"Unable to get rpmlint version: {str(err)}"
+        ) from err
+    return proc.stdout.decode().startswith("2")
+
 
 class SpecTest(RiftTestCase):
     """
@@ -100,7 +117,8 @@ class SpecTest(RiftTestCase):
 
     def test_specfile_check(self):
         """ Test specfile check function """
-        self.assertIsNone(Spec(self.spec, self.mock, None).check())
+        with patch.object(self.mock, 'rpmlint', host_rpmlint):
+            self.assertIsNone(Spec(self.spec, self.mock, None).check())
 
 
     def test_specfile_check_with_rpmlint_v1(self):
@@ -110,14 +128,15 @@ class SpecTest(RiftTestCase):
             self.skipTest("This test requires rpmlint v1")
         self.files = "/lib/test"
         self.update_spec()
-        with self.assertRaisesRegex(RiftError, 'rpmlint reported errors'):
-            Spec(self.spec, self.mock, None).check()
+        with patch.object(self.mock, 'rpmlint', host_rpmlint):
+            with self.assertRaisesRegex(RiftError, 'rpmlint reported errors'):
+                Spec(self.spec, self.mock, None).check()
 
-        # Create rpmlint config to ignore hardcoded library path
-        rpmlintfile = os.sep.join([self.directory, RPMLINT_CONFIG_V1])
-        with open(rpmlintfile, "w") as rpmlint:
-            rpmlint.write('addFilter("E: hardcoded-library-path")')
-        self.assertIsNone(Spec(self.spec, self.mock, None).check())
+            # Create rpmlint config to ignore hardcoded library path
+            rpmlintfile = os.sep.join([self.directory, RPMLINT_CONFIG_V1])
+            with open(rpmlintfile, "w") as rpmlint:
+                rpmlint.write('addFilter("E: hardcoded-library-path")')
+            self.assertIsNone(Spec(self.spec, self.mock, None).check())
         os.unlink(rpmlintfile)
 
     def test_specfile_check_with_rpmlint_v2(self):
@@ -127,14 +146,15 @@ class SpecTest(RiftTestCase):
         self.buildsteps = "$RPM_BUILD_ROOT"
         self.update_spec()
 
-        with self.assertRaisesRegex(RiftError, 'rpmlint reported errors'):
-            Spec(self.spec, self.mock, None).check()
+        with patch.object(self.mock, 'rpmlint', host_rpmlint):
+            with self.assertRaisesRegex(RiftError, 'rpmlint reported errors'):
+                Spec(self.spec, self.mock, None).check()
 
-        # Create rpmlint config file to ignore rpm-buildroot-usage
-        rpmlintfile = os.sep.join([self.directory, RPMLINT_CONFIG_V2])
-        with open(rpmlintfile, "w") as rpmlint:
-            rpmlint.write('Filters = ["rpm-buildroot-usage"]')
-        self.assertIsNone(Spec(self.spec, self.mock, None).check())
+            # Create rpmlint config file to ignore rpm-buildroot-usage
+            rpmlintfile = os.sep.join([self.directory, RPMLINT_CONFIG_V2])
+            with open(rpmlintfile, "w") as rpmlint:
+                rpmlint.write('Filters = ["rpm-buildroot-usage"]')
+            self.assertIsNone(Spec(self.spec, self.mock, None).check())
         os.unlink(rpmlintfile)
 
     def test_bump_release(self):

@@ -39,7 +39,7 @@ import logging
 from unidiff import parse_unidiff
 from rift import RiftError
 from rift.package import ProjectPackages
-from rift.RPM import RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2
+from rift.Mock import RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2
 from rift.Config import Staff, Modules
 
 
