@@ -336,8 +336,7 @@ class ActionableArchPackageRPM(ActionableArchPackage):
         if kwargs.get('noquit', False):
             message("Keep environment, VM is running. Use: rift vm connect")
         else:
-            with self.mock.lock():
-                self.mock.clean()
+            self.mock.clean()
 
     def _build_srpm(self, sign):
         """
