@@ -60,26 +60,28 @@ def download_file(url, output, max_size=None):
     """
     try:
         if max_size is not None:
-            meta = urllib.request.urlopen(url).info()
-            if (isinstance(meta["Content-Length"], str) and
+            with urllib.request.urlopen(url) as opened_url:
+                meta = opened_url.info()
+                if (isinstance(meta["Content-Length"], str) and
                     int(meta["Content-Length"]) > max_size):
-                logging.warn("'%s' has a size of '%s' bytes, larger than max size '%d', skipping download",
-                             url, meta["Content-Length"], max_size)
-                return
+                    logging.warning(
+                        "'%s' has a size of '%s' bytes, larger than max size "
+                        "'%d', skipping download",
+                        url, meta["Content-Length"], max_size
+                    )
+                    return
 
         urllib.request.urlretrieve(url, output)
     except urllib.error.HTTPError as error:
-        logging.warn("Got HTTP error '%s' while downloading '%s', skipping it",
-                     str(error), url)
-        #raise RiftError(
-        #    f"HTTP error while downloading {url}: {str(error)}"
-        #) from error
+        logging.warning(
+            "Got HTTP error '%s' while downloading '%s', skipping it",
+            str(error), url
+        )
     except urllib.error.URLError as error:
-        logging.warn("Got URL error '%s' while downloading '%s', skipping it",
-                     str(error), url)
-        #raise RiftError(
-        #    f"URL error while downloading {url}: {str(error)}"
-        #) from error
+        logging.warning(
+            "Got URL error '%s' while downloading '%s', skipping it",
+            str(error), url
+        )
 
 def last_modified(url):
     """

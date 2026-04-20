@@ -7,20 +7,20 @@ Helper module to write unit tests for Rift project.
 It contains several helper methods or classes like temporary file management.
 """
 
-import logging
-import tempfile
-import unittest
-import os
-import tarfile
-import time
-import io
 from collections import OrderedDict
-
-import shutil
-import jinja2
-import yaml
 from collections import namedtuple
 from contextlib import contextmanager
+import io
+import jinja2
+import logging
+import os
+import pathlib as pl
+import shutil
+import tarfile
+import tempfile
+import time
+import unittest
+import yaml
 
 from rift.Config import Config, Staff, Modules
 from rift.Mock import Mock
@@ -178,6 +178,10 @@ class RiftTestCase(unittest.TestCase):
             self.assertEqual(str(exp), exc_str)
         else:
             self.fail("%s not raised" % exc_cls.__name__)
+
+    def assert_file_exists(self, path):
+        if not pl.Path(path).resolve().is_file():
+            self.fail("File '%s' does not exist" % str(path))
 
 class RiftProjectTestCase(RiftTestCase):
     """
