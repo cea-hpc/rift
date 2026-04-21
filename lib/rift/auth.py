@@ -208,6 +208,7 @@ class Auth:
 
         token = os.environ.get("RIFT_AUTH_IDP_TOKEN")
         if token:
+            logging.debug("fetched idp token from environment")
             return token
 
         if not os.path.isfile(self.credentials_file):

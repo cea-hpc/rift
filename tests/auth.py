@@ -35,7 +35,9 @@ class AuthTest(unittest.TestCase):
         self._write_state({})
         auth = Auth(self._minimal_config)
         with patch.dict(os.environ, {"RIFT_AUTH_IDP_TOKEN": "from-env"}):
-            self.assertEqual(auth.get_idp_token_noninteractive(), "from-env")
+            with self.assertLogs(level="DEBUG") as logs:
+                self.assertEqual(auth.get_idp_token_noninteractive(), "from-env")
+        self.assertIn("fetched idp token from environment", "\n".join(logs.output))
 
     def test_get_idp_token_noninteractive_missing_credentials_file(self):
         missing = self._cred_path + ".missing"
