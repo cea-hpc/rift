@@ -371,22 +371,26 @@ class RepoSyncEpelTest(RiftTestCase):
             'rift.utils.urllib.request.urlretrieve',
             side_effect=urllib.error.URLError('fake URL error'),
         ):
-            with self.assertRaisesRegex(
-                RiftError,
-                r"^URL error while downloading http://test/.*: .*$",
-            ):
+            with self.assertLogs(level='WARNING') as log:
                 synchronizer.run()
+                self.assertRegex(
+                    log.output[0],
+                    r"WARNING:root:Download failed, skipping entry: "
+                    r"URL error while downloading http://test/.*: .*$"
+                )
         synchronizer = RepoSyncEpel(self.config, 'repo', self.output, sync)
         with patch(
             'rift.utils.urllib.request.urlretrieve',
             side_effect=urllib.error.HTTPError(404, "404", 'Not Found', None, None),
         ):
-            with self.assertRaisesRegex(
-                RiftError,
-                r"^HTTP error while downloading http://test/.*: "
-                "HTTP Error 404: Not Found$",
-            ):
+            with self.assertLogs(level='WARNING') as log:
                 synchronizer.run()
+                self.assertRegex(
+                    log.output[0],
+                    r"WARNING:root:Download failed, skipping entry: "
+                    r"HTTP error while downloading http://test/.*: "
+                    r"HTTP Error 404: Not Found"
+                )
 
 
 class RepoSyncDnfTest(RiftTestCase):

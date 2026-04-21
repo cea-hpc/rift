@@ -294,7 +294,10 @@ class RepoSyncEpel(RepoSyncIndexed):
         url_file = f"{self.base_url}{abspath}"
         self.log_write(f"download {url_file}")
         logging.info("Downloading file %s", url_file)
-        download_file(url_file, output_file, self.max_size)
+        try:
+            download_file(url_file, output_file, self.max_size)
+        except RiftError as err:
+            logging.warning("Download failed, skipping entry: %s", str(err))
 
     def _run(self):
         """Run EPEL repository synchronization."""
@@ -304,7 +307,11 @@ class RepoSyncEpel(RepoSyncIndexed):
         ) as tmp_file:
             filelist_url = f"{self.pub_url}/fullfiletimelist-epel"
             logging.debug("Downloading EPEL files index %s", filelist_url)
-            download_file(filelist_url, tmp_file.name, self.max_size)
+            try:
+                download_file(filelist_url, tmp_file.name, self.max_size)
+            except RiftError as err:
+                logging.warning("Download failed, skipping entry: %s", str(err))
+
 
             # Open synchronization log file
             logging.debug("Creating synchronization log file %s", self.logfile)
@@ -352,7 +359,10 @@ class RepoSyncDnf(RepoSyncIndexed):
         url = package.remote_location()
         self.log_write(f"download {url}")
         logging.info("Downloading file '%s' to '%s'", url, output_directory)
-        download_file(url, output_file, self.max_size)
+        try:
+            download_file(url, output_file, self.max_size)
+        except RiftError as err:
+            logging.warning("Download failed, skipping entry: %s", str(err))
 
     def _run(self):
         """Run DNF repository synchronization."""

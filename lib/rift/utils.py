@@ -33,7 +33,6 @@
 Set of utilities used in multiple Rift modules.
 """
 
-import logging
 import os
 import urllib
 
@@ -62,26 +61,23 @@ def download_file(url, output, max_size=None):
         if max_size is not None:
             with urllib.request.urlopen(url) as opened_url:
                 meta = opened_url.info()
-                if (isinstance(meta["Content-Length"], str) and
-                    int(meta["Content-Length"]) > max_size):
-                    logging.warning(
-                        "'%s' has a size of '%s' bytes, larger than max size "
-                        "'%d', skipping download",
-                        url, meta["Content-Length"], max_size
+                length = meta["Content-Length"]
+                if (isinstance(length, str) and int(length) > max_size):
+                    raise RiftError(
+                        f"'{url}' has a size of '{length}' bytes, larger than "
+                        f"max size '{max_size}', skipping download",
                     )
-                    return
+
 
         urllib.request.urlretrieve(url, output)
     except urllib.error.HTTPError as error:
-        logging.warning(
-            "Got HTTP error '%s' while downloading '%s', skipping it",
-            str(error), url
-        )
+        raise RiftError(
+            f"HTTP error while downloading {url}: {str(error)}"
+        ) from error
     except urllib.error.URLError as error:
-        logging.warning(
-            "Got URL error '%s' while downloading '%s', skipping it",
-            str(error), url
-        )
+        raise RiftError(
+            f"URL error while downloading {url}: {str(error)}"
+        ) from error
 
 def last_modified(url):
     """
