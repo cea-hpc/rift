@@ -73,6 +73,7 @@ class RepoSyncBase:
         self._logfh = None  # Initialized in _log_open()
         self.patterns = SyncPatterns(sync['include'], sync['exclude'])
         self.max_size = max_size
+        self.retries = retries
 
     @property
     def base_url(self):
