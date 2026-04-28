@@ -35,6 +35,8 @@ Set of utilities used in multiple Rift modules.
 
 import os
 import urllib
+import logging
+import time
 
 from datetime import datetime, timezone
 
@@ -52,32 +54,43 @@ def banner(title):
     """
     print(f"** {title} **")
 
-def download_file(url, output, max_size=None):
+def download_file(url, output, max_size=None, retries=0):
     """
     Download file pointed by url and save it in output path. Convert
     potential urllib download errors into RiftError.
     """
-    try:
-        if max_size is not None:
-            with urllib.request.urlopen(url) as opened_url:
-                meta = opened_url.info()
-                length = meta["Content-Length"]
-                if (isinstance(length, str) and int(length) > max_size):
-                    raise RiftError(
-                        f"'{url}' has a size of '{length}' bytes, larger than "
-                        f"max size '{max_size}', skipping download",
-                    )
+    for attempt in range(retries + 1):
+        try:
+            if max_size is not None:
+                with urllib.request.urlopen(url) as opened_url:
+                    meta = opened_url.info()
+                    length = meta["Content-Length"]
+                    if (isinstance(length, str) and int(length) > max_size):
+                        raise RiftError(
+                            f"'{url}' has a size of '{length}' bytes, larger than "
+                            f"max size '{max_size}', skipping download",
+                        )
 
 
-        urllib.request.urlretrieve(url, output)
-    except urllib.error.HTTPError as error:
-        raise RiftError(
-            f"HTTP error while downloading {url}: {str(error)}"
-        ) from error
-    except urllib.error.URLError as error:
-        raise RiftError(
-            f"URL error while downloading {url}: {str(error)}"
-        ) from error
+            urllib.request.urlretrieve(url, output)
+
+        except (urllib.error.HTTPError, urllib.error.URLError) as error:
+            if attempt == retries:
+            # maximun retries exceeded
+                raise RiftError(
+                    f"Error while downloading {url}: {str(error)}"
+                ) from error
+
+            else:
+                delay = (attempt + 1) * 3
+                logging.info(
+                    "HTTP error while downloading %s: %s. Will retry in %s...",
+                    url,
+                    error,
+                    delay
+                )
+                time.sleep(delay)
+
 
 def last_modified(url):
     """

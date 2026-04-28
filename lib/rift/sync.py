@@ -57,7 +57,7 @@ SyncPatterns = collections.namedtuple('SyncPatterns', ['include', 'exclude'])
 
 class RepoSyncBase:
     """Common parent to all RepoSync* classes."""
-    def __init__(self, config, name, output, sync, max_size=None, arch=None):
+    def __init__(self, config, name, output, sync, max_size=None, retries=0, arch=None):
         self.config = config
         self.name = name
         subdir = sync.get('subdir', '').lstrip('/')
@@ -121,8 +121,8 @@ class RepoSyncBase:
 
 class RepoSyncLftp(RepoSyncBase):
     """Synchronize remote repositories with LFTP."""
-    def __init__(self, config, name, output, sync, max_size=None, arch=None):
-        super().__init__(config, name, output, sync, max_size, arch)
+    def __init__(self, config, name, output, sync, max_size=None, retries=0, arch=None):
+        super().__init__(config, name, output, sync, max_size, retries, arch)
         self.include_arg = ' '.join(
             [f"--include={pattern}" for pattern in self.patterns.include]
         )
@@ -164,8 +164,8 @@ class RepoSyncIndexed(RepoSyncBase):
     declared in index.
     """
 
-    def __init__(self, config, name, output, sync, max_size=None, arch=None):
-        super().__init__(config, name, output, sync, max_size, arch)
+    def __init__(self, config, name, output, sync, max_size=None, retries=0, arch=None):
+        super().__init__(config, name, output, sync, max_size, retries, arch)
         self.indexed_files = []
 
     def _relpath_matches(self, relpath):
@@ -228,8 +228,8 @@ class RepoSyncEpel(RepoSyncIndexed):
 
     PUB_ROOT = "/pub/epel"
 
-    def __init__(self, config, name, output, sync, max_size=None, arch=None):
-        super().__init__(config, name, output, sync, max_size, arch)
+    def __init__(self, config, name, output, sync, max_size=None, retries=0, arch=None):
+        super().__init__(config, name, output, sync, max_size, retries, arch)
         self.pub_url = f"{self.base_url}{self.PUB_ROOT}"
 
     def _process_line(self, line):
@@ -295,7 +295,7 @@ class RepoSyncEpel(RepoSyncIndexed):
         self.log_write(f"download {url_file}")
         logging.info("Downloading file %s", url_file)
         try:
-            download_file(url_file, output_file, self.max_size)
+            download_file(url_file, output_file, self.max_size, self.retries)
         except RiftError as err:
             logging.warning("Download failed, skipping entry: %s", str(err))
 
@@ -308,7 +308,7 @@ class RepoSyncEpel(RepoSyncIndexed):
             filelist_url = f"{self.pub_url}/fullfiletimelist-epel"
             logging.debug("Downloading EPEL files index %s", filelist_url)
             try:
-                download_file(filelist_url, tmp_file.name, self.max_size)
+                download_file(filelist_url, tmp_file.name, self.max_size, self.retries)
             except RiftError as err:
                 logging.warning("Download failed, skipping entry: %s", str(err))
 
@@ -360,7 +360,7 @@ class RepoSyncDnf(RepoSyncIndexed):
         self.log_write(f"download {url}")
         logging.info("Downloading file '%s' to '%s'", url, output_directory)
         try:
-            download_file(url, output_file, self.max_size)
+            download_file(url, output_file, self.max_size, self.retries)
         except RiftError as err:
             logging.warning("Download failed, skipping entry: %s", str(err))
 
@@ -443,9 +443,9 @@ class RepoSyncFactory:
             )
 
     @staticmethod
-    def get(config, name, output, sync, max_size=None, arch=None):
+    def get(config, name, output, sync, max_size=None, retries=0, arch=None):
         """Return the concrete RepoSync* class corresponding to the method."""
         RepoSyncFactory.check_valid_method(sync['method'])
         return RepoSyncFactory.METHODS[sync['method']](
-            config, name, output, sync, max_size, arch
+            config, name, output, sync, max_size, retries, arch
         )
