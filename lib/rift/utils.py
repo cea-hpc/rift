@@ -85,7 +85,7 @@ def download_file(url, output, max_size=None, retries=0):
             else:
                 delay = (attempt + 1) * 3
                 logging.info(
-                    "Error while downloading %s: %s. Will retry in %s...",
+                    "Error while downloading %s: %s, will retry in %s...",
                     url,
                     error,
                     delay
