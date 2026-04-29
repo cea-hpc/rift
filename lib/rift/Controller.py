@@ -139,6 +139,8 @@ def make_parser():
     subprs.add_argument('-F', '--formats', nargs='+',
                         choices=RIFT_SUPPORTED_FORMATS,
                         help='restrict build to specific package formats')
+    subprs.add_argument('-q', '--quiet', action='store_true',
+                        help='omit build output when it succeeds')
 
     # Sign options
     subprs = subparsers.add_parser('sign', help='Sign RPM package with GPG key.')
@@ -181,6 +183,8 @@ def make_parser():
     subprs.add_argument('-F', '--formats', nargs='+',
                         choices=RIFT_SUPPORTED_FORMATS,
                         help='restrict validation to specific package formats')
+    subprs.add_argument('-q', '--quiet', action='store_true',
+                        help='omit validate output when it succeeds')
 
     # Validate diff
     subprs = subparsers.add_parser('validdiff')
@@ -198,6 +202,8 @@ def make_parser():
                         help='write junit result file')
     subprs.add_argument('-p', '--publish', action='store_true',
                         help='publish built packages to repository')
+    subprs.add_argument('-q', '--quiet', action='store_true',
+                        help='omit validate diff output when it succeeds')
 
     # Annex options
     subprs = subparsers.add_parser('annex', help='Manipulate annex cache')
@@ -762,8 +768,9 @@ def action_build(args, config):
     for thread in threads:
         thread.join()
         results.extend(thread.results)
-        banner(f"Build thread {thread.name} output:")
-        print(thread.output.getvalue(), end='')
+        if not args.quiet or not thread.results.global_result:
+            banner(f"Build thread {thread.name} output:")
+            print(thread.output.getvalue(), end='')
 
     banner('All architectures processed')
 
@@ -883,8 +890,9 @@ def action_validate(args, config):
     for thread in threads:
         thread.join()
         results.extend(thread.results)
-        banner(f"Validate thread {thread.name} output:")
-        print(thread.output.getvalue(), end='')
+        if not args.quiet or not thread.results.global_result:
+            banner(f"Validate thread {thread.name} output:")
+            print(thread.output.getvalue(), end='')
 
     banner('All packages checked on all architectures')
 
@@ -936,8 +944,9 @@ def action_validdiff(args, config):
     for thread in threads:
         thread.join()
         results.extend(thread.results)
-        banner(f"Validate thread {thread.name} output:")
-        print(thread.output.getvalue(), end='')
+        if not args.quiet or not thread.results.global_result:
+            banner(f"Validate thread {thread.name} output:")
+            print(thread.output.getvalue(), end='')
 
     if getattr(args, 'junit', False):
         logging.info('Writing test results in %s', args.junit)

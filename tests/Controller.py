@@ -36,6 +36,7 @@ from rift.package._virtual import PackageVirtual
 from rift.RPM import RPM, Spec
 from rift import RiftError, DeclError
 
+
 VALID_REPOS = {
     'os': {
         'url': 'https://repo.almalinux.org/almalinux/8/BaseOS/$arch/os/',
@@ -378,19 +379,92 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
     """
     Tests class for Controller action validdiff
     """
+    @patch('sys.stdout', new_callable=StringIO)
     @patch('rift.Controller.remove_packages')
     @patch('rift.Controller.validate_pkgs')
     @patch('rift.Controller.get_packages_from_patch')
-    def test_action_validdiff(self, mock_get_packages_from_patch,
-                              mock_validate_pkgs, mock_remove_packages):
+    def test_action_validdiff(
+            self,
+            mock_get_packages_from_patch,
+            mock_validate_pkgs,
+            mock_remove_packages,
+            mock_stdout,
+    ):
         """ Test validdiff action calls expected functions """
         mock_get_packages_from_patch.return_value = (
             [PackageRPM('pkg', self.config, self.staff, self.modules)], []
         )
+        mock_validate_pkgs.return_value = TestResults()
+        self.config.set('arch', ['x86_64'])
+        self.update_project_conf()
+
         self.assertEqual(main(['validdiff', '/dev/null']), 0)
+
         mock_get_packages_from_patch.assert_called_once()
         mock_validate_pkgs.assert_called_once()
         mock_remove_packages.assert_called_once()
+
+        out = mock_stdout.getvalue()
+        self.assertIn(
+            '** Validate thread validate-x86_64 output: **', out)
+
+    @patch('sys.stdout', new_callable=StringIO)
+    @patch('rift.Controller.validate_pkgs')
+    @patch('rift.Controller.remove_packages')
+    @patch('rift.Controller.get_packages_from_patch')
+    def test_action_validdiff_quiet_success(
+            self,
+            mock_get_packages_from_patch,
+            mock_remove_packages,
+            mock_validate_pkgs,
+            mock_stdout):
+        """validiff --quiet does not print build output on success."""
+        mock_get_packages_from_patch.return_value = (
+            [PackageRPM('pkg', self.config, self.staff, self.modules)], []
+        )
+        mock_validate_pkgs.return_value = TestResults()
+        self.config.set('arch', ['x86_64', 'aarch64'])
+        self.update_project_conf()
+
+        self.assertEqual(main(['validdiff', '/dev/null', '--quiet']), 0)
+
+        out = mock_stdout.getvalue()
+        self.assertNotIn('Validate thread', out)
+
+    @patch('sys.stdout', new_callable=StringIO)
+    @patch('rift.Controller.get_packages_from_patch')
+    @patch('rift.Controller.remove_packages')
+    @patch('rift.Controller.validate_pkgs')
+    def test_action_validdiff_quiet_failure(
+        self,
+        mock_validate_pkgs,
+        mock_remove_packages,
+        mock_get_packages_from_patch,
+        mock_stdout,
+    ):
+        """validiff --quiet prints build output on failure."""
+
+        mock_get_packages_from_patch.return_value = (
+            [PackageRPM('pkg', self.config, self.staff, self.modules)], []
+        )
+
+        validate_failed = TestResults()
+        validate_failed.add_failure(
+            TestCase('build', 'pkg', _DEFAULT_VARIANT, 'x86_64', 'rpm'),
+            1.0,
+            err='simulated validate failure',
+        )
+        mock_validate_pkgs.return_value = validate_failed
+
+        self.config.set('arch', ['x86_64'])
+        self.update_project_conf()
+
+        self.assertEqual(main(['validdiff', '/dev/null', '--quiet']), 1)
+
+        self.assertIn(
+            '** Validate thread validate-x86_64 output: **',
+            mock_stdout.getvalue(),
+        )
 
     @patch('rift.Controller.ProjectArchRepositories')
     def test_remove_packages(self, mock_parepository_class):
@@ -456,8 +530,9 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         ):
             self.skipTest("qemu-user-static is not available")
 
+    @patch('sys.stdout', new_callable=StringIO)
     @patch('rift.package._project.PackageRPM', autospec=PackageRPM)
-    def test_action_build(self, mock_pkg_rpm):
+    def test_action_build(self, mock_pkg_rpm, mock_stdout):
 
         # Declare supported archs.
         self.config.set('arch', ['x86_64', 'aarch64'])
@@ -498,6 +573,12 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         mock_act_arch_pkg_rpm.publish.assert_has_calls(
             [call(updaterepo=True), call(updaterepo=True)])
         mock_act_arch_pkg_rpm.clean.assert_has_calls([call(), call()])
+
+        out = mock_stdout.getvalue()
+        self.assertIn(
+            '** Build thread build-x86_64 output: **', out)
+        self.assertIn(
+            '** Build thread build-aarch64 output: **', out)
 
         # Remove temporary working repo and unregister its deletion at exit
         shutil.rmtree(working_repo)
@@ -725,6 +806,63 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         shutil.rmtree(working_repo)
         atexit.unregister(shutil.rmtree)
 
+    @patch('sys.stdout', new_callable=StringIO)
+    @patch('rift.package._project.PackageRPM', autospec=PackageRPM)
+    def test_action_build_quiet_success(
+            self, mock_pkg_rpm, mock_stdout):
+        """build --quiet does not print build output on success."""
+        self.config.set('arch', ['x86_64', 'aarch64'])
+        self.update_project_conf()
+        self.make_pkg(build_requires=[])
+
+        mock_pkg_rpm_objs = mock_pkg_rpm.return_value
+        PackageRPM.__init__(
+            mock_pkg_rpm_objs, 'pkg', self.config, self.staff, self.modules)
+        mock_pkg_rpm_objs.supports_arch.return_value = True
+        mock_act_arch_pkg_rpm = Mock(spec=ActionableArchPackageRPM)
+        mock_pkg_rpm_objs.for_arch.return_value = mock_act_arch_pkg_rpm
+
+        self.assertEqual(
+            main(['build', 'pkg', '--formats', 'rpm', '--quiet']), 0)
+
+        out = mock_stdout.getvalue()
+        self.assertNotIn('Build thread', out)
+
+    @patch('sys.stdout', new_callable=StringIO)
+    @patch('rift.package._project.PackageRPM', autospec=PackageRPM)
+    @patch('rift.Controller.build_architecture')
+    def test_action_build_quiet_failure(
+        self,
+        mock_build_architecture,
+        mock_pkg_rpm,
+        mock_stdout,
+    ):
+        """build --quiet prints build output on failure."""
+
+        self.config.set('arch', ['x86_64'])
+        self.update_project_conf()
+        self.make_pkg(build_requires=[])
+
+        mock_pkg_rpm_objs = mock_pkg_rpm.return_value
+        PackageRPM.__init__(
+            mock_pkg_rpm_objs, 'pkg', self.config, self.staff, self.modules)
+
+        build_failed = TestResults('build-x86_64')
+        build_failed.add_failure(
+            TestCase('build', 'pkg', _DEFAULT_VARIANT, 'x86_64', 'rpm'),
+            1.0,
+            err='simulated build failure',
+        )
+        mock_build_architecture.return_value = build_failed
+
+        self.assertEqual(
+            main(['build', 'pkg', '--formats', 'rpm', '--quiet']), 2)
+
+        self.assertIn(
+            '** Build thread build-x86_64 output: **',
+            mock_stdout.getvalue(),
+        )
+
     @patch('rift.package._project.PackageRPM', autospec=PackageRPM)
     def test_action_test(self, mock_pkg_rpm):
 
@@ -906,9 +1044,10 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         mock_act_arch_pkg_rpm.test.assert_has_calls(
             [call(noauto=False, noquit=False)])
 
+    @patch('sys.stdout', new_callable=StringIO)
     @patch('rift.Controller.StagingRepository')
     @patch('rift.package._project.PackageRPM', autospec=PackageRPM)
-    def test_action_validate(self, mock_pkg_rpm, mock_staging_repo_cls):
+    def test_action_validate(self, mock_pkg_rpm, mock_staging_repo_cls, mock_stdout):
 
         # Declare supported archs.
         self.config.set('arch', ['x86_64', 'aarch64'])
@@ -937,6 +1076,12 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         # Run validate on pkg
         self.assertEqual(main(['validate', 'pkg']), 0)
 
+        out = mock_stdout.getvalue()
+        self.assertIn(
+            '** Validate thread validate-x86_64 output: **', out)
+        self.assertIn(
+            '** Validate thread validate-aarch64 output: **', out)
+
         # Check RPM package supports_arch() method is called for all supported
         # archs.
         for arch in self.config.get('arch'):
@@ -958,6 +1103,64 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
              call(noauto=False, staging=mock_staging_repo, noquit=False)])
         mock_act_arch_pkg_rpm.clean.assert_has_calls(
             [call(noquit=False), call(noquit=False)])
+
+    @patch('sys.stdout', new_callable=StringIO)
+    @patch('rift.Controller.StagingRepository')
+    @patch('rift.package._project.PackageRPM', autospec=PackageRPM)
+    def test_action_validate_quiet_success(
+            self, mock_pkg_rpm, mock_staging_repo_cls, mock_stdout):
+        """validate --quiet does not print build output on success."""
+        self.config.set('arch', ['x86_64', 'aarch64'])
+        self.update_project_conf()
+        self.make_pkg(build_requires=[])
+
+        mock_pkg_rpm_objs = mock_pkg_rpm.return_value
+        PackageRPM.__init__(
+            mock_pkg_rpm_objs, 'pkg', self.config, self.staff, self.modules)
+        mock_pkg_rpm_objs.supports_arch.return_value = True
+        mock_act_arch_pkg_rpm = Mock(spec=ActionableArchPackageRPM)
+        mock_pkg_rpm_objs.for_arch.return_value = mock_act_arch_pkg_rpm
+        mock_act_arch_pkg_rpm.test.return_value = TestResults()
+        mock_staging_repo = Mock()
+        mock_staging_repo_cls.return_value = mock_staging_repo
+
+        self.assertEqual(main(['validate', 'pkg', '--quiet']), 0)
+
+        out = mock_stdout.getvalue()
+        self.assertNotIn('Validate thread', out)
+
+    @patch('sys.stdout', new_callable=StringIO)
+    @patch('rift.package._project.PackageRPM', autospec=PackageRPM)
+    @patch('rift.Controller.validate_pkgs')
+    def test_action_validate_quiet_failure(
+            self,
+            mock_validate_pkgs,
+            mock_pkg_rpm,
+            mock_stdout):
+        """validate --quiet prints build output on failure."""
+
+        validate_failed = TestResults()
+        validate_failed.add_failure(
+            TestCase('build', 'pkg', _DEFAULT_VARIANT, 'x86_64', 'rpm'),
+            1.0,
+            err='simulated validate failure',
+        )
+        mock_validate_pkgs.return_value = validate_failed
+
+        self.config.set('arch', ['x86_64'])
+        self.update_project_conf()
+        self.make_pkg(build_requires=[])
+
+        mock_pkg_rpm_objs = mock_pkg_rpm.return_value
+        PackageRPM.__init__(
+            mock_pkg_rpm_objs, 'pkg', self.config, self.staff, self.modules)
+
+        self.assertEqual(main(['validate', 'pkg', '--quiet']), 2)
+
+        self.assertIn(
+            '** Validate thread validate-x86_64 output: **',
+            mock_stdout.getvalue(),
+        )
 
     @patch('rift.Controller.PackagesDependencyGraph')
     def test_build_graph(self, mock_graph_class):
@@ -2325,6 +2528,12 @@ class ControllerArgumentsTest(RiftTestCase):
         args = ['build']
         opts = parser.parse_args(args)
         self.assertIsNone(opts.formats)
+        self.assertFalse(opts.quiet)
+
+        opts = parser.parse_args(['build', '--quiet'])
+        self.assertTrue(opts.quiet)
+        opts = parser.parse_args(['build', '-q'])
+        self.assertTrue(opts.quiet)
 
         args = ['build', '--formats', 'rpm']
         opts = parser.parse_args(args)
@@ -2357,12 +2566,32 @@ class ControllerArgumentsTest(RiftTestCase):
         args = ['validate']
         opts = parser.parse_args(args)
         self.assertIsNone(opts.formats)
+        self.assertFalse(opts.quiet)
+
+        opts = parser.parse_args(['validate', '--quiet'])
+        self.assertTrue(opts.quiet)
+        opts = parser.parse_args(['validate', '-q', 'pkg'])
+        self.assertTrue(opts.quiet)
 
         args = ['validate', '--formats', 'rpm']
         opts = parser.parse_args(args)
         self.assertCountEqual(opts.formats, ['rpm'])
 
         args = ['validate', '--formats', 'fail']
+        with self.assertRaises(SystemExit):
+            parser.parse_args(args)
+
+    def test_parse_args_validdiff(self):
+        """ Test validdiff command options parsing """
+        parser = make_parser()
+
+        opts = parser.parse_args(['validdiff', '/dev/null'])
+        self.assertFalse(opts.quiet)
+
+        opts = parser.parse_args(['validdiff', '/dev/null', '-q'])
+        self.assertTrue(opts.quiet)
+        opts = parser.parse_args(['validdiff', '/dev/null', '--quiet'])
+        self.assertTrue(opts.quiet)
 
     def test_parse_args_query(self):
         """ Test query command options parsing """
@@ -2377,6 +2606,8 @@ class ControllerArgumentsTest(RiftTestCase):
         self.assertCountEqual(opts.formats, ['rpm'])
 
         args = ['query', '--formats', 'fail']
+        with self.assertRaises(SystemExit):
+            parser.parse_args(args)
 
     def test_parse_args_changelog(self):
         """ Test changelog command options parsing """
