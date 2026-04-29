@@ -306,9 +306,9 @@ def make_parser():
     subprs.add_argument('-o', '--output', help='Synchronization output directory')
     subprs.add_argument('-m', '--max-size', type=int,
                         help='Max size authorized for the download of each file, in bytes')
-    subprs.add_argument('-r', '--retries', type=int,
+    subprs.add_argument('-r', '--retries', type=int, default=0,
                         help='Allowed retries when a package download failed')
-    subprs.add_argument('-l', '--log-file', type=bool,
+    subprs.add_argument('-l', '--log-file', action='store_true',
                         help='Log the sync process to a log file in the current directory')
     subprs.add_argument('repositories', metavar='REPOSITORY', nargs='*',
                         help='repositories to synchronize (default: all)')
