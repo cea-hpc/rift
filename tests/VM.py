@@ -435,7 +435,39 @@ class VMTest(RiftTestCase):
             self.assertFalse(os.path.exists(vm.image_local))
             vm._download(False)
             mock_message.assert_called_once_with(f"Download remote VM image {url}")
-            mock_download_file.assert_called_once_with(url, vm.image_local)
+            mock_download_file.assert_called_once_with(
+                url, vm.image_local, bearer_token=None)
+
+    @patch('rift.VM.Auth')
+    @patch('rift.VM.download_file')
+    @patch('rift.VM.message')
+    def test_download_idp_token_bearer(
+        self, mock_message, mock_download_file, mock_auth_cls
+    ):
+        """Remote VM image download sends Bearer token when vm.auth is idp_token."""
+        mock_auth_cls.return_value.get_idp_token_noninteractive.return_value = (
+            'test-idp-token'
+        )
+        url = 'http://localhost/path/to/my_image.qcow2'
+        self.config.set(
+            'vm',
+            {
+                'image': url,
+                'auth': 'idp_token',
+            }
+        )
+        with patch(
+            'rift.VM.VM.image_local', new_callable=PropertyMock
+        ) as mock_image_local:
+            vm = VM(self.config, platform.machine())
+            tmpfile = make_temp_file("")
+            mock_image_local.return_value = tmpfile.name
+            os.unlink(vm.image_local)
+            self.assertFalse(os.path.exists(vm.image_local))
+            vm._download(False)
+            mock_message.assert_called_once_with(f"Download remote VM image {url}")
+            mock_download_file.assert_called_once_with(
+                url, vm.image_local, bearer_token='test-idp-token')
 
     @patch('rift.VM.download_file')
     @patch('rift.VM.message')
@@ -458,7 +490,8 @@ class VMTest(RiftTestCase):
             with self.assertLogs(level='DEBUG') as cm:
                 vm._download(True)
             mock_message.assert_called_once_with(f"Download remote VM image {url}")
-            mock_download_file.assert_called_once_with(url, vm.image_local)
+            mock_download_file.assert_called_once_with(
+                url, vm.image_local, bearer_token=None)
         self.assertIn(
             'INFO:root:Remove VM image local copy and force re-download for remote '
             'image',
@@ -492,6 +525,8 @@ class VMTest(RiftTestCase):
             mock_message.assert_not_called()
             # Check download_file() has not been called
             mock_download_file.assert_not_called()
+            mock_last_modified.assert_called_once_with(
+                url, bearer_token=None)
             self.assertIn(
                 "DEBUG:root:Local copy of VM image is already updated "
                 f"({int(os.path.getmtime(tmpfile.name))} > 0), skipping download of "
@@ -524,11 +559,44 @@ class VMTest(RiftTestCase):
             with self.assertLogs(level='DEBUG') as cm:
                 vm._download(False)
             mock_message.assert_called_once_with(f"Download remote VM image {url}")
-            mock_download_file.assert_called_once_with(url, vm.image_local)
+            mock_download_file.assert_called_once_with(
+                url, vm.image_local, bearer_token=None)
+            mock_last_modified.assert_called_once_with(
+                url, bearer_token=None)
         self.assertIn(
             'INFO:root:Remote VM image has been updated, removing local copy',
             cm.output
         )
+
+    @patch('rift.VM.last_modified')
+    @patch('rift.VM.Auth')
+    @patch('rift.VM.download_file')
+    def test_download_last_modified_bearer(
+        self, mock_download_file, mock_auth_cls, mock_last_modified
+    ):
+        """Test VM download last modified check uses Bearer token when vm.auth is idp_token."""
+        mock_auth_cls.return_value.get_idp_token_noninteractive.return_value = (
+            'tok-head'
+        )
+        mock_last_modified.return_value = 0.0
+        url = 'http://localhost/path/to/my_image.qcow2'
+        self.config.set(
+            'vm',
+            {
+                'image': url,
+                'auth': 'idp_token',
+            }
+        )
+        with patch(
+            'rift.VM.VM.image_local', new_callable=PropertyMock
+        ) as mock_image_local:
+            vm = VM(self.config, platform.machine())
+            tmpfile = make_temp_file("")
+            mock_image_local.return_value = tmpfile.name
+            self.assertTrue(os.path.exists(vm.image_local))
+            vm._download(False)
+            mock_last_modified.assert_called_once_with(url, bearer_token='tok-head')
+            mock_download_file.assert_not_called()
 
     @patch('rift.VM.last_modified')
     @patch('rift.VM.download_file')
@@ -556,6 +624,8 @@ class VMTest(RiftTestCase):
                 vm._download(False)
             mock_message.assert_not_called()
             mock_download_file.assert_not_called()
+            mock_last_modified.assert_called_once_with(
+                url, bearer_token=None)
         self.assertIn(
             "DEBUG:root:Local copy of VM image is present, unable to get remote image "
             "modification date because of error (last-modified failure), skipping "
@@ -687,7 +757,7 @@ class VMBuildTest(RiftProjectTestCase):
         """Test VM build with URL error"""
         vm = VM(self.config, 'x86_64')
         with patch(
-            'rift.utils.urllib.request.urlretrieve',
+            'rift.utils.urllib.request.urlopen',
             side_effect=urllib.error.URLError('fake URL error')
         ):
             with self.assertRaisesRegex(
@@ -696,7 +766,7 @@ class VMBuildTest(RiftProjectTestCase):
             ):
                 vm.build("http://test", False, False, vm.image_local)
         with patch(
-            'rift.utils.urllib.request.urlretrieve',
+            'rift.utils.urllib.request.urlopen',
             side_effect=urllib.error.HTTPError(404, "404", 'Not Found', None, None)
         ):
             with self.assertRaisesRegex(

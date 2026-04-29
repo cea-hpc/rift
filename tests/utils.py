@@ -2,7 +2,7 @@
 # Copyright (C) 2025 CEA
 #
 
-from io import StringIO
+from io import StringIO, BytesIO
 from unittest.mock import patch, Mock
 import os
 
@@ -27,6 +27,16 @@ class UtilsTest(RiftTestCase):
         download_file("file:///etc/hosts", "/tmp/blob", 40000)
         self.assert_file_exists("/tmp/blob")
         os.remove("/tmp/blob")
+
+    @patch('urllib.request.urlopen')
+    def test_download_file_bearer_token(self, mock_urlopen):
+        mock_urlopen.return_value.__enter__.return_value = BytesIO(b'x')
+        download_file('https://test', '/tmp/blob', bearer_token='tok')
+        # Check that Authorization header is set
+        req = mock_urlopen.call_args[0][0]
+        hdrs = dict(req.header_items())
+        self.assertEqual(hdrs.get('Authorization'), 'Bearer tok')
+        os.remove('/tmp/blob')
 
     @patch('urllib.request.urlopen')
     def test_download_file_too_large(self, mock_urlopen):
@@ -57,6 +67,17 @@ class UtilsTest(RiftTestCase):
         mock_response.getheader.return_value = "Sat, 1 Jan 2000 00:00:00 GMT"
         mock_urlopen.return_value.__enter__.return_value = mock_response
         self.assertEqual(last_modified("http://test"), 946684800)
+
+    @patch('urllib.request.urlopen')
+    def test_last_modified_bearer_token(self, mock_urlopen):
+        mock_response = Mock()
+        mock_response.getheader.return_value = "Sat, 1 Jan 2000 00:00:00 GMT"
+        mock_urlopen.return_value.__enter__.return_value = mock_response
+        self.assertEqual(last_modified("http://test", bearer_token='tok'), 946684800)
+        # Check that Authorization header is set
+        req = mock_urlopen.call_args[0][0]
+        hdrs = dict(req.header_items())
+        self.assertEqual(hdrs.get('Authorization'), 'Bearer tok')
 
     @patch('urllib.request.urlopen')
     def test_last_modified_header_not_found(self, mock_urlopen):

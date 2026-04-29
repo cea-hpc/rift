@@ -59,6 +59,7 @@ from subprocess import Popen, PIPE, STDOUT, check_output, run, CalledProcessErro
 from jinja2 import Template
 
 from rift import RiftError
+from rift.auth import Auth
 from rift.Config import _DEFAULT_VIRTIOFSD, _DEFAULT_VARIANT
 from rift.repository import ProjectArchRepositories
 from rift.TempDir import TempDir
@@ -133,6 +134,11 @@ class VM():
             self._image_src = urllib.parse.urlparse(image)
         else:
             self._image_src = None
+        self._image_auth = vm_config.get('auth')
+        if self._image_auth:
+            self._auth = Auth(config)
+        else:
+            self._auth = None
 
         self._project_dir = config.project_dir
 
@@ -234,6 +240,12 @@ class VM():
         return (
             int(self.vmid, 16) % (port_range['max'] - port_range['min'])
         ) + port_range['min']
+
+    def _vm_image_bearer_token(self):
+        """Return bearer token for remote VM image HTTP(S) requests, or None."""
+        if self._image_auth != 'idp_token' or self._auth is None:
+            return None
+        return self._auth.get_idp_token_noninteractive()
 
     def _mk_tmp_img(self, image):
         """Create a temp VM image to avoid modifying the real image disk."""
@@ -419,6 +431,9 @@ class VM():
         # Setup proxy if defined
         setup_dl_opener(self.proxy, self.no_proxy)
 
+        # Get optional bearer token for remote VM image HTTP(S) requests.
+        bearer = self._vm_image_bearer_token()
+
         # Check presence of the local copy. If present and force is True, remove it
         # to force re-download. Otherwise skip download.
         if os.path.exists(self.image_local):
@@ -430,7 +445,10 @@ class VM():
                 os.unlink(self.image_local)
             else:
                 try:
-                    last_remote_modification = last_modified(self._image_src.geturl())
+                    last_remote_modification = last_modified(
+                        self._image_src.geturl(),
+                        bearer_token=bearer,
+                    )
                 except RiftError as err:
                     logging.debug(
                         "Local copy of VM image is present, unable to get remote image "
@@ -456,7 +474,11 @@ class VM():
 
         message(f"Download remote VM image {self._image_src.geturl()}")
         # Download VM image
-        download_file(self._image_src.geturl(), self.image_local)
+        download_file(
+            self._image_src.geturl(),
+            self.image_local,
+            bearer_token=bearer,
+        )
 
     def spawn(self, image=None, seed=None):
         """

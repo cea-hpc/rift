@@ -34,6 +34,7 @@ Set of utilities used in multiple Rift modules.
 """
 
 import os
+import shutil
 import urllib
 import logging
 import time
@@ -54,51 +55,71 @@ def banner(title):
     """
     print(f"** {title} **")
 
-def download_file(url, output, max_size=None, retries=0):
+def download_file(url, output, max_size=None, retries=0, bearer_token=None):
     """
     Download file pointed by url and save it in output path. Convert
     potential urllib download errors into RiftError.
+
+    When max_size is set, the server Content-Length header is checked against
+    max_size before streaming the body (single GET).
+
+    If retries is set and is greater than 0, retry the download up to retries
+    times.
+
+    If bearer_token is set, send Authorization: Bearer <token> on the request.
     """
 
-    if max_size is not None:
-        with urllib.request.urlopen(url) as opened_url:
-            meta = opened_url.info()
-            length = meta["Content-Length"]
-            if (isinstance(length, str) and int(length) > max_size):
-                raise RiftError(
-                    f"'{url}' has a size of '{length}' bytes, larger than "
-                    f"max size '{max_size}', skipping download",
-                )
+    req = urllib.request.Request(url)
+    if bearer_token:
+        req.add_header('Authorization', f'Bearer {bearer_token}')
 
     for attempt in range(retries + 1):
         try:
-            urllib.request.urlretrieve(url, output)
+            if max_size is not None:
+                with urllib.request.urlopen(req) as opened_url:
+                    meta = opened_url.info()
+                    length = meta["Content-Length"]
+                    if (isinstance(length, str) and int(length) > max_size):
+                        raise RiftError(
+                            f"'{url}' has a size of '{length}' bytes, larger than "
+                            f"max size '{max_size}', skipping download",
+                        )
+                    with open(output, 'wb') as out_fh:
+                        shutil.copyfileobj(opened_url, out_fh)
+                    break
+            else:
+                with urllib.request.urlopen(req) as opened_url:
+                    with open(output, 'wb') as out_fh:
+                        shutil.copyfileobj(opened_url, out_fh)
+                break
 
         except (urllib.error.HTTPError, urllib.error.URLError) as error:
             if attempt == retries:
-            # maximun retries exceeded
+                # maximum retries exceeded
                 raise RiftError(
                     f"Error while downloading {url}: {str(error)}"
                 ) from error
 
-            else:
-                delay = (attempt + 1) * 3
-                logging.info(
-                    "Error while downloading %s: %s, will retry in %s...",
-                    url,
-                    error,
-                    delay
-                )
-                time.sleep(delay)
+            delay = (attempt + 1) * 3
+            logging.info(
+                "Error while downloading %s: %s, will retry in %s seconds…",
+                url,
+                error,
+                delay
+            )
+            time.sleep(delay)
 
-
-def last_modified(url):
+def last_modified(url, bearer_token=None):
     """
     Return the mtime of the URL using the Last-Modified header. By convention,
     Last-Modified is always in GMT/UTC timezone. Raises RiftError when unable to
     get or convert Last-Modified header to timestamp.
+
+    If bearer_token is set, send Authorization: Bearer <token> on the request.
     """
     req = urllib.request.Request(url, method='HEAD')
+    if bearer_token:
+        req.add_header('Authorization', f'Bearer {bearer_token}')
 
     try:
         with urllib.request.urlopen(req) as response:

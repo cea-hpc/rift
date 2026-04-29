@@ -375,7 +375,7 @@ class RepoSyncEpelTest(RiftTestCase):
         }
         synchronizer = RepoSyncEpel(self.config, 'repo', self.output, sync)
         with patch(
-            'rift.utils.urllib.request.urlretrieve',
+            'rift.utils.urllib.request.urlopen',
             side_effect=urllib.error.URLError('fake URL error'),
         ):
             with self.assertLogs(level='WARNING') as log:
@@ -387,7 +387,7 @@ class RepoSyncEpelTest(RiftTestCase):
                 )
         synchronizer = RepoSyncEpel(self.config, 'repo', self.output, sync)
         with patch(
-            'rift.utils.urllib.request.urlretrieve',
+            'rift.utils.urllib.request.urlopen',
             side_effect=urllib.error.HTTPError(404, "404", 'Not Found', None, None),
         ):
             with self.assertLogs(level='WARNING') as log:
