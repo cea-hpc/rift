@@ -692,7 +692,7 @@ class VMBuildTest(RiftProjectTestCase):
         ):
             with self.assertRaisesRegex(
                 RiftError,
-                "^URL error while downloading http://test: .*$",
+                "^Error while downloading http://test: .*$",
             ):
                 vm.build("http://test", False, False, vm.image_local)
         with patch(
@@ -701,7 +701,7 @@ class VMBuildTest(RiftProjectTestCase):
         ):
             with self.assertRaisesRegex(
                 RiftError,
-                "^HTTP error while downloading http://test: HTTP "
+                "^Error while downloading http://test: HTTP "
                 "Error 404: Not Found$",
             ):
                 vm.build(

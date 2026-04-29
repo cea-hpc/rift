@@ -388,8 +388,8 @@ class RepoSyncEpelTest(RiftTestCase):
                 self.assertRegex(
                     log.output[0],
                     r"WARNING:root:Download failed, skipping entry: "
-                    r"HTTP error while downloading http://test/.*: "
-                    r"HTTP Error 404: Not Found"
+                    r"Error while downloading http://test/.*: "
+                    r"Error 404: Not Found"
                 )
 
 
