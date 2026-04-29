@@ -151,7 +151,7 @@ class RepoSyncLftp(RepoSyncBase):
             self.base_url,
             '-e',
             "set ssl:verify-certificate off; mirror --no-empty-dirs ",
-            f"{log_part} --delete "
+            f"{log_part} --delete ",
             f"; quit"
         ]
         logging.debug(
