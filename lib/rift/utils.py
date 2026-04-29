@@ -59,19 +59,20 @@ def download_file(url, output, max_size=None, retries=0):
     Download file pointed by url and save it in output path. Convert
     potential urllib download errors into RiftError.
     """
+
+
+    if max_size is not None:
+        with urllib.request.urlopen(url) as opened_url:
+            meta = opened_url.info()
+            length = meta["Content-Length"]
+            if (isinstance(length, str) and int(length) > max_size):
+                raise RiftError(
+                    f"'{url}' has a size of '{length}' bytes, larger than "
+                    f"max size '{max_size}', skipping download",
+                )
+
     for attempt in range(retries + 1):
         try:
-            if max_size is not None:
-                with urllib.request.urlopen(url) as opened_url:
-                    meta = opened_url.info()
-                    length = meta["Content-Length"]
-                    if (isinstance(length, str) and int(length) > max_size):
-                        raise RiftError(
-                            f"'{url}' has a size of '{length}' bytes, larger than "
-                            f"max size '{max_size}', skipping download",
-                        )
-
-
             urllib.request.urlretrieve(url, output)
 
         except (urllib.error.HTTPError, urllib.error.URLError) as error:
@@ -84,7 +85,7 @@ def download_file(url, output, max_size=None, retries=0):
             else:
                 delay = (attempt + 1) * 3
                 logging.info(
-                    "HTTP error while downloading %s: %s. Will retry in %s...",
+                    "Error while downloading %s: %s. Will retry in %s...",
                     url,
                     error,
                     delay
