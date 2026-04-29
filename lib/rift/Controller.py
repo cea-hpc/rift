@@ -308,6 +308,8 @@ def make_parser():
                         help='Max size authorized for the download of each file, in bytes')
     subprs.add_argument('-r', '--retries', type=int,
                         help='Allowed retries when a package download failed')
+    subprs.add_argument('-l', '--log-file', type=bool,
+                        help='Log the sync process to a log file in the current directory')
     subprs.add_argument('repositories', metavar='REPOSITORY', nargs='*',
                         help='repositories to synchronize (default: all)')
 
@@ -1001,10 +1003,12 @@ def action_sync(args, config):
         output = args.output
         max_size = args.max_size
         retries = args.retries
+        enable_log_file = args.log_file
     else:
         output = config.get('sync_output')
         max_size = None
         retries = 0
+        enable_log_file = False
     if output is None:
         raise RiftError(
             "Synchronization output directory must be defined with "
@@ -1046,7 +1050,8 @@ def action_sync(args, config):
                 )
                 sync['source'] = repo.get('url')
             synchronizer = RepoSyncFactory.get(config, name, output, sync,
-                                               max_size, retries, arch)
+                max_size, retries, enable_log_file, arch
+            )
             if synchronizer.source in synchronized_sources:
                 logging.debug(
                     "Skipping already synchronized source %s",

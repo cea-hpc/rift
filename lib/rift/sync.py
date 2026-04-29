@@ -57,7 +57,7 @@ SyncPatterns = collections.namedtuple('SyncPatterns', ['include', 'exclude'])
 
 class RepoSyncBase:
     """Common parent to all RepoSync* classes."""
-    def __init__(self, config, name, output, sync, max_size=None, retries=0, arch=None):
+    def __init__(self, config, name, output, sync, max_size=None, retries=0, enable_log_file=False, arch=None):
         self.config = config
         self.name = name
         subdir = sync.get('subdir', '').lstrip('/')
@@ -74,6 +74,7 @@ class RepoSyncBase:
         self.patterns = SyncPatterns(sync['include'], sync['exclude'])
         self.max_size = max_size
         self.retries = retries
+        self.enable_log_file = enable_log_file
 
     @property
     def base_url(self):
@@ -100,13 +101,15 @@ class RepoSyncBase:
         raise NotImplementedError
 
     def _log_open(self):
-        self._logfh = open(self.logfile, 'w+', encoding='utf-8')
+        if self.enable_log_file:
+            self._logfh = open(self.logfile, 'w+', encoding='utf-8')
 
     def log_write(self, entry):
         """Add entry message in synchronizer log file."""
-        if self._logfh is None:
-            self._log_open()
-        self._logfh.write(entry + '\n')
+        if self.enable_log_file:
+            if self._logfh is None:
+                self._log_open()
+            self._logfh.write(entry + '\n')
 
     def _log_close(self):
         if self._logfh is not None:
@@ -122,8 +125,8 @@ class RepoSyncBase:
 
 class RepoSyncLftp(RepoSyncBase):
     """Synchronize remote repositories with LFTP."""
-    def __init__(self, config, name, output, sync, max_size=None, retries=0, arch=None):
-        super().__init__(config, name, output, sync, max_size, retries, arch)
+    def __init__(self, config, name, output, sync, max_size=None, retries=0, enable_log_file=False, arch=None):
+        super().__init__(config, name, output, sync, max_size, retries, enable_log_file, arch)
         self.include_arg = ' '.join(
             [f"--include={pattern}" for pattern in self.patterns.include]
         )
@@ -138,13 +141,18 @@ class RepoSyncLftp(RepoSyncBase):
 
     def _run(self):
         """Run repository synchronization with LFTP."""
+        log_part = (
+            f"--log {self.logfile} {self.source.path} {self.output}"
+            if self.enable_log_file
+            else ""
+        )
         cmd = [
             'lftp',
             self.base_url,
             '-e',
-            "set ssl:verify-certificate off; mirror --no-empty-dirs "
-            f"{self.include_arg} {self.exclude_arg} --delete "
-            f"--log {self.logfile} {self.source.path} {self.output}; quit"
+            "set ssl:verify-certificate off; mirror --no-empty-dirs ",
+            f"{log_part} --delete "
+            f"; quit"
         ]
         logging.debug(
             "running synchronization command: %s",
@@ -165,8 +173,8 @@ class RepoSyncIndexed(RepoSyncBase):
     declared in index.
     """
 
-    def __init__(self, config, name, output, sync, max_size=None, retries=0, arch=None):
-        super().__init__(config, name, output, sync, max_size, retries, arch)
+    def __init__(self, config, name, output, sync, max_size=None, retries=0, enable_log_file=False, arch=None):
+        super().__init__(config, name, output, sync, max_size, retries, enable_log_file, arch)
         self.indexed_files = []
 
     def _relpath_matches(self, relpath):
@@ -229,8 +237,8 @@ class RepoSyncEpel(RepoSyncIndexed):
 
     PUB_ROOT = "/pub/epel"
 
-    def __init__(self, config, name, output, sync, max_size=None, retries=0, arch=None):
-        super().__init__(config, name, output, sync, max_size, retries, arch)
+    def __init__(self, config, name, output, sync, max_size=None, retries=0, enable_log_file=False, arch=None):
+        super().__init__(config, name, output, sync, max_size, retries, enable_log_file, arch)
         self.pub_url = f"{self.base_url}{self.PUB_ROOT}"
 
     def _process_line(self, line):
@@ -444,9 +452,9 @@ class RepoSyncFactory:
             )
 
     @staticmethod
-    def get(config, name, output, sync, max_size=None, retries=0, arch=None):
+    def get(config, name, output, sync, max_size=None, retries=0, enable_log_file=False, arch=None):
         """Return the concrete RepoSync* class corresponding to the method."""
         RepoSyncFactory.check_valid_method(sync['method'])
         return RepoSyncFactory.METHODS[sync['method']](
-            config, name, output, sync, max_size, retries, arch
+            config, name, output, sync, max_size, retries, enable_log_file, arch
         )

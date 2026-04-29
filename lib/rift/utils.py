@@ -60,7 +60,6 @@ def download_file(url, output, max_size=None, retries=0):
     potential urllib download errors into RiftError.
     """
 
-
     if max_size is not None:
         with urllib.request.urlopen(url) as opened_url:
             meta = opened_url.info()
