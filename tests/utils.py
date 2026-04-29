@@ -45,7 +45,7 @@ class UtilsTest(RiftTestCase):
     def test_download_file_url_error(self):
         with self.assertRaisesRegex(
                 RiftError,
-                "URL error while downloading blob:localhost: "
+                "Error while downloading blob:localhost: "
                 "<urlopen error unknown url type: blob>"
         ):
             download_file("blob:localhost", "/tmp/blob")

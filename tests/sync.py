@@ -376,7 +376,7 @@ class RepoSyncEpelTest(RiftTestCase):
                 self.assertRegex(
                     log.output[0],
                     r"WARNING:root:Download failed, skipping entry: "
-                    r"URL error while downloading http://test/.*: .*$"
+                    r"Error while downloading http://test/.*: .*$"
                 )
         synchronizer = RepoSyncEpel(self.config, 'repo', self.output, sync)
         with patch(
