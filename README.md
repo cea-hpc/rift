@@ -15,26 +15,24 @@ flexibility in the tests environments.
 To run the unit tests and static analysis, some dependencies are required:
 
 ```sh
-sudo -n dnf -y install rpmlint rpm-python3 python3-pylint python3-jinja2 \
-    python3-nose platform-python-coverage python3-PyYAML python3-rpm \
-    python3-dnf rpm-sign openssh-clients genisoimage qemu qemu-img
+$ dnf -y install python3-pip python3-jinja2 python3-PyYAML python3-rpm python3-dnf python3-pytest python3-pytest-cov sudo rpm-sign rpmlint openssh-clients genisoimage qemu qemu-user qemu-img qemu-virtiofsd mock createrepo_c python3-yaml python3-xmltodict python3-boto3 pylint
 ```
+
+We recommand the use of [Fedora](https://fedoraproject.org) as developpement environnement.
 
 Run this command for static source code linting:
 
-
 ```sh
-$ pylint-3 '--good-names=i,j,k,ex,Run,_,rc,vm' -d E1101 -d W0511 \
-    --msg-template="$msg_template" lib/rift
+$ pylint lib/rift
 ```
 
 Run this command to run unit tests:
 
 ```sh
-$ export PYTHONPATH=$PWD/lib
-$ nosetests-3.6 -vs --all-modules --with-xunit --with-coverage \
-    --cover-package=rift --cover-xml tests
+$ pytest
 ```
+
+Pytest is configured in [pyproject.toml](./pyproject.toml) and in [pytest.ini](pytest.ini) files.
 
 > [!IMPORTANT]
 > Unit tests download virtual machine images from the Internet. The unit tests
@@ -42,3 +40,4 @@ $ nosetests-3.6 -vs --all-modules --with-xunit --with-coverage \
 > configuration parameter, if this variable is defined in your environment. If
 > you do not have direct access to Internet, you must define this environment
 > variable with your network's proxy server to run the tests successfully.
+
