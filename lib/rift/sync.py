@@ -142,7 +142,7 @@ class RepoSyncLftp(RepoSyncBase):
     def _run(self):
         """Run repository synchronization with LFTP."""
         log_part = (
-            f"--log {self.logfile} {self.source.path} {self.output}"
+            f"--log {self.logfile}"
             if self.enable_log_file
             else ""
         )
@@ -151,7 +151,8 @@ class RepoSyncLftp(RepoSyncBase):
             self.base_url,
             '-e',
             "set ssl:verify-certificate off; mirror --no-empty-dirs ",
-            f"{log_part} --delete ",
+            f"{self.include_arg} {self.exclude_arg} --delete",
+            f"{log_part} {self.source.path} {self.output} --delete",
             f"; quit"
         ]
         logging.debug(

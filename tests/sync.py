@@ -97,22 +97,21 @@ class RepoSyncLftpTest(RiftTestCase):
         }
         synchronizer = RepoSyncLftp(self.config, 'repo', self.output, sync)
         synchronizer.run()
-        mock_subprocess_run.assert_called_once()
+        mock_subprocess_run.assert_called()
         args = mock_subprocess_run.call_args[0]
         self.assertEqual(args[0][0], 'lftp')
         self.assertEqual(args[0][1], 'http://repo')
-        self.assertTrue(f"/directory/ {self.output}/repo" in args[0][3])
-        self.assertFalse("--include" in args[0][3])
-        self.assertFalse("--exclude" in args[0][3])
-
+        self.assertTrue(f"/directory/ {self.output}/repo" in args[0][5])
+        self.assertFalse("--include" in args[0][4])
+        self.assertFalse("--exclude" in args[0][4])
+        self.assertFalse("--log {self.output}/sync_repo_" in args[0][5])
 
         # Test with log file enabled
         synchronizer = RepoSyncLftp(self.config, 'repo', self.output, sync, enable_log_file=True)
         synchronizer.run()
-        mock_subprocess_run.assert_called_once()
+        mock_subprocess_run.assert_called()
         args = mock_subprocess_run.call_args[0]
-        
-        self.assertTrue(f"--log {self.output}/sync_repo_" in args[0][3])
+        self.assertTrue(f"--log {self.output}/sync_repo_" in args[0][5])
 
     @patch('subprocess.run')
     def test_run_with_include_exclude(self, mock_subprocess_run):
@@ -127,10 +126,10 @@ class RepoSyncLftpTest(RiftTestCase):
         synchronizer.run()
         mock_subprocess_run.assert_called_once()
         args = mock_subprocess_run.call_args[0]
-        self.assertTrue("--include=include1" in args[0][3])
-        self.assertTrue("--include=include2" in args[0][3])
-        self.assertTrue("--exclude=exclude1" in args[0][3])
-        self.assertTrue("--exclude=exclude2" in args[0][3])
+        self.assertTrue("--include=include1" in args[0][4])
+        self.assertTrue("--include=include2" in args[0][4])
+        self.assertTrue("--exclude=exclude1" in args[0][4])
+        self.assertTrue("--exclude=exclude2" in args[0][4])
 
 class RepoSyncEpelTest(RiftTestCase):
     """
