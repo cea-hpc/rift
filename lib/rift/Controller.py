@@ -141,6 +141,9 @@ def make_parser():
                         help='restrict build to specific package formats')
     subprs.add_argument('-q', '--quiet', action='store_true',
                         help='omit build output when it succeeds')
+    subprs.add_argument('--seq', action='store_true',
+                        help='run one architecture at a time with live output '
+                             '(no parallel threads)')
 
     # Sign options
     subprs = subparsers.add_parser('sign', help='Sign RPM package with GPG key.')
@@ -185,6 +188,9 @@ def make_parser():
                         help='restrict validation to specific package formats')
     subprs.add_argument('-q', '--quiet', action='store_true',
                         help='omit validate output when it succeeds')
+    subprs.add_argument('--seq', action='store_true',
+                        help='run one architecture at a time with live output '
+                             '(no parallel threads)')
 
     # Validate diff
     subprs = subparsers.add_parser('validdiff')
@@ -207,6 +213,9 @@ def make_parser():
                         help='restrict validdiff to specific package formats')
     subprs.add_argument('-q', '--quiet', action='store_true',
                         help='omit validate diff output when it succeeds')
+    subprs.add_argument('--seq', action='store_true',
+                        help='run one architecture at a time with live output '
+                             '(no parallel threads)')
 
     # Annex options
     subprs = subparsers.add_parser('annex', help='Manipulate annex cache')
@@ -750,30 +759,35 @@ def action_build(args, config):
         str([pkg.name for pkg in pkgs])
     )
 
-    # List of build threads
-    threads = []
+    if args.seq:
+        for arch in config.get('arch'):
+            message(f"Starting build on architecture {arch}")
+            results.extend(build_architecture(config, args, pkgs, arch))
+    else:
+        # List of build threads
+        threads = []
 
-    # Create parallel threads to build all packages for all project supported
-    # architectures.
-    for arch in config.get('arch'):
-        threads.append(
-            RiftThread(
-                build_architecture, f"build-{arch}", args=(config, args, pkgs, arch)
+        # Create parallel threads to build all packages for all project supported
+        # architectures.
+        for arch in config.get('arch'):
+            threads.append(
+                RiftThread(
+                    build_architecture, f"build-{arch}", args=(config, args, pkgs, arch)
+                )
             )
-        )
 
-    # Start all threads
-    for thread in threads:
-        message(f"Starting build thread {thread.name}")
-        thread.start()
+        # Start all threads
+        for thread in threads:
+            message(f"Starting build thread {thread.name}")
+            thread.start()
 
-    # Wait for all threads to finish
-    for thread in threads:
-        thread.join()
-        results.extend(thread.results)
-        if not args.quiet or not thread.results.global_result:
-            banner(f"Build thread {thread.name} output:")
-            print(thread.output.getvalue(), end='')
+        # Wait for all threads to finish
+        for thread in threads:
+            thread.join()
+            results.extend(thread.results)
+            if not args.quiet or not thread.results.global_result:
+                banner(f"Build thread {thread.name} output:")
+                print(thread.output.getvalue(), end='')
 
     banner('All architectures processed')
 
@@ -872,30 +886,35 @@ def action_validate(args, config):
         str([pkg.name for pkg in pkgs])
     )
 
-    # List of validate threads
-    threads = []
+    if args.seq:
+        for arch in config.get('arch'):
+            message(f"Starting validate on architecture {arch}")
+            results.extend(validate_pkgs(config, args, pkgs, arch))
+    else:
+        # List of validate threads
+        threads = []
 
-    # Create parallel threads to validate packages on all project supported
-    # architectures.
-    for arch in config.get('arch'):
-        threads.append(
-            RiftThread(
-                validate_pkgs, f"validate-{arch}", args=(config, args, pkgs, arch)
+        # Create parallel threads to validate packages on all project supported
+        # architectures.
+        for arch in config.get('arch'):
+            threads.append(
+                RiftThread(
+                    validate_pkgs, f"validate-{arch}", args=(config, args, pkgs, arch)
+                )
             )
-        )
 
-    # Start all threads
-    for thread in threads:
-        message(f"Starting validate thread {thread.name}")
-        thread.start()
+        # Start all threads
+        for thread in threads:
+            message(f"Starting validate thread {thread.name}")
+            thread.start()
 
-    # Wait for all threads to finish
-    for thread in threads:
-        thread.join()
-        results.extend(thread.results)
-        if not args.quiet or not thread.results.global_result:
-            banner(f"Validate thread {thread.name} output:")
-            print(thread.output.getvalue(), end='')
+        # Wait for all threads to finish
+        for thread in threads:
+            thread.join()
+            results.extend(thread.results)
+            if not args.quiet or not thread.results.global_result:
+                banner(f"Validate thread {thread.name} output:")
+                print(thread.output.getvalue(), end='')
 
     banner('All packages checked on all architectures')
 
@@ -926,30 +945,35 @@ def action_validdiff(args, config):
     )
     results = TestResults('validate')
 
-    # List of validate threads
-    threads = []
+    if args.seq:
+        for arch in config.get('arch'):
+            message(f"Starting validate on architecture {arch}")
+            results.extend(validate_pkgs(config, args, updated, arch))
+    else:
+        # List of validate threads
+        threads = []
 
-    # Create parallel threads to re-validate all updated packages for all
-    # architectures supported by the project.
-    for arch in config.get('arch'):
-        threads.append(
-            RiftThread(
-                validate_pkgs, f"validate-{arch}", args=(config, args, updated, arch)
+        # Create parallel threads to re-validate all updated packages for all
+        # architectures supported by the project.
+        for arch in config.get('arch'):
+            threads.append(
+                RiftThread(
+                    validate_pkgs, f"validate-{arch}", args=(config, args, updated, arch)
+                )
             )
-        )
 
-    # Start all threads
-    for thread in threads:
-        message(f"Starting validate thread {thread.name}")
-        thread.start()
+        # Start all threads
+        for thread in threads:
+            message(f"Starting validate thread {thread.name}")
+            thread.start()
 
-    # Wait for all threads to finish
-    for thread in threads:
-        thread.join()
-        results.extend(thread.results)
-        if not args.quiet or not thread.results.global_result:
-            banner(f"Validate thread {thread.name} output:")
-            print(thread.output.getvalue(), end='')
+        # Wait for all threads to finish
+        for thread in threads:
+            thread.join()
+            results.extend(thread.results)
+            if not args.quiet or not thread.results.global_result:
+                banner(f"Validate thread {thread.name} output:")
+                print(thread.output.getvalue(), end='')
 
     if getattr(args, 'junit', False):
         logging.info('Writing test results in %s', args.junit)
