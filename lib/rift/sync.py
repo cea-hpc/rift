@@ -175,7 +175,7 @@ class RepoSyncLftp(RepoSyncBase):
             "set ssl:verify-certificate off; mirror --no-empty-dirs ",
             f"{self.include_arg} {self.exclude_arg} --delete",
             f"{log_part} {self.source.path} {self.output} --delete",
-            f"; quit"
+            "; quit",
         ]
         logging.debug(
             "running synchronization command: %s",
@@ -186,7 +186,7 @@ class RepoSyncLftp(RepoSyncBase):
         except subprocess.CalledProcessError as err:
             raise RiftError(
                 f"Error while running command: {self._cmd_str(cmd)}: "
-                "exit code: {err.returncode}"
+                f"exit code: {err.returncode}"
             ) from err
 
 
