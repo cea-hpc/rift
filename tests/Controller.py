@@ -2591,6 +2591,10 @@ class ControllerArgumentsTest(RiftTestCase):
         opts = parser.parse_args(args)
         self.assertIsNone(opts.formats)
         self.assertFalse(opts.quiet)
+        self.assertFalse(opts.seq)
+
+        opts = parser.parse_args(['build', '--seq'])
+        self.assertTrue(opts.seq)
 
         opts = parser.parse_args(['build', '--quiet'])
         self.assertTrue(opts.quiet)
@@ -2629,6 +2633,10 @@ class ControllerArgumentsTest(RiftTestCase):
         opts = parser.parse_args(args)
         self.assertIsNone(opts.formats)
         self.assertFalse(opts.quiet)
+        self.assertFalse(opts.seq)
+
+        opts = parser.parse_args(['validate', '--seq'])
+        self.assertTrue(opts.seq)
 
         opts = parser.parse_args(['validate', '--quiet'])
         self.assertTrue(opts.quiet)
@@ -2650,6 +2658,10 @@ class ControllerArgumentsTest(RiftTestCase):
         opts = parser.parse_args(['validdiff', '/dev/null'])
         self.assertFalse(opts.quiet)
         self.assertIsNone(opts.formats)
+        self.assertFalse(opts.seq)
+
+        opts = parser.parse_args(['validdiff', '/dev/null', '--seq'])
+        self.assertTrue(opts.seq)
 
         opts = parser.parse_args(['validdiff', '/dev/null', '-q'])
         self.assertTrue(opts.quiet)
