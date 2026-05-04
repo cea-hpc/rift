@@ -104,3 +104,9 @@ def hashfile(filepath, iosize=65536):
             hasher.update(buf)
             buf = srcfile.read(iosize)
     return hasher.hexdigest()
+
+
+def print_annex_tar_progress(pkg_nb, total_packages):
+    """Print a carriage-return progress line while building an annex tarball."""
+    percentage = round((pkg_nb * 100) / total_packages, 2)
+    print(f"> {pkg_nb}/{total_packages} ({percentage})%\r", end="")

@@ -46,7 +46,11 @@ import requests
 
 from rift import RiftError
 from rift.annex.generic_annex import GenericAnnex
-from rift.annex.utils import get_digest_from_path, get_info_from_digest
+from rift.annex.utils import (
+    get_digest_from_path,
+    get_info_from_digest,
+    print_annex_tar_progress,
+)
 
 
 class ServerAnnex(GenericAnnex):
@@ -156,9 +160,7 @@ class ServerAnnex(GenericAnnex):
                         except requests.exceptions.RequestException as e:
                             raise RiftError(f"failed to fetch file from annex: {f}: {e}") from e
 
-                    percentage = round((pkg_nb * 100) / total_packages, 2)
-                    print(f"> {pkg_nb}/{total_packages} ({percentage})%\r",
-                          end="")
+                    print_annex_tar_progress(pkg_nb, total_packages)
                     pkg_nb += 1
 
         return output_file
