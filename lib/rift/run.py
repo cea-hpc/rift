@@ -130,6 +130,8 @@ def run_command(
     else:
         channel = subprocess.DEVNULL
 
+    buf_out = buf_err = None
+
     # Launch the command
     # bufsize = 1 means output is line buffered
     # universal_newlines = True is required for line buffering
@@ -150,7 +152,7 @@ def run_command(
 
     # If capture is disabled, just return the command result with the return
     # code and None values for output.
-    if not capture_output:
+    if not capture_output or (buf_out is None and buf_err is None):
         return RunResult(process.wait(), None, None)
 
     # Get values for out/err buffers and close them
