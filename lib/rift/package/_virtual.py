@@ -65,7 +65,6 @@ class PackageVirtual(Package):
         """
         Dummy implementation because virtual packages have not any specific metadata.
         """
-        pass
 
     def subpackages(self):
         """Must not be called on virtual package."""
