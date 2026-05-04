@@ -96,9 +96,11 @@ class StagingRepository:
             )
 
     def for_format(self, _format):
+        """Return the staged repository backend for the given format."""
         if _format not in self._repos:
             raise RiftError(f"Unsupported staging repository format {_format}")
         return self._repos[_format]
 
     def delete(self):
+        """Remove the temporary staging repository directory."""
         self.stagedir.delete()
