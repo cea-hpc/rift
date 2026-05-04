@@ -266,7 +266,9 @@ class Spec():
                 self._set_macros()
                 # Get current timezone, so it can be restored after parsing the spec
                 # file.
-                current_timezone = str(datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo)
+                current_timezone = str(
+                    datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo
+                )
                 spec = rpm.TransactionSet().parseSpec(fp.name)
                 # As a workaround RPM library bug
                 # https://github.com/rpm-software-management/rpm/issues/1821,
@@ -315,9 +317,9 @@ class Spec():
         """
         Update epoch:version-release
         """
-        self.evr = "{}{}-{}".format(self.epoch,
-                                    self.version,
-                                    rift.utils.removesuffix(self.release, self.dist))
+        self.evr = (
+            f"{self.epoch}{self.version}-{rift.utils.removesuffix(self.release, self.dist)}"
+        )
 
     def _inc_release(self, release):
         dist = self.dist
