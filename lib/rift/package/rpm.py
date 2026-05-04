@@ -173,7 +173,7 @@ class PackageRPM(Package):
 
     def has_real_variants(self):
         """Return True if package has more then the default main variant."""
-        assert(len(self.variants))  # Cannot be called with empty variants list.
+        assert self.variants  # Cannot be called with empty variants list.
         return len(self.variants) > 1 or self.variants[0] != _DEFAULT_VARIANT
 
     def analyze(self, review, configdir):
