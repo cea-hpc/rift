@@ -9,7 +9,7 @@ from textwrap import dedent
 from unittest.mock import patch, MagicMock, ANY
 
 from .TestUtils import RiftProjectTestCase
-from rift.Mock import Mock, rpmlint_chroot_script, rpmlint_env
+from rift.Mock import Mock, HOST_RPM_LIB_DIR, rpmlint_chroot_script, rpmlint_env
 from rift.repository import ProjectArchRepositories
 from rift.repository.rpm import ConsumableRepository
 from rift.RPM import RPM
@@ -205,13 +205,17 @@ class MockTest(RiftProjectTestCase):
         )
         mock = Mock(config=self.config, arch='x86_64', proj_vers=1.0)
         mock.init([])
+        rpm_rp = os.path.realpath(HOST_RPM_LIB_DIR)
+        expected_bind_opt = (
+            '--plugin-option=bind_mount:dirs=['
+            f"('/dev/package.spec', '/dev/package.spec'),('{rpm_rp}', '{rpm_rp}')]"
+        )
         result = mock.read_spec('/dev/package.spec')
         mock_run_command.assert_called_with(
             [
                 'mock', '--config-opts', 'print_main_output=yes',
                 f"--configdir={mock._tmpdir.path}",
-                "--plugin-option=bind_mount:dirs="
-                "[('/dev/package.spec', '/dev/package.spec')]",
+                expected_bind_opt,
                 'chroot',
                 'rpmspec',
                 '--parse',
@@ -328,6 +332,12 @@ class MockTest(RiftProjectTestCase):
             RunResult(0, None, None),  # clean
         ]
         mock.init([])
+        rpm_rp: str = os.path.realpath(HOST_RPM_LIB_DIR)
+        expected_bind_opt = (
+            '--plugin-option=bind_mount:dirs=['
+            f"('/dev', '/dev'),('{rpm_rp}', '{rpm_rp}')]"
+        )
+
         result = mock.rpmlint(spec_path)
 
         # Check return value
@@ -351,7 +361,7 @@ class MockTest(RiftProjectTestCase):
         )
         mock_run_command.assert_any_call(
             base + [
-                "--plugin-option=bind_mount:dirs=[('/dev', '/dev')]",
+                expected_bind_opt,
                 '--quiet', 'chroot', '--', 'bash', '-c', expected_script,
             ],
             capture_output=True,
