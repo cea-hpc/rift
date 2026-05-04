@@ -57,7 +57,18 @@ SyncPatterns = collections.namedtuple('SyncPatterns', ['include', 'exclude'])
 
 class RepoSyncBase:
     """Common parent to all RepoSync* classes."""
-    def __init__(self, config, name, output, sync, max_size=None, retries=0, enable_log_file=False, arch=None):
+
+    def __init__(
+            self,
+            config,
+            name,
+            output,
+            sync,
+            max_size=None,
+            retries=0,
+            enable_log_file=False,
+            arch=None,
+    ):
         self.config = config
         self.name = name
         subdir = sync.get('subdir', '').lstrip('/')
@@ -125,7 +136,18 @@ class RepoSyncBase:
 
 class RepoSyncLftp(RepoSyncBase):
     """Synchronize remote repositories with LFTP."""
-    def __init__(self, config, name, output, sync, max_size=None, retries=0, enable_log_file=False, arch=None):
+
+    def __init__(
+            self,
+            config,
+            name,
+            output,
+            sync,
+            max_size=None,
+            retries=0,
+            enable_log_file=False,
+            arch=None,
+    ):
         super().__init__(config, name, output, sync, max_size, retries, enable_log_file, arch)
         self.include_arg = ' '.join(
             [f"--include={pattern}" for pattern in self.patterns.include]
@@ -174,7 +196,17 @@ class RepoSyncIndexed(RepoSyncBase):
     declared in index.
     """
 
-    def __init__(self, config, name, output, sync, max_size=None, retries=0, enable_log_file=False, arch=None):
+    def __init__(
+            self,
+            config,
+            name,
+            output,
+            sync,
+            max_size=None,
+            retries=0,
+            enable_log_file=False,
+            arch=None,
+    ):
         super().__init__(config, name, output, sync, max_size, retries, enable_log_file, arch)
         self.indexed_files = []
 
@@ -238,7 +270,17 @@ class RepoSyncEpel(RepoSyncIndexed):
 
     PUB_ROOT = "/pub/epel"
 
-    def __init__(self, config, name, output, sync, max_size=None, retries=0, enable_log_file=False, arch=None):
+    def __init__(
+            self,
+            config,
+            name,
+            output,
+            sync,
+            max_size=None,
+            retries=0,
+            enable_log_file=False,
+            arch=None,
+    ):
         super().__init__(config, name, output, sync, max_size, retries, enable_log_file, arch)
         self.pub_url = f"{self.base_url}{self.PUB_ROOT}"
 
