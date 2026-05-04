@@ -224,7 +224,7 @@ class Mock():
             return []
         # Generate rpm.macro file
         macropath = os.path.join(self._tmpdir.path, 'rpm.macro')
-        with open(macropath, 'w') as fmacro:
+        with open(macropath, 'w', encoding='utf-8') as fmacro:
             for key, value in rpm_macros.items():
                 logging.debug("> adding macro %s=%s", key, value)
                 fmacro.write(f"%{key} {value}\n")
