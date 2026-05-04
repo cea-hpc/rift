@@ -3,8 +3,9 @@
 #
 
 from io import StringIO, BytesIO
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, call, MagicMock
 import os
+import urllib.error
 
 from rift import RiftError
 from rift.utils import message, banner, download_file, last_modified
@@ -60,6 +61,63 @@ class UtilsTest(RiftTestCase):
         ):
             download_file("blob:localhost", "/tmp/blob")
 
+    @patch('rift.utils.time.sleep')
+    @patch('urllib.request.urlopen')
+    def test_download_file_retries_success(self, mock_urlopen, mock_sleep):
+        url = 'https://example.test/file'
+
+        open_cm = MagicMock()
+        open_cm.__enter__.return_value = BytesIO(b'payload')
+        open_cm.__exit__.return_value = False
+
+        # Simulate a transient error followed by a successful download
+        mock_urlopen.side_effect = [urllib.error.URLError('transient'), open_cm]
+
+        out = '/tmp/rift-dl-retry-test'
+        with self.assertLogs(level='INFO') as log_cm:
+            download_file(url, out, retries=2)
+
+        self.assert_file_exists(out)
+        mock_sleep.assert_called_once_with(3)
+        self.assertEqual(mock_urlopen.call_count, 2)
+        self.assertEqual(
+            log_cm.output,
+            [
+                f'INFO:root:Error while downloading {url}: <urlopen error transient>, '
+                f'will retry in 3 seconds…',
+            ],
+        )
+        os.remove(out)
+
+    @patch('rift.utils.time.sleep')
+    @patch('urllib.request.urlopen')
+    def test_download_file_retries_failure(
+            self, mock_urlopen, mock_sleep):
+        url = 'https://example.test/missing'
+        out = '/tmp/never-written'
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            url, 503, 'Service Unavailable', None, None
+        )
+
+        with self.assertLogs(level='INFO') as log_cm:
+            with self.assertRaisesRegex(
+                RiftError,
+                r'^Error while downloading https://example\.test/missing: '
+                r'HTTP Error 503: Service Unavailable$',
+            ):
+                download_file(url, out, retries=2)
+
+        self.assertFalse(os.path.isfile(out))
+        self.assertCountEqual(
+            log_cm.output,
+            [
+                f'INFO:root:Error while downloading {url}: HTTP Error 503: '
+                f'Service Unavailable, will retry in 3 seconds…',
+                f'INFO:root:Error while downloading {url}: HTTP Error 503: '
+                f'Service Unavailable, will retry in 6 seconds…',
+            ],
+        )
+        mock_sleep.assert_has_calls([call(3), call(6)])
 
     @patch('urllib.request.urlopen')
     def test_last_modified(self, mock_urlopen):
