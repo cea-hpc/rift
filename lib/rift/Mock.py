@@ -312,6 +312,12 @@ class Mock():
         """
         Install rpmlint in the chroot, run rpmlint on spec file in chroot, then
         clean the chroot. Return RunResult of rpmlint command.
+
+        This method also installs kernel-devel in the chroot, which is required
+        for some advanced macros (eg. for kernel modules packages) that expects
+        to find this package in RPM database. When this package is absent,
+        macros evaluation fails and rpmlint eventually returns an error while
+        the spec file is valid.
         """
         spec_fp = os.path.realpath(spec_filepath)
         spec_dir = os.path.dirname(spec_fp)
@@ -320,7 +326,7 @@ class Mock():
             mount_paths.add(os.path.realpath(configdir))
         bind_opt = self._bind_mount_dirs_opt(mount_paths)
 
-        # Install rpmlint in the chroot.
+        # Install rpmlint and kernel-devel in the chroot (removed by --clean).
         self._exec(
             [
                 '--no-clean',
@@ -330,6 +336,7 @@ class Mock():
                 'install',
                 '-y',
                 'rpmlint',
+                'kernel-devel',
             ]
         )
 
@@ -354,7 +361,7 @@ class Mock():
                 env=rpmlint_env(configdir),
             )
         finally:
-            # Clean the chroot to remove rpmlint.
+            # Clean the chroot to remove rpmlint, kernel-devel, and deps.
             self._exec(['--quiet', '--clean'])
 
     def resultrpms(self, pattern='*.rpm', sources=True):

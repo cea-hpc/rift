@@ -342,7 +342,7 @@ class MockTest(RiftProjectTestCase):
         mock_run_command.assert_any_call(
             base + [
                 '--no-clean', '--no-cleanup-after', '--quiet',
-                '--pm-cmd', 'install', '-y', 'rpmlint',
+                '--pm-cmd', 'install', '-y', 'rpmlint', 'kernel-devel',
             ],
             live_output=ANY,
             capture_output=True,
@@ -374,11 +374,11 @@ class MockTest(RiftProjectTestCase):
         mock = Mock(config=self.config, arch='x86_64', proj_vers=1.0)
         mock_run_command.side_effect = [
             RunResult(0, None, None),  # init
-            RunResult(1, 'install failed', None),  # install rpmlint
+            RunResult(1, 'install failed', None),  # install rpmlint/kernel-devel
         ]
         mock.init([])
         with self.assertRaisesRegex(RiftError, 'install failed'):
             mock.rpmlint('/dev/package.spec')
         mock.clean()
-        # Check mock called 2 commands: init and install rpmlint.
+        # Check mock called 2 commands: init and install rpmlint/kernel-devel.
         self.assertEqual(mock_run_command.call_count, 2)
