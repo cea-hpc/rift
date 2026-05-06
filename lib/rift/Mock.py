@@ -61,11 +61,6 @@ _mock_chroot_global_mutex = threading.Lock()
 RPMLINT_CONFIG_V1 = 'rpmlint'
 RPMLINT_CONFIG_V2 = 'rpmlint.toml'
 
-# Host RPM database bind-mounted into mock chroot for rpmspec/rpmlint. This is
-# required for some advanced macros (eg. for kernel modules packages) that need
-# to query a valid RPM database.
-HOST_RPM_LIB_DIR = '/var/lib/rpm'
-
 
 def rpmlint_env(configdir=None):
     """
@@ -290,7 +285,7 @@ class Mock():
         filepath_rp = os.path.realpath(filepath)
         proc = self._exec(
             [
-                self._bind_mount_dirs_opt([HOST_RPM_LIB_DIR, filepath_rp]),
+                self._bind_mount_dirs_opt([filepath_rp]),
                 'chroot',
                 'rpmspec',
                 '--parse',
@@ -320,7 +315,7 @@ class Mock():
         """
         spec_fp = os.path.realpath(spec_filepath)
         spec_dir = os.path.dirname(spec_fp)
-        mount_paths = {HOST_RPM_LIB_DIR, spec_dir}
+        mount_paths = {spec_dir}
         if configdir:
             mount_paths.add(os.path.realpath(configdir))
         bind_opt = self._bind_mount_dirs_opt(mount_paths)
