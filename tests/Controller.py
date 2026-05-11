@@ -466,6 +466,68 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
             mock_stdout.getvalue(),
         )
 
+    @patch('rift.Controller.remove_packages')
+    @patch('rift.Controller.StagingRepository')
+    @patch('rift.package._project.PackageRPM', autospec=PackageRPM)
+    @patch('rift.Controller.get_packages_from_patch')
+    def test_action_validdiff_formats(
+            self,
+            mock_get_packages_from_patch,
+            mock_pkg_rpm,
+            mock_staging_repo_cls,
+            mock_remove_packages,
+    ):
+        """validdiff --formats restricts validation to specific package formats."""
+        # Declare supported archs.
+        self.config.set('arch', ['x86_64', 'aarch64'])
+        self.update_project_conf()
+
+        # Create fake package without build requirement
+        self.make_pkg(build_requires=[])
+
+        # Get PackageRPM instances mock
+        mock_pkg_rpm_objs = mock_pkg_rpm.return_value
+        PackageRPM.__init__(
+            mock_pkg_rpm_objs, 'pkg', self.config, self.staff, self.modules)
+        mock_get_packages_from_patch.return_value = ([mock_pkg_rpm_objs], [])
+        # Make PackageRPM.supports_arch() return True for all archs
+        mock_pkg_rpm_objs.supports_arch.return_value = True
+        # Mock ActionableArchPackageRPM objects
+        mock_act_arch_pkg_rpm = Mock(spec=ActionableArchPackageRPM)
+        mock_pkg_rpm_objs.for_arch.return_value = mock_act_arch_pkg_rpm
+        # Make ActionableArchPackageRPM.test() return empty but successful
+        # test results.
+        mock_act_arch_pkg_rpm.test.return_value = TestResults()
+        # Mock StagingRepository object.
+        mock_staging_repo = Mock()
+        mock_staging_repo_cls.return_value = mock_staging_repo
+
+        # Run validdiff on patch with format restriction
+        self.assertEqual(
+            main(['validdiff', '/dev/null', '--formats', 'rpm']), 0)
+
+        # Check RPM package supports_arch() method is called for all supported
+        # archs.
+        for arch in self.config.get('arch'):
+            mock_pkg_rpm_objs.supports_arch.assert_any_call(arch)
+
+        # Check RPM package check() method is called for all supported arch
+        # (ie. twice).
+        mock_pkg_rpm_objs.check.assert_has_calls([call(), call()])
+
+        # Check actionable RPM package build(), publish(staging), test() and
+        # clean() methods are called for all supported arch (ie. twice).
+        mock_act_arch_pkg_rpm.build.assert_has_calls(
+            [call(sign=False, staging=mock_staging_repo),
+             call(sign=False, staging=mock_staging_repo)])
+        mock_act_arch_pkg_rpm.publish.assert_has_calls(
+            [call(staging=mock_staging_repo), call(staging=mock_staging_repo)])
+        mock_act_arch_pkg_rpm.test.assert_has_calls(
+            [call(noauto=False, staging=mock_staging_repo, noquit=False),
+             call(noauto=False, staging=mock_staging_repo, noquit=False)])
+        mock_act_arch_pkg_rpm.clean.assert_has_calls(
+            [call(noquit=False), call(noquit=False)])
+
     @patch('rift.Controller.ProjectArchRepositories')
     def test_remove_packages(self, mock_parepository_class):
         """remove_packages() search, delete and update repository."""
@@ -2587,11 +2649,20 @@ class ControllerArgumentsTest(RiftTestCase):
 
         opts = parser.parse_args(['validdiff', '/dev/null'])
         self.assertFalse(opts.quiet)
+        self.assertIsNone(opts.formats)
 
         opts = parser.parse_args(['validdiff', '/dev/null', '-q'])
         self.assertTrue(opts.quiet)
         opts = parser.parse_args(['validdiff', '/dev/null', '--quiet'])
         self.assertTrue(opts.quiet)
+
+        args = ['validdiff', '/dev/null', '--formats', 'rpm']
+        opts = parser.parse_args(args)
+        self.assertCountEqual(opts.formats, ['rpm'])
+
+        args = ['validdiff', '/dev/null', '--formats', 'fail']
+        with self.assertRaises(SystemExit):
+            parser.parse_args(args)
 
     def test_parse_args_query(self):
         """ Test query command options parsing """
