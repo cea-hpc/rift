@@ -202,6 +202,9 @@ def make_parser():
                         help='write junit result file')
     subprs.add_argument('-p', '--publish', action='store_true',
                         help='publish built packages to repository')
+    subprs.add_argument('-F', '--formats', nargs='+',
+                        choices=RIFT_SUPPORTED_FORMATS,
+                        help='restrict validdiff to specific package formats')
     subprs.add_argument('-q', '--quiet', action='store_true',
                         help='omit validate diff output when it succeeds')
 
