@@ -871,6 +871,46 @@ def action_test(args, config):
     banner("Test suite FAILED!")
     return 2
 
+def _validate_packages_on_arch(config, args, pkgs):
+    """
+    Run package validation on all configured architectures, either sequentially
+    or in parallel threads.
+    """
+    results = TestResults('validate')
+
+    if args.seq:
+        for arch in config.get('arch'):
+            message(f"Starting validate on architecture {arch}")
+            results.extend(validate_pkgs(config, args, pkgs, arch))
+        return results
+
+    # List of validate threads
+    threads = []
+
+    # Create parallel threads to validate packages on all project supported
+    # architectures.
+    for arch in config.get('arch'):
+        threads.append(
+            RiftThread(
+                validate_pkgs, f"validate-{arch}", args=(config, args, pkgs, arch)
+            )
+        )
+
+    # Start all threads
+    for thread in threads:
+        message(f"Starting validate thread {thread.name}")
+        thread.start()
+
+    # Wait for all threads to finish
+    for thread in threads:
+        thread.join()
+        results.extend(thread.results)
+        if not args.quiet or not thread.results.global_result:
+            banner(f"Validate thread {thread.name} output:")
+            print(thread.output.getvalue(), end='')
+    return results
+
+
 def action_validate(args, config):
     """Action for 'validate' command."""
 
@@ -879,42 +919,13 @@ def action_validate(args, config):
         args.publish = True
 
     staff, modules = staff_modules(config)
-    results = TestResults('validate')
     pkgs = get_packages_to_build(config, staff, modules, args)
     logging.info(
         "Ordered list of packages to validate: %s",
         str([pkg.name for pkg in pkgs])
     )
 
-    if args.seq:
-        for arch in config.get('arch'):
-            message(f"Starting validate on architecture {arch}")
-            results.extend(validate_pkgs(config, args, pkgs, arch))
-    else:
-        # List of validate threads
-        threads = []
-
-        # Create parallel threads to validate packages on all project supported
-        # architectures.
-        for arch in config.get('arch'):
-            threads.append(
-                RiftThread(
-                    validate_pkgs, f"validate-{arch}", args=(config, args, pkgs, arch)
-                )
-            )
-
-        # Start all threads
-        for thread in threads:
-            message(f"Starting validate thread {thread.name}")
-            thread.start()
-
-        # Wait for all threads to finish
-        for thread in threads:
-            thread.join()
-            results.extend(thread.results)
-            if not args.quiet or not thread.results.global_result:
-                banner(f"Validate thread {thread.name} output:")
-                print(thread.output.getvalue(), end='')
+    results = _validate_packages_on_arch(config, args, pkgs)
 
     banner('All packages checked on all architectures')
 
@@ -943,37 +954,8 @@ def action_validdiff(args, config):
     (updated, removed) = get_packages_from_patch(
         args.patch, config=config, modules=modules, staff=staff
     )
-    results = TestResults('validate')
 
-    if args.seq:
-        for arch in config.get('arch'):
-            message(f"Starting validate on architecture {arch}")
-            results.extend(validate_pkgs(config, args, updated, arch))
-    else:
-        # List of validate threads
-        threads = []
-
-        # Create parallel threads to re-validate all updated packages for all
-        # architectures supported by the project.
-        for arch in config.get('arch'):
-            threads.append(
-                RiftThread(
-                    validate_pkgs, f"validate-{arch}", args=(config, args, updated, arch)
-                )
-            )
-
-        # Start all threads
-        for thread in threads:
-            message(f"Starting validate thread {thread.name}")
-            thread.start()
-
-        # Wait for all threads to finish
-        for thread in threads:
-            thread.join()
-            results.extend(thread.results)
-            if not args.quiet or not thread.results.global_result:
-                banner(f"Validate thread {thread.name} output:")
-                print(thread.output.getvalue(), end='')
+    results = _validate_packages_on_arch(config, args, updated)
 
     if getattr(args, 'junit', False):
         logging.info('Writing test results in %s', args.junit)
