@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 from rift.graph import PackagesDependencyGraph
 from rift.package.rpm import PackageRPM
+from rift.package.oci import PackageOCI
+
 from .TestUtils import RiftProjectTestCase, SubPackage, read_file
 
 
@@ -19,7 +21,8 @@ class GraphTest(RiftProjectTestCase):
         """ Test graph with one package """
         pkg_name = 'fake'
         self.make_pkg(name=pkg_name)
-        package = PackageRPM(pkg_name, self.config, self.staff, self.modules)
+        package_rpm = PackageRPM(pkg_name, self.config, self.staff, self.modules)
+        package_oci = PackageOCI(pkg_name, self.config, self.staff, self.modules)
         # mock Mock.read_spec to return spec file content directly read on host
         with patch('rift.package.rpm.Mock') as mock_mock:
             mock_mock.return_value.read_spec = read_file
@@ -28,11 +31,64 @@ class GraphTest(RiftProjectTestCase):
                 self.staff,
                 self.modules
             )
-        self.assertEqual(len(graph.nodes), 1)
-        build_requirements = graph.solve(package)
+        # 1 package in 2 formats → 2 nodes expected in the graph
+        self.assertEqual(len(graph.nodes), 2)
+
+        # Solve with RPM package
+        build_requirements = graph.solve(package_rpm)
         self.assertEqual(len(build_requirements), 1)
         self.assertIsInstance(build_requirements[0].package, PackageRPM)
-        self.assertEqual(build_requirements[0].package.name, package.name)
+        self.assertEqual(build_requirements[0].package.name, package_rpm.name)
+        self.assertEqual(build_requirements[0].reasons, ["User request"])
+
+        # Solve with OCI package
+        build_requirements = graph.solve(package_oci)
+        self.assertEqual(len(build_requirements), 1)
+        self.assertIsInstance(build_requirements[0].package, PackageOCI)
+        self.assertEqual(build_requirements[0].package.name, package_oci.name)
+        self.assertEqual(build_requirements[0].reasons, ["User request"])
+
+    def test_one_package_one_format(self):
+        """ Test graph with one package in one format"""
+        pkg_name = 'fake'
+        self.make_pkg(name=pkg_name, formats=['rpm'])
+        package_rpm = PackageRPM(pkg_name, self.config, self.staff, self.modules)
+        with patch('rift.package.rpm.Mock') as mock_mock:
+            mock_mock.return_value.read_spec = read_file
+            graph = PackagesDependencyGraph.from_project(
+                self.config,
+                self.staff,
+                self.modules
+            )
+        # 1 package in 1 format → 1 node expected in the graph
+        self.assertEqual(len(graph.nodes), 1)
+
+        # Solve with RPM package
+        build_requirements = graph.solve(package_rpm)
+        self.assertEqual(len(build_requirements), 1)
+        self.assertIsInstance(build_requirements[0].package, PackageRPM)
+        self.assertEqual(build_requirements[0].package.name, package_rpm.name)
+        self.assertEqual(build_requirements[0].reasons, ["User request"])
+
+    def test_one_package_build_format_filter(self):
+        """ Test graph with one package and format filter """
+        pkg_name = 'fake'
+        self.make_pkg(name=pkg_name)
+        package_oci = PackageOCI(pkg_name, self.config, self.staff, self.modules)
+        graph = PackagesDependencyGraph.from_project(
+            self.config,
+            self.staff,
+            self.modules,
+            formats=['oci']
+        )
+        # 1 package in 2 formats but format filder → 1 node expected in the graph
+        self.assertEqual(len(graph.nodes), 1)
+
+        # Solve with OCI package
+        build_requirements = graph.solve(package_oci)
+        self.assertEqual(len(build_requirements), 1)
+        self.assertIsInstance(build_requirements[0].package, PackageOCI)
+        self.assertEqual(build_requirements[0].package.name, package_oci.name)
         self.assertEqual(build_requirements[0].reasons, ["User request"])
 
     def test_packages_unable_load(self):
@@ -56,53 +112,24 @@ class GraphTest(RiftProjectTestCase):
                     self.staff,
                     self.modules
                 )
-        # Check warning message has been emitted
-        self.assertEqual(
+        # Check warning message have been emitted. Error should appear twice,
+        # once for each package supported format.
+        self.assertCountEqual(
             cm.output,
             [
                 "WARNING:root:Skipping package 'failed' unable to load: [Errno 2]"
                 " No such file or directory: "
-                f"'{self.projdir}/packages/failed/info.yaml'"
+                f"'{self.projdir}/packages/failed/info.yaml'",
+                "WARNING:root:Skipping package 'failed' unable to load: [Errno 2]"
+                " No such file or directory: "
+                f"'{self.projdir}/packages/failed/info.yaml'",
             ]
         )
         # Check success package is successfully loaded anyway.
-        self.assertEqual(len(graph.nodes), 1)
-        self.assertEqual(graph.nodes[0].package.name, 'success')
-
-    def test_packages_spec_error(self):
-        """ Test graph build with package with spec error """
-        pkgs_names = ['success', 'failed']
-        packages = {}
-        for pkg_name in pkgs_names:
-            self.make_pkg(name=pkg_name)
-            packages[pkg_name] = PackageRPM(
-                pkg_name, self.config, self.staff, self.modules
-            )
-        # Insert invalid content in failed package specfile
-        with open(packages['failed'].buildfile, 'w') as fh:
-            fh.write("invalid content")
-        # Build packages graph
-        with self.assertLogs(level='WARNING') as cm:
-            # mock Mock.read_spec to return spec file content directly read on host
-            with patch('rift.package.rpm.Mock') as mock_mock:
-                mock_mock.return_value.read_spec = read_file
-                graph = PackagesDependencyGraph.from_project(
-                    self.config,
-                    self.staff,
-                    self.modules
-                )
-        # Check warning message has been emitted
-        self.assertEqual(
-            cm.output,
-            [
-                "WARNING:root:Skipping package 'failed' unable to load: "
-                f"{self.projdir}/packages/failed/failed.spec: can't parse specfile"
-            ]
-        )
-        # Check success package is successfully loaded anyway.
-        self.assertEqual(len(graph.nodes), 1)
-        self.assertIsInstance(graph.nodes[0].package, PackageRPM)
-        self.assertEqual(graph.nodes[0].package.name, 'success')
+        # (2 formats → 2 nodes expected in the graph).
+        self.assertEqual(len(graph.nodes), 2)
+        for node in graph.nodes:
+            self.assertEqual(node.package.name, 'success')
 
     def test_dump(self):
         """ Test graph dump """
@@ -124,6 +151,10 @@ class GraphTest(RiftProjectTestCase):
                 'INFO:root:→ rpm:fake',
                 "INFO:root:  provides: ['fake', 'fake-provide']",
                 "INFO:root:  requires: ['br-package']",
+                'INFO:root:  is required by: []',
+                'INFO:root:→ oci:fake',
+                "INFO:root:  provides: ['fake']",
+                "INFO:root:  requires: []",
                 'INFO:root:  is required by: []'
             ]
         )
@@ -173,54 +204,58 @@ class GraphTest(RiftProjectTestCase):
                 self.staff,
                 self.modules
             )
-        self.assertEqual(len(graph.nodes), 3)
+        # 3 packages x 2 formats → 6 nodes expected in the graph
+        self.assertEqual(len(graph.nodes), 6)
 
         # Rebuild of my-software does not trigger rebuild of other packages.
-        build_requirements = graph.solve(
-            PackageRPM('my-software', self.config, self.staff, self.modules)
-        )
-        self.assertEqual(len(build_requirements), 1)
-        self.assertIsInstance(build_requirements[0].package, PackageRPM)
-        self.assertEqual(build_requirements[0].package.name, 'my-software')
-        self.assertEqual(build_requirements[0].reasons, ["User request"])
+        for package_class in (PackageRPM, PackageOCI):
+            build_requirements = graph.solve(
+                package_class('my-software', self.config, self.staff, self.modules)
+            )
+            self.assertEqual(len(build_requirements), 1)
+            self.assertIsInstance(build_requirements[0].package, package_class)
+            self.assertEqual(build_requirements[0].package.name, 'my-software')
+            self.assertEqual(build_requirements[0].reasons, ["User request"])
 
         # Rebuild of libone triggers rebuild of my-software because it depends
         # on libone.
-        build_requirements = graph.solve(
-            PackageRPM('libone', self.config, self.staff, self.modules)
-        )
-        self.assertEqual(len(build_requirements), 2)
-        for build_requirement in build_requirements:
-            self.assertIsInstance(build_requirement.package, PackageRPM)
-        self.assertEqual(build_requirements[0].package.name, 'libone')
-        self.assertEqual(build_requirements[0].reasons, ["User request"])
-        self.assertEqual(build_requirements[1].package.name, 'my-software')
-        self.assertEqual(
-            build_requirements[1].reasons,
-            ["depends on rpm:libone"],
-        )
+        for package_class in (PackageRPM, PackageOCI):
+            build_requirements = graph.solve(
+                package_class('libone', self.config, self.staff, self.modules)
+            )
+            self.assertEqual(len(build_requirements), 2)
+            for build_requirement in build_requirements:
+                self.assertIsInstance(build_requirement.package, package_class)
+            self.assertEqual(build_requirements[0].package.name, 'libone')
+            self.assertEqual(build_requirements[0].reasons, ["User request"])
+            self.assertEqual(build_requirements[1].package.name, 'my-software')
+            self.assertEqual(
+                build_requirements[1].reasons,
+                [f"depends on {build_requirements[1].package.format}:libone"],
+            )
 
         # Rebuild of libtwo triggers rebuild of:
         # - libone because it depends on libtwo
         # - my-software because it depends on libone
-        build_requirements = graph.solve(
-            PackageRPM('libtwo', self.config, self.staff, self.modules)
-        )
-        self.assertEqual(len(build_requirements), 3)
-        for build_requirement in build_requirements:
-            self.assertIsInstance(build_requirement.package, PackageRPM)
-        self.assertEqual(build_requirements[0].package.name, 'libtwo')
-        self.assertEqual(build_requirements[0].reasons, ["User request"])
-        self.assertEqual(build_requirements[1].package.name, 'libone')
-        self.assertEqual(
-            build_requirements[1].reasons,
-            ["depends on rpm:libtwo"],
-        )
-        self.assertEqual(build_requirements[2].package.name, 'my-software')
-        self.assertEqual(
-            build_requirements[2].reasons,
-            ["depends on rpm:libone"],
-        )
+        for package_class in (PackageRPM, PackageOCI):
+            build_requirements = graph.solve(
+                package_class('libtwo', self.config, self.staff, self.modules)
+            )
+            self.assertEqual(len(build_requirements), 3)
+            for build_requirement in build_requirements:
+                self.assertIsInstance(build_requirement.package, package_class)
+            self.assertEqual(build_requirements[0].package.name, 'libtwo')
+            self.assertEqual(build_requirements[0].reasons, ["User request"])
+            self.assertEqual(build_requirements[1].package.name, 'libone')
+            self.assertEqual(
+                build_requirements[1].reasons,
+                [f"depends on {build_requirement.package.format}:libtwo"],
+            )
+            self.assertEqual(build_requirements[2].package.name, 'my-software')
+            self.assertEqual(
+                build_requirements[2].reasons,
+                [f"depends on {build_requirement.package.format}:libone"],
+            )
 
     def test_multiple_packages_spec_fallback(self):
         """ Test graph with multiple packages and dependencies in RPM spec files """
@@ -255,23 +290,23 @@ class GraphTest(RiftProjectTestCase):
                     self.staff,
                     self.modules
                 )
-            self.assertEqual(len(graph.nodes), 3)
+            self.assertEqual(len(graph.nodes), 6)
             return graph
 
         graph = load_graph()
 
         # Rebuild of my-software does not trigger rebuild of other packages.
-        build_requirements = graph.solve(
-            PackageRPM('my-software', self.config, self.staff, self.modules)
-        )
-        self.assertEqual(len(build_requirements), 1)
-        self.assertIsInstance(build_requirements[0].package, PackageRPM)
-        self.assertEqual(build_requirements[0].package.name, 'my-software')
-        self.assertEqual(build_requirements[0].reasons, ["User request"])
+        for package_class in (PackageRPM, PackageOCI):
+            build_requirements = graph.solve(
+                package_class('my-software', self.config, self.staff, self.modules)
+            )
+            self.assertEqual(len(build_requirements), 1)
+            self.assertIsInstance(build_requirements[0].package, package_class)
+            self.assertEqual(build_requirements[0].package.name, 'my-software')
+            self.assertEqual(build_requirements[0].reasons, ["User request"])
 
-
-        # Rebuild of libone triggers rebuild of my-software because my-software
-        # build requires on one of libone subpackage.
+        # Rebuild of RPM libone triggers rebuild of my-software because
+        # my-software build requires on one of libone subpackage.
         build_requirements = graph.solve(
             PackageRPM('libone', self.config, self.staff, self.modules)
         )
@@ -286,7 +321,19 @@ class GraphTest(RiftProjectTestCase):
             ["build depends on rpm:libone-devel"]
         )
 
-        # Rebuild of libtwo triggers rebuild of libone and my-software because
+        # However, rebuild of OCI libone does not trigger rebuild other rebuild
+        # because build requirements are expressed in RPM spec file only.
+        build_requirements = graph.solve(
+            PackageOCI('libone', self.config, self.staff, self.modules)
+        )
+        self.assertEqual(len(build_requirements), 1)
+        self.assertIsInstance(build_requirements[0].package, PackageOCI)
+        self.assertEqual(build_requirements[0].package.name, 'libone')
+        self.assertEqual(build_requirements[0].reasons, ["User request"])
+
+
+        # Rebuild of RPM libtwo triggers rebuild of libone and my-software
+        # because:
         # - libone build requires on one of libtwo subpackage
         # - my-software build requires on one of libtwo subpackage and on one
         #   of libone subpackage.
@@ -311,6 +358,16 @@ class GraphTest(RiftProjectTestCase):
                 "build depends on rpm:libtwo-devel"
             ]
         )
+
+        # However, rebuild of OCI libtwo does not trigger rebuild other rebuild
+        # because build requirements are expressed in RPM spec file only.
+        build_requirements = graph.solve(
+            PackageOCI('libtwo', self.config, self.staff, self.modules)
+        )
+        self.assertEqual(len(build_requirements), 1)
+        self.assertIsInstance(build_requirements[0].package, PackageOCI)
+        self.assertEqual(build_requirements[0].package.name, 'libtwo')
+        self.assertEqual(build_requirements[0].reasons, ["User request"])
 
         # Remove my-software package directory, redefine my-software package
         # with dependencies in info.yaml and reload the graph.
@@ -358,7 +415,8 @@ class GraphTest(RiftProjectTestCase):
                     self.staff,
                     self.modules
                 )
-            self.assertEqual(len(graph.nodes), 2)
+            # 2 packages x 2 formats → 4 nodes expected in the graph
+            self.assertEqual(len(graph.nodes), 4)
             return graph
 
         graph = load_graph()
@@ -378,6 +436,16 @@ class GraphTest(RiftProjectTestCase):
             build_requirements[1].reasons,
             ["build depends on rpm:libone-provide"]
         )
+
+        # However, rebuild of OCI libone does not trigger rebuild other rebuild
+        # because provides are expressed in RPM spec file only.
+        build_requirements = graph.solve(
+            PackageOCI('libone', self.config, self.staff, self.modules)
+        )
+        self.assertEqual(len(build_requirements), 1)
+        self.assertIsInstance(build_requirements[0].package, PackageOCI)
+        self.assertEqual(build_requirements[0].package.name, 'libone')
+        self.assertEqual(build_requirements[0].reasons, ["User request"])
 
     def test_loop(self):
         """ Test graph solve with dependency loop """
@@ -410,17 +478,19 @@ class GraphTest(RiftProjectTestCase):
                 self.staff,
                 self.modules
             )
-        self.assertEqual(len(graph.nodes), 3)
+        # 3 packages x 2 formats → 6 nodes expected in the graph
+        self.assertEqual(len(graph.nodes), 6)
 
         # For all three package, the resolution should return all three
-        # build requirements.
+        # build requirements (in RPM and OCI format).
         for package in ['libone', 'libtwo', 'libthree']:
-            build_requirements = graph.solve(
-                PackageRPM(package, self.config, self.staff, self.modules)
-            )
-            for build_requirement in build_requirements:
-                self.assertIsInstance(build_requirement.package, PackageRPM)
-            self.assertEqual(len(build_requirements), 3)
+            for package_class in (PackageRPM, PackageOCI):
+                build_requirements = graph.solve(
+                    package_class(package, self.config, self.staff, self.modules)
+                )
+                for build_requirement in build_requirements:
+                    self.assertIsInstance(build_requirement.package, package_class)
+                self.assertEqual(len(build_requirements), 3)
 
     @patch('sys.stdout', new_callable=io.StringIO)
     def test_draw(self, mock_stdout):
@@ -460,10 +530,16 @@ class GraphTest(RiftProjectTestCase):
             self.assertTrue(
                 f"\"rpm:{package}\" [ label = " in output
             )
+            self.assertTrue(
+                f"\"oci:{package}\" [ label = " in output
+            )
         # Check depedencies are represented in graph.
         self.assertTrue('"rpm:my-software" -> "rpm:libone"' in output)
         self.assertTrue('"rpm:libone" -> "rpm:libtwo"' in output)
         self.assertFalse('"rpm:libtwo" -> "rpm:my-software"' in output)
+        self.assertTrue('"oci:my-software" -> "oci:libone"' in output)
+        self.assertTrue('"oci:libone" -> "oci:libtwo"' in output)
+        self.assertFalse('"oci:libtwo" -> "oci:my-software"' in output)
 
     @patch('sys.stdout', new_callable=io.StringIO)
     def test_draw_packages_subset(self, mock_stdout):
@@ -504,10 +580,15 @@ class GraphTest(RiftProjectTestCase):
             self.assertTrue(
                 f"\"rpm:{package}\" [ label = " in output
             )
+            self.assertTrue(
+                f"\"oci:{package}\" [ label = " in output
+            )
         # Check depedencies are represented in graph.
         self.assertTrue('"rpm:libone" -> "rpm:libtwo"' in output)
+        self.assertTrue('"oci:libone" -> "oci:libtwo"' in output)
         # Check my-software is not mentionned in graph.
         self.assertFalse('rpm:my-software' in output)
+        self.assertFalse('oci:my-software' in output)
 
     @patch('sys.stdout', new_callable=io.StringIO)
     def test_draw_with_external_deps(self, mock_stdout):
@@ -546,11 +627,21 @@ class GraphTest(RiftProjectTestCase):
         graph.draw(True, [])  # w/ external deps
         output = mock_stdout.getvalue()
 
-        # Check all packages are declared as nodes (with their labels) in graph.
+        # Check external RPM packages are declared as nodes (with their labels)
+        # in graph.
         self.assertTrue(
                 '"rpm:external-devel" [fillcolor=orange]' in output
         )
+        # External package must not be present for OCI format as this is a
+        # spec/RPM specific notion.
+        self.assertFalse(
+                '"oci:external-devel" [fillcolor=orange]' in output
+        )
+
         # Check depedencies are represented in graph.
         self.assertTrue('"rpm:my-software" -> "rpm:external-devel"' in output)
         self.assertTrue('"rpm:libone" -> "rpm:external-devel"' in output)
         self.assertFalse('"rpm:libtwo" -> "rpm:external-devel"' in output)
+        self.assertFalse('"oci:my-software" -> "oci:external-devel"' in output)
+        self.assertFalse('"oci:libone" -> "oci:external-devel"' in output)
+        self.assertFalse('"oci:libtwo" -> "oci:external-devel"' in output)

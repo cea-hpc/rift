@@ -81,6 +81,7 @@ _DEFAULT_VM_PORT_RANGE_MIN = 10000
 _DEFAULT_VM_PORT_RANGE_MAX = 15000
 _DEFAULT_QEMU_CMD = 'qemu-system-$arch'
 _DEFAULT_REPO_CMD = 'createrepo_c'
+_DEFAULT_CONTAINER_CMD = 'podman'
 _DEFAULT_SHARED_FS_TYPE = '9p'
 _DEFAULT_VIRTIOFSD = '/usr/libexec/virtiofsd'
 _DEFAULT_SYNC_METHOD = 'dnf'
@@ -352,6 +353,14 @@ class Config():
         },
         'gerrit_password': {
             'deprecated': 'gerrit.password'
+        },
+        'containers': {
+            'check':    'dict',
+            'syntax': {
+                'command': {
+                    'default': _DEFAULT_CONTAINER_CMD,
+                }
+            }
         },
         'rpm_macros': {
             'check':    'dict',
