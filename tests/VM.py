@@ -695,7 +695,7 @@ class VMTest(RiftTestCase):
         vm = VM(self.config, platform.machine())
         funcs = vm.local_test_funcs()
         self.assertIsInstance(funcs, dict)
-        self.assertCountEqual(funcs.keys(), ['cm_cmd', 'vm_wait', 'vm_reboot'])
+        self.assertCountEqual(funcs.keys(), ['vm_cmd', 'vm_wait', 'vm_reboot'])
 
     @patch('rift.VM.run_command')
     def test_run_test(self, mock_run_command):

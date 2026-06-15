@@ -684,7 +684,7 @@ class VM():
         running on hosts for handling this VM.
         """
         return {
-            'cm_cmd': (
+            'vm_cmd': (
                 "ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no "
                 f"-oLogLevel=ERROR -T -p {self.port} root@127.0.0.1 \"$@\""
             ),
