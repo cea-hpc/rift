@@ -190,6 +190,7 @@ class VM():
             vm_config.get('build_post_script')
         )
         self.images_cache = vm_config.get('images_cache')
+        self.kernel = vm_config.get('kernel')
 
     @property
     def vmid(self):
@@ -950,7 +951,8 @@ class VM():
         env_str = (
             f"RIFT_SHARED_FS_TYPE={self.shared_fs_type} "
             f"RIFT_ADDITIONAL_RPMS={':'.join(rpm_basenames)} "
-            f"RIFT_REPOS={':'.join([repo.name for repo in self._repos])}"
+            f"RIFT_REPOS={':'.join([repo.name for repo in self._repos])} "
+            f"RIFT_KERNEL={self.kernel or ''}"
         )
         with open(self.build_post_script, encoding='utf-8') as fh:
             if self.cmd(

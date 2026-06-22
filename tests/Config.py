@@ -512,6 +512,24 @@ class ConfigTest(RiftTestCase):
         )
         self.assertEqual(config.get('vm').get('port_range').get('max'), 30000)
 
+    def test_load_vm_kernel(self):
+        """Load vm.kernel parameter"""
+        cfgfile = make_temp_file(
+            textwrap.dedent(
+                """
+                set_annex:
+                  address: /a/dir
+                  type: directory
+                vm:
+                  image: /a/image.img
+                  kernel: 4.18.0-513.el8
+                """
+            )
+        )
+        config = Config()
+        config.load(cfgfile.name)
+        self.assertEqual(config.get('vm').get('kernel'), '4.18.0-513.el8')
+
     def test_load_gpg(self):
         """Load gpg parameters"""
         # Check without passphrase

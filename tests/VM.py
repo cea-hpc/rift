@@ -75,6 +75,7 @@ class VMTest(RiftTestCase):
         self.assertFalse(vm.copymode)
         self.assertIsNone(vm._vm)
         self.assertIsNone(vm._tmpimg)
+        self.assertIsNone(vm.kernel)
 
         # arch specific
         self.config.set('arch', ['aarch64'])
@@ -823,6 +824,23 @@ class VMBuildTest(RiftProjectTestCase):
             fh.write("#!/bin/bash\n/bin/true\n")
         vm.build(self.valid_url, False, False, vm.image_local)
         self.assertEqual(os.path.exists(vm.image_local), True)
+
+    def test_build_build_script_kernel(self):
+        """Test VM build with build script and kernel configuration"""
+        self.config.options['vm']['kernel'] = '4.18.0-513.el8'
+        vm = VM(self.config, 'x86_64')
+        with open(vm.build_post_script, 'w', encoding='utf-8') as fh:
+            fh.write('#!/bin/bash\n')
+        vm.cmd = Mock(return_value=Mock(returncode=0))
+        vm._build_run_post_script([])
+        vm.cmd.assert_called_once()
+        self.assertIn('RIFT_KERNEL=4.18.0-513.el8', vm.cmd.call_args[0][0])
+
+        vm.kernel = None
+        vm.cmd.reset_mock()
+        vm._build_run_post_script([])
+        self.assertIn('RIFT_KERNEL=', vm.cmd.call_args[0][0])
+        self.assertNotIn('RIFT_KERNEL=4.18.0-513.el8', vm.cmd.call_args[0][0])
 
     def test_build_with_build_script_error(self):
         """Test VM build with build script error"""
