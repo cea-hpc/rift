@@ -289,6 +289,7 @@ class Config():
                 'build_post_script': {
                     'default': _DEFAULT_VM_BUILD_POST_SCRIPT,
                 },
+                'kernel': {},
                 'auth': {
                     'check': 'enum',
                     'values': ['idp_token'],
