@@ -44,6 +44,23 @@ jobs:
           dnf install -y glibc-locale-source glibc-langpack-en
           localedef -i en_US -f UTF-8 en_US.UTF-8
 
+      # Setup utilities and system configuration so podman can run in docker
+      # container.
+      - name: System setup for containers
+        run: |
+          # Add missing setuid on new{uid,gid}map binaries
+          chmod u+s /usr/bin/new{uid,gid}map
+          # Setup user namespace sub{uid,gid} for ci user
+          echo ci:100000:65536 > /etc/subuid
+          echo ci:100000:65536 > /etc/subgid
+          # Fix podman warning '"/" is not a shared mount, this could cause
+          # issues or missing mounts with rootless containers'
+          mount --make-rshared /
+          # Fix sudo error 'PAM account management error: Authentication service
+          # cannot retrieve authentication info' on AlmaLinux 8 due to mode 000
+          # on /etc/shadow.
+          chmod 0440 /etc/shadow
+
       # Mount binfmt_misc virtual FS to register support of additional binary
       # formats for multi-arch builds.
       - name: Mount binfmt_misc virtual filesystem
@@ -68,7 +85,7 @@ jobs:
 
       - name: Install tests dependencies
         run: |
-          dnf -y install python3-pip python3-jinja2 python3-PyYAML python3-rpm python3-dnf python3-pytest python3-pytest-cov sudo rpm-sign rpmlint openssh-clients genisoimage qemu qemu-user qemu-img qemu-virtiofsd mock createrepo_c
+          dnf -y install python3-pip python3-jinja2 python3-PyYAML python3-rpm python3-dnf python3-pytest python3-pytest-cov sudo rpm-sign rpmlint openssh-clients genisoimage qemu qemu-user qemu-img qemu-virtiofsd mock createrepo_c podman
 
       # On Almalinux, install vendored qemu-user static binaries and setup
       # binfmt. The value in /etc/binfmt.d/qemu-static.conf is essentially a raw
@@ -94,14 +111,39 @@ jobs:
           useradd ci
           usermod -aG $(stat -c %G /dev/kvm) ci
           usermod -aG mock ci
-          echo "ci ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/00-ci
+          echo -e 'Defaults:ci !requiretty\nci ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/00-ci
 
-      # Move coverage data file in ~ci because ci unprilived user does not have
-      # permissions in working directory after checkout by root.
+      # On AlmaLinux 8, podman fails to create user namespace creation with this
+      # unexplained error: 'running `/usr/bin/newuidmap 904 0 1000 1 1 100000
+      # 65536`: newuidmap: open of uid_map failed: Permission denied'
+      #
+      # This error might be due to some incompatibly between GitHub Actions
+      # runner host kernel and the userspace stack in almalinux/8-base
+      # container.
+      #
+      # The workaround is to add a wrapper which runs podman in 'rootful' mode
+      # by default in order to skip user namespace creation.
+      - name: Podman rootful wrapper (AlmaLinux 8)
+        if: ${{ startsWith(matrix.envs.container, 'almalinux/8') }}
+        run: |
+          install -d -o ci -g ci -m 755 ~ci/bin
+          cat << EOF > ~ci/bin/podman
+          #!/usr/bin/env bash
+          exec sudo -n /usr/bin/podman --storage-driver=vfs "\$@"
+          EOF
+          chown ci:ci ~ci/bin/podman
+          chmod 755 ~ci/bin/podman
+
+      - name: Run podman info
+        run: |
+          su ci -c 'export PATH="/home/ci/bin:$PATH"; podman --root /tmp info'
+
+      # Move coverage data file in ~ci because ci unprivileged user does not
+      # have permissions in working directory after checkout by root.
       - name: Run tests
         run: |
           cat <<EOF > .coveragerc
           [run]
           data_file = ~ci/.coverage
           EOF
-          su ci -c pytest-3
+          su ci -c 'export PATH="/home/ci/bin:$PATH"; pytest-3'
