@@ -3,28 +3,32 @@
 #
 
 import os
-import time
 import shutil
 import tarfile
 import textwrap
+import time
 from unittest.mock import patch
 
 from rift.annex import Annex
-from rift.annex.utils import (hashfile, get_info_from_digest, get_digest_from_path, is_pointer,
-                              is_binary)
-from rift.Config import Config, Staff, Modules
+from rift.annex.utils import (
+    get_digest_from_path,
+    get_info_from_digest,
+    hashfile,
+)
+from rift.Config import Config, Modules, Staff
 from rift.package import ProjectPackages
 from rift.package.rpm import PackageRPM
 
-from .TestUtils import (
+from ..TestUtils import (
+    RiftTestCase,
+    gen_rpm_spec,
     make_temp_file,
     make_temp_filename,
-    gen_rpm_spec,
     read_file,
-    RiftTestCase,
 )
 
 _TEST_ANNEX_PATH = '/tmp/rift-test-annex'
+
 
 class AnnexTest(RiftTestCase):
 
@@ -41,7 +45,7 @@ class AnnexTest(RiftTestCase):
         os.mkdir(self.working_repo)
         os.mkdir(self.working_repo + '/packages')
 
-        self.staff = Staff(config = self.config)
+        self.staff = Staff(config=self.config)
         self.staff_file = make_temp_file(textwrap.dedent("""
         staff:
             'J. Doe':
@@ -54,16 +58,18 @@ class AnnexTest(RiftTestCase):
             'Tools':
                 manager: 'J. Doe'
         """))
-        self.modules = Modules(config = self.config, staff = self.staff)
+        self.modules = Modules(config=self.config, staff=self.staff)
         self.modules.load(self.config_file.name)
 
         # Create a Annex for the tests
         os.mkdir(_TEST_ANNEX_PATH)
-        self.config.set('set_annex',
-                            {'address': _TEST_ANNEX_PATH,
-                             'type': 'directory'
-                            }
-                       )
+        self.config.set(
+            'set_annex',
+            {
+                'address': _TEST_ANNEX_PATH,
+                'type': 'directory',
+            },
+        )
         self.annex = Annex(self.config)
 
         self.source = make_temp_file(textwrap.dedent("""
@@ -83,7 +89,7 @@ class AnnexTest(RiftTestCase):
            origin: Company
         """))
         self.package = PackageRPM('foo-pkg', self.config, self.staff, self.modules)
-        self.package.load_info(infopath = self.package_infos.name)
+        self.package.load_info(infopath=self.package_infos.name)
         self.package.write()
         with open(self.package.buildfile, "w") as fh:
             fh.write(
@@ -100,102 +106,10 @@ class AnnexTest(RiftTestCase):
         shutil.rmtree('/tmp/rift-test-annex')
         shutil.rmtree(self.working_repo)
 
-    def test_is_binary_with_binary(self):
-        """
-        Test is a fully binary file is correctly
-        detected as binary file
-        """
-        # Generate a random fully binary file*
-        # make_temp_file from test_utils cant be used
-        # here since it does not support binary content
-        with open('/tmp/binary_file', 'wb') as bin_file:
-            bin_file.write(os.urandom(4096 * 8))
-
-        self.assertTrue(is_binary('/tmp/binary_file'))
-        os.remove('/tmp/binary_file')
-
-    def test_is_binary_with_non_binary(self):
-        """
-        Test if a fully non binary file is correctly detected as an non binary file
-        """
-
-        non_binary_file = make_temp_file('ACTG' * 40)
-        self.assertFalse(is_binary(non_binary_file.name))
-
-    def test_is_binary_with_empty_file(self):
-         """
-         Test if an empty is correctly detected by is_binary
-         """
-
-         empty_file = make_temp_file('')
-         self.assertFalse(is_binary(empty_file.name))
-
-    def test_get_digest_from_path(self):
-        """
-        Test if a file is able to be readed by this method
-        """
-
-        file_content = 'Red Hat Enterprise Linux release 8.8 (Ootpa)'
-        file_path = make_temp_file(file_content)
-        self.assertEqual(file_content, get_digest_from_path(file_path.name))
-
-    def test_get_info_from_digest(self):
-        """
-        Test the concetenation between the digest and the metadata suffix
-        """
-
-        digest = '7CF2DB5EC261A0FA27A502D3196A6F60'
-        self.assertEqual(digest + '.info', get_info_from_digest(digest))
-
-    def test_hashfile(self):
-        """ Test if the hashfile method hash the filepath correctly """
-
-        path = make_temp_file('OCEAN')
-        self.assertNotEqual(path.name, hashfile(path.name))
-
     def test_init(self):
         """ Test local annex initialisation """
 
         self.assertEqual(self.annex.set_annex.annex_path, _TEST_ANNEX_PATH)
-
-    def test_is_pointer_valid_identifier(self):
-        """ Test if is_pointer correctly detect a valid identifier """
-
-        correct_identifier = '7CF2DB5EC261A0FA27A502D3196A6F60'
-        temp_file = make_temp_file(correct_identifier)
-        self.assertTrue(is_pointer(temp_file.name))
-
-    def test_is_pointer_valid_identifier_with_line_feed(self):
-        """ Test if is_pointer correctly detect a valid identifier with a line feed """
-
-        correct_identifier = '7CF2DB5EC261A0FA27A502D3196A6F60\n'
-        temp_file = make_temp_file(correct_identifier)
-        self.assertTrue(is_pointer(temp_file.name))
-
-    def test_is_pointer_valid_identifier_with_carriage_return(self):
-        """
-        Test if is_pointer correctly detect a valid identifier with a carriage return.
-        """
-
-        correct_identifier = '7CF2DB5EC261A0FA27A502D3196A6F60\r\n'
-        temp_file = make_temp_file(correct_identifier)
-        self.assertTrue(is_pointer(temp_file.name))
-
-    def test_is_pointer_valid_identifier_with_whitespace(self):
-        """
-        Test if is_pointer correctly detect a valid identifier with a whitespace.
-        """
-
-        correct_identifier = '7CF2DB5EC261A0FA27A502D3196A6F60 '
-        temp_file = make_temp_file(correct_identifier)
-        self.assertTrue(is_pointer(temp_file.name))
-
-    def test_is_pointer_invalid_identifier(self):
-        """ Test if is_pointer correctly detect a invalid identifier """
-
-        incorrect_identifier = 'rift annex test'
-        temp_file = make_temp_file(incorrect_identifier)
-        self.assertFalse(is_pointer(temp_file.name))
 
     def test_get(self):
         """ Test get method """
@@ -286,7 +200,7 @@ class AnnexTest(RiftTestCase):
             mock_mock.return_value.read_spec = read_file
             annex_backup = self.annex.backup(
                 ProjectPackages.list(self.config, self.staff, self.modules)
-             )
+            )
 
         # Get the files present in the annex backup
         with tarfile.open(annex_backup, 'r') as backup:
@@ -300,11 +214,10 @@ class AnnexTest(RiftTestCase):
         )
 
         # Check if the orphaned file is not in the archive
-        self.assertTrue(get_digest_from_path(orphaned_file.name)  not in annexed_files)
+        self.assertTrue(get_digest_from_path(orphaned_file.name) not in annexed_files)
         self.assertTrue(
             get_info_from_digest(get_digest_from_path(orphaned_file.name))
             not in annexed_files
         )
 
         os.remove(annex_backup)
-
