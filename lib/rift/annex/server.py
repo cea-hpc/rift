@@ -45,6 +45,7 @@ import tempfile
 import requests
 
 from rift import RiftError
+from rift.auth import Auth
 from rift.annex.generic_annex import GenericAnnex
 from rift.annex.utils import (
     get_digest_from_path,
@@ -63,8 +64,16 @@ class ServerAnnex(GenericAnnex):
 
     For now, files are stored in a flat namespace.
     """
-    def __init__(self, _, annex_path):
+    def __init__(self, config, annex_path, auth=None):
         self.annex_path = annex_path
+        self._auth = Auth(config) if auth == 'idp_token' else None
+
+    def _request_headers(self):
+        """Return HTTP headers for annex requests, including Bearer token if configured."""
+        if self._auth is None:
+            return {}
+        token = self._auth.get_idp_token_noninteractive()
+        return {'Authorization': f'Bearer {token}'}
 
     def get_cached_path(self, path):
         """
@@ -79,7 +88,9 @@ class ServerAnnex(GenericAnnex):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_file = os.path.join(tmp_dir, identifier)
             try:
-                res = requests.get(idpath, stream=True, timeout=15)
+                res = requests.get(
+                    idpath, stream=True, timeout=15, headers=self._request_headers()
+                )
 
                 if res:
                     with open(tmp_file, 'wb') as f:
@@ -149,7 +160,9 @@ class ServerAnnex(GenericAnnex):
                         tmp = os.path.join(tmp_dir, basename)
 
                         try:
-                            res = requests.get(f, stream=True, timeout=15)
+                            res = requests.get(
+                                f, stream=True, timeout=15, headers=self._request_headers()
+                            )
                             if res.status_code != 404:
                                 res.raise_for_status()
 

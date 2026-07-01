@@ -143,6 +143,10 @@ class Config():
                     'check': 'enum',
                     'required': True,
                     'values': ['directory', 'server', 's3']
+                },
+                'auth': {
+                    'check': 'enum',
+                    'values': ['idp_token'],
                 }
             }
         },
@@ -163,6 +167,10 @@ class Config():
                     'check': 'enum',
                     'required': True,
                     'values': ['directory', 'server', 's3']
+                },
+                'auth': {
+                    'check': 'enum',
+                    'values': ['idp_token'],
                 }
             }
         },
