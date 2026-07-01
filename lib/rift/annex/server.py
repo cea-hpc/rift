@@ -146,7 +146,7 @@ class ServerAnnex(GenericAnnex):
 
                     for f in (annex_file, annex_file_info):
                         basename = os.path.basename(f)
-                        tmp = os.path.join(tmp_dir.name, basename)
+                        tmp = os.path.join(tmp_dir, basename)
 
                         try:
                             res = requests.get(f, stream=True, timeout=15)
