@@ -93,7 +93,7 @@ class Annex:
         if annex_type == 'directory':
             return DirectoryAnnex(config, annex.get('address'))
         if annex_type == 'server':
-            return ServerAnnex(config, annex.get('address'))
+            return ServerAnnex(config, annex.get('address'), annex.get('auth'))
         if annex_type == 's3':
             return S3Annex(config, annex.get('address'))
 
