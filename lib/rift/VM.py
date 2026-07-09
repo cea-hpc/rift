@@ -156,9 +156,13 @@ class VM():
         self.memory = vm_config.get('memory')
         self.qemu = config.get('qemu', arch=arch)
 
+        self.enable_kvm = vm_config.get('enable_kvm')
+
         # default emulated cpu architecture
         if self.arch == 'aarch64':
             self.cpu_type = vm_config.get('cpu', 'cortex-a72')
+        elif self.enable_kvm == False:
+            self.cpu_type = vm_config.get('cpu', 'qemu64')
         else:
             self.cpu_type = vm_config.get('cpu', 'host')
 
@@ -191,6 +195,7 @@ class VM():
         )
         self.images_cache = vm_config.get('images_cache')
         self.kernel = vm_config.get('kernel')
+
 
     @property
     def vmid(self):
@@ -295,7 +300,7 @@ class VM():
                     f'memory-backend-file,id=mem,size={str(self.memory)}M,mem-path=/tmp,share=on']
             # Use platform.machine() instead of platform.proccessor to be container
             # compatible.
-            if self.arch == platform.machine():
+            if self.arch == platform.machine() and self.enable_kvm:
                 cmd += ['-machine', 'memory-backend=mem,accel=kvm']
             else:
                 cmd += ['-machine', 'memory-backend=mem']
@@ -355,9 +360,9 @@ class VM():
         # acceleration
         # Use platform.machine() instead of platform.proccessor to be container
         # compatible.
-        if self.arch == platform.machine():
+        if self.arch == platform.machine() and self.enable_kvm:
             cmd += ['-enable-kvm']
-        else:
+        elif self.arch != platform.machine():
             cmd += ['-machine', 'virt']
 
         cmd += ['-cpu', self.cpu_type]
