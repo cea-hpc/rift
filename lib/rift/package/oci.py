@@ -165,6 +165,7 @@ class ActionableArchPackageOCI(ActionableArchPackage):
         message("Container image successfully built")
 
     def _setup_sources(self):
+        """Prepare build context directory with extracted sources and Containerfile."""
         extracted_archive = None
         tmp_sourcesdir = Annex(self.config).import_dir(self.package.sourcesdir,
                                                        force_temp=True)
@@ -214,6 +215,7 @@ class ActionableArchPackageOCI(ActionableArchPackage):
         return topdir
 
     def _extract_archive(self, tarball):
+        """Extract tarball archive into temporary build directory."""
         try:
             logging.info("Extracting source tarball %s", tarball)
             with tarfile.open(tarball) as _tarball:
@@ -233,6 +235,7 @@ class ActionableArchPackageOCI(ActionableArchPackage):
             ) from err
 
     def _safe_members(self, tarball):
+        """Yield tarball members that are safe to extract."""
         for member in tarball.getmembers():
             if os.path.isabs(member.name):
                 raise RiftError(

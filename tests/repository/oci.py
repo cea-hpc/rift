@@ -13,12 +13,14 @@ from ..TestUtils import RiftProjectTestCase, make_temp_dir
 class ArchRepositoriesOCITest(RiftProjectTestCase):
 
     def test_init(self):
+        """Test ArchRepositoriesOCI initialisation without working directory."""
         repo = ArchRepositoriesOCI(self.config, None, 'x86_64')
         self.assertIsNone(repo.path)
         self.assertIsNone(repo.working_dir)
         self.assertEqual(repo.arch, 'x86_64')
 
     def test_init_working(self):
+        """Test ArchRepositoriesOCI initialisation with working directory."""
         working_repo_path = make_temp_dir()
         repo = ArchRepositoriesOCI(self.config, working_repo_path, 'x86_64')
         self.assertEqual(repo.path, os.path.join(working_repo_path, 'oci'))
@@ -27,6 +29,7 @@ class ArchRepositoriesOCITest(RiftProjectTestCase):
         shutil.rmtree(working_repo_path)
 
     def test_ensure_created(self):
+        """Test ArchRepositoriesOCI ensure_created method."""
         working_repo_path = make_temp_dir()
         os.rmdir(working_repo_path)
         repo = ArchRepositoriesOCI(self.config, working_repo_path, 'x86_64')
@@ -46,6 +49,7 @@ class ArchRepositoriesOCITest(RiftProjectTestCase):
         shutil.rmtree(working_repo_path)
 
     def test_delete_matching(self):
+        """Test ArchRepositoriesOCI delete_matching method."""
         working_repo_path = make_temp_dir()
         repo = ArchRepositoriesOCI(self.config, working_repo_path, 'x86_64')
         repo.ensure_created()
@@ -66,6 +70,7 @@ class ArchRepositoriesOCITest(RiftProjectTestCase):
         shutil.rmtree(working_repo_path)
 
     def test_delete_matching_other_arch(self):
+        """Test ArchRepositoriesOCI delete_matching on another architecture."""
         working_repo_path = make_temp_dir()
         repo = ArchRepositoriesOCI(self.config, working_repo_path, 'aarch64')
         repo.ensure_created()

@@ -14,6 +14,7 @@ class ContainerTest(RiftProjectTestCase):
     """Tests class for ContainerRuntime"""
 
     def test_tag(self):
+        """Test ContainerRuntime tag generation."""
         self.make_pkg()
         package = PackageOCI('pkg', self.config, self.staff, self.modules)
         package.load()
@@ -23,6 +24,7 @@ class ContainerTest(RiftProjectTestCase):
 
     @patch('rift.container.run_command')
     def test_build(self, mock_run_command):
+        """Test ContainerRuntime build command."""
         self.make_pkg()
         package = PackageOCI('pkg', self.config, self.staff, self.modules)
         package.load()
@@ -40,6 +42,7 @@ class ContainerTest(RiftProjectTestCase):
 
     @patch('rift.container.run_command')
     def test_build_failure(self, mock_run_command):
+        """Test ContainerRuntime build failure handling."""
         self.make_pkg()
         package = PackageOCI('pkg', self.config, self.staff, self.modules)
         package.load()
@@ -52,6 +55,7 @@ class ContainerTest(RiftProjectTestCase):
 
     @patch('rift.container.run_command')
     def test_run_test(self, mock_run_command):
+        """Test ContainerRuntime run_test command."""
         self.make_pkg()
         package = PackageOCI('pkg', self.config, self.staff, self.modules)
         package.load()
@@ -70,6 +74,7 @@ class ContainerTest(RiftProjectTestCase):
 
     @patch('rift.container.run_command')
     def test_archive(self, mock_run_command):
+        """Test ContainerRuntime archive command."""
         self.make_pkg()
         package = PackageOCI('pkg', self.config, self.staff, self.modules)
         package.load()
