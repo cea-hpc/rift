@@ -37,6 +37,7 @@ import logging
 from rift import RiftError
 from rift.TempDir import TempDir
 from rift.repository.rpm import ArchRepositoriesRPM, StagingRepositoryRPM
+from rift.repository.oci import ArchRepositoriesOCI
 
 
 class ProjectArchRepositories:
@@ -46,7 +47,8 @@ class ProjectArchRepositories:
     """
 
     FORMAT_CLASSES = {
-        'rpm': ArchRepositoriesRPM
+        'rpm': ArchRepositoriesRPM,
+        'oci': ArchRepositoriesOCI
     }
 
     def __init__(self, config, arch):

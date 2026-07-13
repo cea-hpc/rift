@@ -7,6 +7,7 @@ import os
 from rift.Config import Config
 from rift.package._virtual import PackageVirtual
 from rift.package.rpm import PackageRPM
+from rift.package.oci import PackageOCI
 from rift.package import ProjectPackages
 from ..TestUtils import RiftProjectTestCase
 
@@ -22,16 +23,21 @@ class ProjectPackagesTest(RiftProjectTestCase):
             os.mkdir(os.path.join(packages_dir, package))
             if 'rpm' in formats:
                 open(os.path.join(packages_dir, package, f"{package}.spec"), 'a').close()
+            if 'oci' in formats:
+                open(os.path.join(packages_dir, package, 'Containerfile'), 'a').close()
 
     def test_list(self):
         """ Test ProjectPackages list() """
-        packages_names = {'foo': ['rpm'], 'bar': ['rpm']}
+        packages_names = {'foo': ['rpm'], 'bar': ['oci']}
         self.fill_project_dir(packages_names)
         packages = list(ProjectPackages.list(self.config, self.staff, self.modules))
-        for package in packages:
-            self.assertIsInstance(package, PackageRPM)
-            self.assertIn(package.name, packages_names)
         self.assertEqual(len(packages), 2)
+        for package in packages:
+            self.assertIn(package.name, packages_names)
+            if package.name == 'foo':
+                self.assertIsInstance(package, PackageRPM)
+            elif package.name == 'bar':
+                self.assertIsInstance(package, PackageOCI)
 
     def test_list_empty(self):
         """ Test ProjectPackages list() empty """
@@ -40,15 +46,17 @@ class ProjectPackagesTest(RiftProjectTestCase):
 
     def test_list_with_names(self):
         """ Test ProjectPackages list() with names"""
-        packages_names = {'foo': ['rpm'], 'bar': ['rpm']}
-        list_names = ['bar', 'baz']
+        packages_names = {'foo': ['rpm'], 'bar': ['rpm'], 'baz': ['oci']}
+        list_names = ['bar', 'baz', 'fail']
         self.fill_project_dir(packages_names)
         packages = list(ProjectPackages.list(self.config, self.staff, self.modules, list_names))
-        self.assertEqual(len(packages), 2)
+        self.assertEqual(len(packages), 3)
         for package in packages:
             self.assertIn(package.name, list_names)
             if package.name == 'bar':
                 self.assertIsInstance(package, PackageRPM)
+            elif package.name == 'baz':
+                self.assertIsInstance(package, PackageOCI)
             else:
                 self.assertIsInstance(package, PackageVirtual)
 
@@ -68,3 +76,24 @@ class ProjectPackagesTest(RiftProjectTestCase):
         self.assertEqual(len(packages), 1)
         self.assertIsInstance(packages[0], PackageRPM)
         self.assertEqual(packages[0].name, 'pkg')
+
+    def test_get_oci(self):
+        """ Test ProjectPackages get() OCI package"""
+        self.fill_project_dir({'pkg': ['oci']})
+        packages = ProjectPackages.get('pkg', self.config, self.staff, self.modules)
+        self.assertIsInstance(packages, list)
+        self.assertEqual(len(packages), 1)
+        self.assertIsInstance(packages[0], PackageOCI)
+        self.assertEqual(packages[0].name, 'pkg')
+
+    def test_get_multiformats(self):
+        """ Test ProjectPackages get() multiformats package"""
+        self.fill_project_dir({'pkg': ['rpm', 'oci']})
+        packages = ProjectPackages.get('pkg', self.config, self.staff, self.modules)
+        self.assertIsInstance(packages, list)
+        self.assertEqual(len(packages), 2)
+        # Check there is one RPM and one OCI in list
+        self.assertEqual([isinstance(package, PackageRPM) for package in packages].count(True), 1)
+        self.assertEqual([isinstance(package, PackageOCI) for package in packages].count(True), 1)
+        for package in packages:
+            self.assertEqual(package.name, 'pkg')
