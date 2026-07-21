@@ -126,7 +126,7 @@ class ContainerFile:
             if os.path.exists(pkg_config):
                 cmd[1:1] = ['--config', pkg_config]
 
-        logging.debug('Running hadolint: %s', ' '.join(cmd))
+        logging.debug('Running OCI linter command: %s', ' '.join(cmd))
         return run_command(cmd, capture_output=True, merge_out_err=True)
 
     def check(self, pkg=None):
