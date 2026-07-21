@@ -3065,7 +3065,7 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
         mock_mock.return_value.read_spec = read_file
         with patch.object(mock_mock.return_value, 'rpmlint', host_rpmlint):
             main(['gerrit', '--change', '1', '--patchset', '2', patch_file.name])
-        # Check Containerfile static analysis is skipped for RPM-only patch.
+        # Check Containerfile static analysis is skipped for RPM-only package.
         mock_containerfile_analyze.assert_not_called()
         # Check review has been invalidated and pushed
         mock_review.return_value.invalidate.assert_called_once()
