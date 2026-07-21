@@ -330,7 +330,7 @@ class ControllerProjectActionCheckTest(RiftProjectTestCase):
     def test_check_info_without_file(self):
         """check info without file fails"""
         with self.assertRaisesRegex(
-            RiftError, r"You must specifiy a file path \(-f\)"
+            RiftError, r"You must specify a file path \(-f\)"
         ):
             exit_code = main(['check', 'info'])
             self.assertEqual(exit_code, 1)
@@ -359,7 +359,7 @@ class ControllerProjectActionCheckTest(RiftProjectTestCase):
     def test_check_spec_without_file(self):
         """check spec without file fails"""
         with self.assertRaisesRegex(
-            RiftError, r"You must specifiy a file path \(-f\)"
+            RiftError, r"You must specify a file path \(-f\)"
         ):
             exit_code = main(['check', 'spec'])
             self.assertEqual(exit_code, 1)
@@ -386,6 +386,30 @@ class ControllerProjectActionCheckTest(RiftProjectTestCase):
         self.make_pkg()
         with self.assertRaisesRegex(RiftError, "/dev/fail does not exist"):
             main(['check', 'spec', '-f', '/dev/fail'])
+
+    def test_check_containerfile_without_file(self):
+        """check containerfile without file fails"""
+        with self.assertRaisesRegex(
+            RiftError, r"You must specify a file path \(-f\)"):
+            main(['check', 'containerfile'])
+
+    def test_check_containerfile(self):
+        """simple check containerfile"""
+        self.make_pkg(formats=['oci'])
+        with self.assertLogs(level='INFO') as log:
+            main(
+                ['check', 'containerfile', '-f', self.buildfiles['pkg:oci']]
+            )
+        self.assertIn(
+            'INFO:root:Containerfile is OK.',
+            log.output
+        )
+
+    def test_check_containerfile_not_found(self):
+        """check containerfile file not found fails"""
+        self.make_pkg()
+        with self.assertRaisesRegex(RiftError, "Unable to find Containerfile /dev/fail"):
+            main(['check', 'containerfile', '-f', '/dev/fail'])
 
 
 class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
@@ -2890,9 +2914,11 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
     Tests class for Controller action gerrit
     """
 
+    @patch('rift.container.ContainerFile.analyze')
     @patch('rift.package.rpm.Mock')
     @patch('rift.Controller.Review')
-    def test_gerrit_multiformats(self, mock_review, mock_mock):
+    def test_gerrit_multiformats(self, mock_review, mock_mock,
+                                 mock_containerfile_analyze):
         """simple gerrit with multiformats package"""
         self.make_pkg()
         patch_file = make_temp_file(
@@ -2925,24 +2951,19 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
         mock_mock.return_value.read_spec = read_file
         # Emulate rpmlint to return returncode 0
         mock_mock.return_value.rpmlint.return_value.returncode = 0
-        with self.assertLogs(level='INFO') as log:
-            main(['gerrit', '--change', '1', '--patchset', '2', patch_file.name])
+        main(['gerrit', '--change', '1', '--patchset', '2', patch_file.name])
         # Check rpmlint is run to analyze the RPM buildfile.
         mock_mock.return_value.rpmlint.assert_called_once()
-        # Check presence of log message to indicate unable to analyze OCI
-        # buildfile.
-        self.assertIn(
-            'INFO:root:Skipping package format oci which does not support '
-            'static analysis',
-            log.output,
-        )
+        # Check Containerfile static analysis is run for OCI buildfile.
+        mock_containerfile_analyze.assert_called_once()
         # Check review has not been invalidated but pushed
         mock_review.return_value.invalidate.assert_not_called()
         mock_review.return_value.push.assert_called_once()
 
+    @patch('rift.container.ContainerFile.analyze')
     @patch('rift.package.rpm.Mock')
     @patch('rift.Controller.Review')
-    def test_gerrit_rpm(self, mock_review, mock_mock):
+    def test_gerrit_rpm(self, mock_review, mock_mock, mock_containerfile_analyze):
         """simple gerrit on rpm package"""
         self.make_pkg(formats=['rpm'])
         patch_file = make_temp_file(
@@ -2967,15 +2988,18 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
         main(['gerrit', '--change', '1', '--patchset', '2', patch_file.name])
         # Check rpmlint is run to analyze the RPM buildfile.
         mock_mock.return_value.rpmlint.assert_called_once()
+        # Check Containerfile static analysis is skipped for RPM-only package.
+        mock_containerfile_analyze.assert_not_called()
 
         # Check review has not been invalidated but pushed
         mock_review.return_value.invalidate.assert_not_called()
         mock_review.return_value.push.assert_called_once()
 
+    @patch('rift.container.ContainerFile.analyze')
     @patch('rift.package.rpm.Mock')
     @patch('rift.Controller.Review')
-    def test_gerrit_oci(self, mock_review, mock_mock):
-        """simple gerrit on rpm package"""
+    def test_gerrit_oci(self, mock_review, mock_mock, mock_containerfile_analyze):
+        """simple gerrit on oci package"""
         self.make_pkg(formats=['oci'])
         patch_file = make_temp_file(
             textwrap.dedent("""
@@ -2992,25 +3016,21 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
                 """))
         # mock Mock.read_spec to return spec file content directly read on host
         mock_mock.return_value.read_spec = read_file
-        with self.assertLogs(level='INFO') as log:
-            main(['gerrit', '--change', '1', '--patchset', '2', patch_file.name])
-        # Check static analysis is skipped for OCI-only package.
+        main(['gerrit', '--change', '1', '--patchset', '2', patch_file.name])
+        # Check RPM static analysis is skipped for OCI-only package.
         mock_mock.return_value.rpmlint.assert_not_called()
-        # Check presence of log message to indicate unable to analyze OCI
-        # buildfile.
-        self.assertIn(
-            'INFO:root:Skipping package format oci which does not support '
-            'static analysis',
-            log.output,
-        )
+        # Check Containerfile static analysis is run for OCI buildfile.
+        mock_containerfile_analyze.assert_called_once()
 
         # Check review has not been invalidated but pushed
         mock_review.return_value.invalidate.assert_not_called()
         mock_review.return_value.push.assert_called_once()
 
+    @patch('rift.container.ContainerFile.analyze')
     @patch('rift.package.rpm.Mock')
     @patch('rift.Controller.Review')
-    def test_gerrit_review_invalidated(self, mock_review, mock_mock):
+    def test_gerrit_review_invalidated(self, mock_review, mock_mock,
+                                       mock_containerfile_analyze):
         """gerrit review invalidated"""
         # Make package and inject rpmlint error ($RPM_BUILD_ROOT and
         # RPM_SOURCE_DIR in buildsteps) in RPM spec file, with both rpmlint v1
@@ -3045,6 +3065,8 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
         mock_mock.return_value.read_spec = read_file
         with patch.object(mock_mock.return_value, 'rpmlint', host_rpmlint):
             main(['gerrit', '--change', '1', '--patchset', '2', patch_file.name])
+        # Check Containerfile static analysis is skipped for RPM-only package.
+        mock_containerfile_analyze.assert_not_called()
         # Check review has been invalidated and pushed
         mock_review.return_value.invalidate.assert_called_once()
         mock_review.return_value.push.assert_called_once()

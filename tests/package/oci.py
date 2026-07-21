@@ -12,7 +12,7 @@ from rift.Gerrit import Review
 from rift.run import RunResult
 from rift.TestResults import TestResults
 
-from ..TestUtils import RiftProjectTestCase, PackageTestDef, make_temp_file
+from ..TestUtils import RiftProjectTestCase, PackageTestDef, make_temp_file, gen_containerfile
 
 
 class PackageOCITest(RiftProjectTestCase):
@@ -40,6 +40,8 @@ class PackageOCITest(RiftProjectTestCase):
                     release: 1
             """))
         pkg = PackageOCI('pkg', self.config, self.staff, self.modules)
+        container_file = make_temp_file(gen_containerfile())
+        pkg.buildfile = container_file.name
         pkg.load(infopath = pkgfile.name)
         self.assertEqual(pkg.version, '0.0.1')
         self.assertEqual(pkg.release, '1')
@@ -59,6 +61,8 @@ class PackageOCITest(RiftProjectTestCase):
                     source_topdir: pkg-main
             """))
         pkg = PackageOCI('pkg', self.config, self.staff, self.modules)
+        container_file = make_temp_file(gen_containerfile())
+        pkg.buildfile = container_file.name
         pkg.load(infopath = pkgfile.name)
         self.assertEqual(pkg.source_topdir, 'pkg-main')
 
@@ -77,6 +81,8 @@ class PackageOCITest(RiftProjectTestCase):
                     main_source: pkg-full.tar.bz2
             """))
         pkg = PackageOCI('pkg', self.config, self.staff, self.modules)
+        container_file = make_temp_file(gen_containerfile())
+        pkg.buildfile = container_file.name
         pkg.load(infopath = pkgfile.name)
         self.assertEqual(pkg.main_source, 'pkg-full.tar.bz2')
 
@@ -128,6 +134,8 @@ class PackageOCITest(RiftProjectTestCase):
         os.makedirs(pkg.dir)
         pkg.write()
         loaded = PackageOCI('pkg', self.config, self.staff, self.modules)
+        container_file = make_temp_file(gen_containerfile())
+        loaded.buildfile = container_file.name
         loaded.load()
         self.assertEqual(pkg.module, loaded.module)
         self.assertCountEqual(pkg.maintainers, loaded.maintainers)
@@ -138,18 +146,54 @@ class PackageOCITest(RiftProjectTestCase):
         self.assertEqual(pkg.main_source, loaded.main_source)
         self.assertEqual(pkg.source_topdir, loaded.source_topdir)
 
+    @patch('rift.package.oci.ContainerFile')
+    def test_check(self, mock_container_file):
+        """PackageOCI check calls ContainerFile check"""
+        pkg = PackageOCI('pkg', self.config, self.staff, self.modules)
+        pkgfile = make_temp_file(textwrap.dedent("""
+            package:
+                maintainers:
+                - Myself
+                module: Great module
+                reason: Missing package
+                origin: Company
+                oci:
+                    version: 0.0.1
+                    release: 1
+            """))
+        container_file = make_temp_file(gen_containerfile())
+        pkg.buildfile = container_file.name
+        pkg.load(infopath = pkgfile.name)
+        pkg.check()
+        mock_container_file.return_value.check.assert_called_once_with()
+
     def test_add_changelog_entry(self):
         """PackageOCI add changelog entry (not implemented)"""
         pkg = PackageOCI('pkg', self.config, self.staff, self.modules)
         with self.assertRaises(NotImplementedError):
             pkg.add_changelog_entry("Myself", "Modify package", False)
 
-    def test_analyze(self):
-        """PackageOCI analyse (not implemented)"""
+    @patch('rift.package.oci.ContainerFile')
+    def test_analyze(self, mock_container_file):
+        """PackageOCI analyze calls ContainerFile analyze"""
         pkg = PackageOCI('pkg', self.config, self.staff, self.modules)
+        pkgfile = make_temp_file(textwrap.dedent("""
+            package:
+                maintainers:
+                - Myself
+                module: Great module
+                reason: Missing package
+                origin: Company
+                oci:
+                    version: 0.0.1
+                    release: 1
+            """))
+        container_file = make_temp_file(gen_containerfile())
+        pkg.buildfile = container_file.name
+        pkg.load(infopath = pkgfile.name)
         review = Review()
-        with self.assertRaises(NotImplementedError):
-            pkg.analyze(review, pkg.dir)
+        pkg.analyze(review, pkg.dir)
+        mock_container_file.return_value.analyze.assert_called_once_with(review, pkg.dir)
 
     def test_supports_arch(self):
         """ PackageOCI supports_arch() """

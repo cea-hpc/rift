@@ -83,6 +83,7 @@ _DEFAULT_VM_ENABLE_KVM = True
 _DEFAULT_QEMU_CMD = 'qemu-system-$arch'
 _DEFAULT_REPO_CMD = 'createrepo_c'
 _DEFAULT_CONTAINER_CMD = 'podman'
+_DEFAULT_CONTAINER_LINTER_CMD = 'hadolint'
 _DEFAULT_SHARED_FS_TYPE = '9p'
 _DEFAULT_VIRTIOFSD = '/usr/libexec/virtiofsd'
 _DEFAULT_SYNC_METHOD = 'dnf'
@@ -373,7 +374,10 @@ class Config():
             'syntax': {
                 'command': {
                     'default': _DEFAULT_CONTAINER_CMD,
-                }
+                },
+                'linter': {
+                    'default': _DEFAULT_CONTAINER_LINTER_CMD,
+                },
             }
         },
         'rpm_macros': {

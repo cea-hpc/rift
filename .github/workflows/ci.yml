@@ -134,6 +134,14 @@ jobs:
           chown ci:ci ~ci/bin/podman
           chmod 755 ~ci/bin/podman
 
+      # hadolint is used for static analysis of Containerfile. Unfortunately, it
+      # is not packaged in distribution. Executable binary is downloaded from
+      # upstream project for CI.
+      - name: Download and install Hadolint
+        run: |
+          curl -L https://github.com/hadolint/hadolint/releases/download/v2.14.0/hadolint-linux-x86_64 -o /usr/local/sbin/hadolint-linux-x86_64
+          chmod 0755 /usr/local/sbin/hadolint-linux-x86_64
+
       - name: Run podman info
         run: |
           su ci -c 'export PATH="/home/ci/bin:$PATH"; podman --root /tmp info'
