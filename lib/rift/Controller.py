@@ -271,7 +271,7 @@ def make_parser():
     subsubprs.add_argument('source', help='source files')
     subsubprs.add_argument('dest', help='destination files')
     subsubprs = subprs_vm.add_parser('build', help='build image of test VM')
-    subsubprs.add_argument('url', help='URL of base cloud image')
+    subsubprs.add_argument('--url', help='URL of base cloud image')
     subsubprs.add_argument('--force', action='store_true',
                            help='ignore cache and force download of cloud image')
     subsubprs.add_argument('-o', '--output',
@@ -581,7 +581,7 @@ def validate_pkgs(config, args, pkgs, arch):
 
     return results
 
-def vm_build(vm, args):
+def vm_build(config, vm, args):
     """Build VM image."""
     if not args.deploy and args.output is None:
         raise RiftError(
@@ -600,8 +600,24 @@ def vm_build(vm, args):
         output = vm.image_local
     else:
         output = args.output
+
+    vm_source_url = ''
+    if args.url is not None:
+        vm_source_url = args.url
+
+    elif "image_source" in config.get(args.arch)['vm']:
+        vm_source_url = config.get(args.arch)['vm']['image_source']
+
+    else:
+        raise RiftError(
+            "VM source image must be specified with --url or 'image_source'"
+            "in project.conf"
+        )
+
+    logging.debug("Using %s as VM source URL", vm_source_url)
+
     message(f"Building new vm image {output}")
-    vm.build(args.url, args.force, args.keep, output)
+    vm.build(vm_source_url, args.force, args.keep, output)
     banner(f"New vm image {output} is ready")
     return 0
 
@@ -655,7 +671,7 @@ def action_vm(args, config):
     elif args.vm_cmd == 'stop':
         ret = vm.cmd('poweroff').returncode
     elif args.vm_cmd == 'build':
-        ret = vm_build(vm, args)
+        ret = vm_build(config, vm, args)
     return ret
 
 def build_pkgs(args, pkgs, arch, staging):
