@@ -2370,7 +2370,7 @@ class ControllerProjectActionVMTest(RiftProjectTestCase):
         mock_vm_objects.image_is_remote.return_value = False
         mock_vm_objects.image_local = 'test.qcow2'
 
-        main(['vm', 'build', 'http://image', '--deploy'])
+        main(['vm', 'build', '--url', 'http://image', '--deploy'])
         # check VM class has been instanciated
         mock_vm_class.assert_called()
 
@@ -2378,18 +2378,18 @@ class ControllerProjectActionVMTest(RiftProjectTestCase):
             'http://image', False, False, 'test.qcow2'
         )
         mock_vm_objects.build.reset_mock()
-        main(['vm', 'build', 'http://image', '--deploy', '--force'])
+        main(['vm', 'build', '--url', 'http://image', '--deploy', '--force'])
         mock_vm_objects.build.assert_called_once_with(
             'http://image', True, False, 'test.qcow2'
         )
         mock_vm_objects.build.reset_mock()
-        main(['vm', 'build', 'http://image', '--deploy', '--keep'])
+        main(['vm', 'build', '--url', 'http://image', '--deploy', '--keep'])
         mock_vm_objects.build.assert_called_once_with(
             'http://image', False, True, 'test.qcow2'
         )
         mock_vm_objects.build.reset_mock()
         main(
-            ['vm', 'build', 'http://image', '--output', 'OUTPUT.img', '--force']
+            ['vm', 'build', '--url', 'http://image', '--output', 'OUTPUT.img', '--force']
         )
         mock_vm_objects.build.assert_called_once_with(
             'http://image', True, False, 'OUTPUT.img'
@@ -2398,7 +2398,7 @@ class ControllerProjectActionVMTest(RiftProjectTestCase):
         with self.assertRaisesRegex(
             RiftError, "^Either --deploy or -o,--output option must be used$"
         ):
-            main(['vm', 'build', 'http://image'])
+            main(['vm', 'build', '--url', 'http://image'])
         with self.assertRaisesRegex(
             RiftError,
             "^Both --deploy and -o,--output options cannot be used together$",
@@ -2407,6 +2407,7 @@ class ControllerProjectActionVMTest(RiftProjectTestCase):
                 [
                     'vm',
                     'build',
+                    '--url',
                     'http://image',
                     '--deploy',
                     '--output',
@@ -3446,34 +3447,34 @@ class ControllerArgumentsTest(RiftTestCase):
 
         args = ['vm', 'build']
         # This must fail due to missing image URL
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(RiftError):
             parser.parse_args(args)
 
-        args = ['vm', 'build', 'http://image']
+        args = ['vm', 'build', '--url', 'http://image']
         opts = parser.parse_args(args)
         self.assertEqual(opts.vm_cmd, 'build')
         self.assertEqual(opts.url, 'http://image')
         self.assertFalse(opts.force)
 
-        args = ['vm', 'build', 'http://image', '--force']
+        args = ['vm', 'build', '--url', 'http://image', '--force']
         opts = parser.parse_args(args)
         self.assertTrue(opts.force)
 
-        args = ['vm', 'build', 'http://image', '--deploy']
+        args = ['vm', 'build', '--url', 'http://image', '--deploy']
         opts = parser.parse_args(args)
         self.assertTrue(opts.deploy)
 
         OUTPUT_IMG = 'OUTPUT'
 
-        args = ['vm', 'build', 'http://image', '-o', OUTPUT_IMG]
+        args = ['vm', 'build', '--url', 'http://image', '-o', OUTPUT_IMG]
         opts = parser.parse_args(args)
         self.assertEqual(opts.output, OUTPUT_IMG)
 
-        args = ['vm', 'build', 'http://image', '--output', OUTPUT_IMG]
+        args = ['vm', 'build', '--url', 'http://image', '--output', OUTPUT_IMG]
         opts = parser.parse_args(args)
         self.assertEqual(opts.output, OUTPUT_IMG)
 
         # This must fail due to missing output filename
-        args = ['vm', 'build', 'http://image', '--output']
+        args = ['vm', 'build', '--url', 'http://image', '--output']
         with self.assertRaises(SystemExit):
             parser.parse_args(args)
