@@ -2421,7 +2421,7 @@ class ControllerProjectActionVMTest(RiftProjectTestCase):
             "^Cannot build VM image with remote image URL and --deploy option, -o, "
             "--output option must be used$"
         ):
-            main(['vm', 'build', 'http://image', '--deploy'])
+            main(['vm', 'build', '--url', 'http://image', '--deploy'])
 
 
     def test_vm_build_and_validate(self):
