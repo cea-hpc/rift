@@ -96,9 +96,9 @@ class S3Annex(GenericAnnex):
 
         self.push_s3_client = boto3.client(
             "s3",
-            aws_access_key_id=self.push_s3_auth.config["access_key_id"],
-            aws_secret_access_key=self.push_s3_auth.config["secret_access_key"],
-            aws_session_token=self.push_s3_auth.config["session_token"],
+            aws_access_key_id=self.push_s3_auth.state.access_key_id,
+            aws_secret_access_key=self.push_s3_auth.state.secret_access_key,
+            aws_session_token=self.push_s3_auth.state.session_token,
             endpoint_url=self.push_s3_endpoint,
         )
 

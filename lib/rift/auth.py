@@ -49,6 +49,157 @@ from rift import RiftError
 
 urllib3.disable_warnings()
 
+_EXPIRATION_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
+
+class AuthState:
+    """
+    Persisted authentication credentials (credentials file payload).
+    """
+
+    def __init__(
+        self,
+        idp_token=None,
+        idp_token_expiration=None,
+        access_key_id=None,
+        secret_access_key=None,
+        session_token=None,
+        expiration=None,
+    ):
+        # IDP token and expiration
+        self.idp_token = idp_token
+        self.idp_token_expiration = idp_token_expiration
+        # S3 credentials
+        self.access_key_id = access_key_id
+        self.secret_access_key = secret_access_key
+        self.session_token = session_token
+        self.expiration = expiration
+
+    @classmethod
+    def from_dict(cls, data):
+        """Build AuthState from a credentials-file dict."""
+        if not data:
+            return cls()
+        return cls(
+            idp_token=data.get("idp_token"),
+            idp_token_expiration=data.get("idp_token_expiration"),
+            access_key_id=data.get("access_key_id"),
+            secret_access_key=data.get("secret_access_key"),
+            session_token=data.get("session_token"),
+            expiration=data.get("expiration"),
+        )
+
+    def to_dict(self):
+        """Return dict suitable for JSON persistence; omit unset fields."""
+        data = {
+            "idp_token": self.idp_token,
+            "idp_token_expiration": self.idp_token_expiration,
+            "access_key_id": self.access_key_id,
+            "secret_access_key": self.secret_access_key,
+            "session_token": self.session_token,
+            "expiration": self.expiration,
+        }
+        return {key: value for key, value in data.items() if value is not None}
+
+    def clear_expired(self):
+        """
+        Drop expired S3 and/or IDP fields.
+        Returns True if anything was scrubbed.
+        """
+        now = datetime.datetime.now()
+        updated = False
+
+        # Check S3 credentials expiration
+        if self.expiration:
+            expiration = datetime.datetime.strptime(self.expiration, _EXPIRATION_FMT)
+            if expiration > now:
+                logging.info("found existing, valid S3 credentials")
+            else:
+                logging.info("info: found existing, expired S3 credentials")
+                self.expiration = None
+                self.access_key_id = None
+                self.secret_access_key = None
+                self.session_token = None
+                updated = True
+
+        # Check IDP token expiration
+        if self.idp_token_expiration:
+            expiration = datetime.datetime.strptime(
+                self.idp_token_expiration, _EXPIRATION_FMT
+            )
+            if expiration > now:
+                logging.info("found existing, valid idp access token")
+            else:
+                logging.info("found existing, expired idp access token")
+                self.idp_token = None
+                self.idp_token_expiration = None
+                updated = True
+
+        return updated
+
+    @classmethod
+    def restore(cls, path):
+        """
+        Load credentials file at path.
+        On JSON decode failure, start empty.
+        Run clear_expired(); if scrubbed, rewrite file via save().
+        Return AuthState instance.
+        """
+        with open(path, "r", encoding="utf-8") as fs:
+            data = fs.read()
+
+        raw = {}
+        try:
+            raw = json.loads(data)
+        except json.JSONDecodeError as e:
+            logging.info("failed to decode json from existing credentials file: %s", e)
+
+        state = cls.from_dict(raw)
+        if state.clear_expired():
+            state.save(path)
+        return state
+
+    def save(self, path):
+        """
+        Persist to_dict() to path with mode 0600.
+        """
+        os.umask(0)
+        fd = os.open(
+            path=path,
+            flags=os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+            mode=0o600,
+        )
+        with open(fd, "w", encoding="utf-8") as fs:
+            json.dump(self.to_dict(), fs, indent=2, sort_keys=True)
+
+    def has_s3_credentials(self):
+        """Return True if all S3 credential fields are set."""
+        return None not in (
+            self.access_key_id,
+            self.secret_access_key,
+            self.session_token,
+        ) and "" not in (
+            self.access_key_id,
+            self.secret_access_key,
+            self.session_token,
+        )
+
+    def s3_expiration_dt(self):
+        """Parse expiration string to datetime, or None if unset."""
+        if not self.expiration:
+            return None
+        return datetime.datetime.strptime(self.expiration, _EXPIRATION_FMT)
+
+    def s3_expiration_str(self):
+        """
+        Returns a human readable time string of auth token, if possible.
+        If token expiration date is not set, returns an empty string.
+        """
+        expiration_dt = self.s3_expiration_dt()
+        if not expiration_dt:
+            return ""
+        return expiration_dt.strftime("%a %b %d %H:%M:%S %Y")
+
 
 class Auth:
     """
@@ -65,93 +216,14 @@ class Auth:
         self.s3_auth_endpoint = config.get("s3_auth_endpoint")
         self.credentials_file = os.path.expanduser(config.get("s3_credential_file"))
 
-        self.config = {}
-        self.expiration_dt = ""
-
-    def get_expiration_timestr(self):
-        """
-        Returns a human readable time string of auth token, if possible.
-        If token expiration date is not set, returns an emptry string
-        """
-        if not self.expiration_dt:
-            return ""
-        return self.expiration_dt.strftime("%a %b %d %H:%M:%S %Y")
-
-    def restore_state(self):
-        """
-        Loads data from existing credentials file, if one exists.
-        If credentials file contains expired data, remove expired items from file.
-        """
-
-        with open(self.credentials_file, "r", encoding="utf-8") as fs:
-            data = fs.read()
-
-            config = {}
-            try:
-                config = json.loads(data)
-            except json.JSONDecodeError as e:
-                logging.info(
-                    "failed to decode json from existing credentials file: %s", e
-                )
-
-            update_authfile = False
-
-            expiry = config.get("expiration")
-            if expiry:
-                expiration = datetime.datetime.strptime(expiry, "%Y-%m-%dT%H:%M:%SZ")
-                if expiration > datetime.datetime.now():
-                    # S3 credentials are still valid
-                    logging.info("found existing, valid S3 credentials")
-                    self.expiration_dt = expiration
-                else:
-                    # S3 credentials expired
-                    logging.info("info: found existing, expired S3 credentials")
-                    config.pop("expiration", None)
-                    config.pop("access_key_id", None)
-                    config.pop("secret_access_key", None)
-                    config.pop("session_token", None)
-                    update_authfile = True
-
-            idp_expiry = config.get("idp_token_expiration")
-            if idp_expiry:
-                expiration = datetime.datetime.strptime(
-                    idp_expiry, "%Y-%m-%dT%H:%M:%SZ"
-                )
-                if expiration > datetime.datetime.now():
-                    # IDP access token is still valid
-                    logging.info("found existing, valid idp access token")
-                else:
-                    # IDP access token has expired
-                    logging.info("found existing, expired idp access token")
-                    config.pop("idp_token")
-                    config.pop("idp_token_expiration")
-                    update_authfile = True
-
-            self.config = config
-
-            if update_authfile:
-                self.save_state()
-
-    def save_state(self):
-        """
-        Saves auth object config information to credentials file.
-        """
-        os.umask(0)
-        fd = os.open(
-            path=self.credentials_file,
-            flags=os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
-            mode=0o600,
-        )
-        with open(fd, "w", encoding="utf-8") as fs:
-            json.dump(self.config, fs, indent=2, sort_keys=True)
+        self.state = AuthState()
 
     # Step 1: Get OpenID token
     def get_idp_token(self):
         """
         Get OpenID Token
         """
-        token = self.config.get("idp_token")
-        if token:
+        if self.state.idp_token:
             logging.info("retrieved existing idp_token from auth file")
             return True
 
@@ -201,9 +273,9 @@ class Auth:
 
         expire_dt = datetime.datetime.now() + datetime.timedelta(seconds=expires_in_sec)
 
-        self.config["idp_token_expiration"] = expire_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-        self.config["idp_token"] = token
-        self.save_state()
+        self.state.idp_token_expiration = expire_dt.strftime(_EXPIRATION_FMT)
+        self.state.idp_token = token
+        self.state.save(self.credentials_file)
 
         return True
 
@@ -223,8 +295,8 @@ class Auth:
                 f"Missing authentication state file {self.credentials_file}. "
                 "Run 'rift auth' first."
             )
-        self.restore_state()
-        token = self.config.get("idp_token")
+        self.state = AuthState.restore(self.credentials_file)
+        token = self.state.idp_token
         if not token:
             raise RiftError(
                 "Missing idp_token in authentication state file "
@@ -237,17 +309,13 @@ class Auth:
     def get_s3_credentials(self):
         """
         Obtains an S3 credential using an already-obtained OpenID credential,
-        unless an S3 credential is already available in auth object's config,
+        unless an S3 credential is already available in auth object's state,
         in which case the credential is considered to have already been
         obtained.
 
         Returns True on success, False on failure.
         """
-        access_key_id = self.config.get("access_key_id", "")
-        secret_access_key = self.config.get("secret_access_key", "")
-        session_token = self.config.get("session_token", "")
-
-        if "" not in (access_key_id, secret_access_key, session_token):
+        if self.state.has_s3_credentials():
             return True
 
         if not self.s3_auth_endpoint:
@@ -262,7 +330,7 @@ class Auth:
             "Version": "2011-06-15",
             "Action": "AssumeRoleWithWebIdentity",
             "DurationSeconds": "86000",
-            "WebIdentityToken": self.config["idp_token"],
+            "WebIdentityToken": self.state.idp_token,
         }
 
         res = requests.post(
@@ -306,16 +374,12 @@ class Auth:
             msg += "AccessKeyId, SecretAccessKey, SessionToken, Expiration"
             raise RiftError(msg)
 
-        self.config["access_key_id"] = access_key_id
-        self.config["secret_access_key"] = secret_access_key
-        self.config["session_token"] = session_token
-        self.config["expiration"] = expiration
+        self.state.access_key_id = access_key_id
+        self.state.secret_access_key = secret_access_key
+        self.state.session_token = session_token
+        self.state.expiration = expiration
 
-        self.expiration_dt = datetime.datetime.strptime(
-            expiration, "%Y-%m-%dT%H:%M:%SZ"
-        )
-
-        self.save_state()
+        self.state.save(self.credentials_file)
 
         return True
 
@@ -342,14 +406,14 @@ class Auth:
             )
             msg += " AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN"
             logging.info(msg)
-            self.config["access_key_id"] = aws_access_key_id
-            self.config["secret_access_key"] = aws_secret_access_key
-            self.config["session_token"] = aws_session_token
+            self.state.access_key_id = aws_access_key_id
+            self.state.secret_access_key = aws_secret_access_key
+            self.state.session_token = aws_session_token
             return True
 
         if os.path.isfile(self.credentials_file):
             logging.info("found credentials file: %s", self.credentials_file)
-            self.restore_state()
+            self.state = AuthState.restore(self.credentials_file)
         else:
             base = os.path.dirname(self.credentials_file)
             if os.path.exists(base):
