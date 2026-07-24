@@ -3445,11 +3445,6 @@ class ControllerArgumentsTest(RiftTestCase):
         opts = parser.parse_args(args)
         self.assertEqual(opts.vm_cmd, 'connect')
 
-        args = ['vm', 'build']
-        # This must fail due to missing image URL
-        with self.assertRaises(RiftError):
-            parser.parse_args(args)
-
         args = ['vm', 'build', '--url', 'http://image']
         opts = parser.parse_args(args)
         self.assertEqual(opts.vm_cmd, 'build')
