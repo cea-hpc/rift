@@ -264,6 +264,7 @@ class Config():
                     'check':    'digit',
                     'default': 0,
                 },
+                'image_source':  {},
                 'port_range': {
                     'check':    'dict',
                     'syntax': {
