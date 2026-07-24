@@ -94,7 +94,7 @@ class AuthStateTest(unittest.TestCase):
 
     def test_save_and_restore(self):
         """save writes mode 0600; restore reloads valid credentials."""
-        exp = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        exp = datetime.now() + timedelta(days=1)
         state = AuthState(
             idp_token="tok-from-file",
             idp_token_expiration=exp,
@@ -111,7 +111,9 @@ class AuthStateTest(unittest.TestCase):
         self.assertEqual(restored.idp_token, "tok-from-file")
         self.assertEqual(restored.access_key_id, "ak")
         self.assertTrue(restored.has_s3_credentials())
-        self.assertIsNotNone(restored.s3_expiration_dt())
+        self.assertIsInstance(restored.expiration, datetime)
+        self.assertIsInstance(restored.idp_token_expiration, datetime)
+        self.assertIsNotNone(restored.expiration)
 
     def test_has_s3_credentials_true(self):
         """has_s3_credentials is True when access, secret, and session are set."""
@@ -138,28 +140,17 @@ class AuthStateTest(unittest.TestCase):
         )
         self.assertFalse(state.has_s3_credentials())
 
-    def test_s3_expiration_dt_unset(self):
-        """s3_expiration_dt returns None when expiration is unset."""
-        self.assertIsNone(AuthState().s3_expiration_dt())
-
-    def test_s3_expiration_dt_parses(self):
-        """s3_expiration_dt parses the ISO UTC expiration string."""
-        state = AuthState(expiration="2099-01-02T03:04:05Z")
-        self.assertEqual(
-            state.s3_expiration_dt(),
-            datetime(2099, 1, 2, 3, 4, 5),
-        )
-
     def test_s3_expiration_str_unset(self):
         """s3_expiration_str returns an empty string when expiration is unset."""
         self.assertEqual(AuthState().s3_expiration_str(), "")
 
     def test_s3_expiration_str_formats(self):
         """s3_expiration_str returns a human-readable local-style timestamp."""
-        state = AuthState(expiration="2099-01-02T03:04:05Z")
+        exp = datetime(2099, 1, 2, 3, 4, 5)
+        state = AuthState(expiration=exp)
         self.assertEqual(
             state.s3_expiration_str(),
-            datetime(2099, 1, 2, 3, 4, 5).strftime("%a %b %d %H:%M:%S %Y"),
+            exp.strftime("%a %b %d %H:%M:%S %Y"),
         )
 
 

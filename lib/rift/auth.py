@@ -52,6 +52,24 @@ urllib3.disable_warnings()
 _EXPIRATION_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 
+def _parse_expiration(value):
+    """Parse an expiration value to datetime, or None if unset."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime.datetime):
+        return value
+    return datetime.datetime.strptime(value, _EXPIRATION_FMT)
+
+
+def _format_expiration(value):
+    """Format a datetime expiration for JSON persistence, or None if unset."""
+    if value is None:
+        return None
+    if isinstance(value, datetime.datetime):
+        return value.strftime(_EXPIRATION_FMT)
+    return value
+
+
 class AuthState:
     """
     Persisted authentication credentials (credentials file payload).
@@ -82,22 +100,22 @@ class AuthState:
             return cls()
         return cls(
             idp_token=data.get("idp_token"),
-            idp_token_expiration=data.get("idp_token_expiration"),
+            idp_token_expiration=_parse_expiration(data.get("idp_token_expiration")),
             access_key_id=data.get("access_key_id"),
             secret_access_key=data.get("secret_access_key"),
             session_token=data.get("session_token"),
-            expiration=data.get("expiration"),
+            expiration=_parse_expiration(data.get("expiration")),
         )
 
     def to_dict(self):
         """Return dict suitable for JSON persistence; omit unset fields."""
         data = {
             "idp_token": self.idp_token,
-            "idp_token_expiration": self.idp_token_expiration,
+            "idp_token_expiration": _format_expiration(self.idp_token_expiration),
             "access_key_id": self.access_key_id,
             "secret_access_key": self.secret_access_key,
             "session_token": self.session_token,
-            "expiration": self.expiration,
+            "expiration": _format_expiration(self.expiration),
         }
         return {key: value for key, value in data.items() if value is not None}
 
@@ -111,8 +129,7 @@ class AuthState:
 
         # Check S3 credentials expiration
         if self.expiration:
-            expiration = datetime.datetime.strptime(self.expiration, _EXPIRATION_FMT)
-            if expiration > now:
+            if self.expiration > now:
                 logging.info("found existing, valid S3 credentials")
             else:
                 logging.info("info: found existing, expired S3 credentials")
@@ -124,10 +141,7 @@ class AuthState:
 
         # Check IDP token expiration
         if self.idp_token_expiration:
-            expiration = datetime.datetime.strptime(
-                self.idp_token_expiration, _EXPIRATION_FMT
-            )
-            if expiration > now:
+            if self.idp_token_expiration > now:
                 logging.info("found existing, valid idp access token")
             else:
                 logging.info("found existing, expired idp access token")
@@ -184,21 +198,14 @@ class AuthState:
             self.session_token,
         )
 
-    def s3_expiration_dt(self):
-        """Parse expiration string to datetime, or None if unset."""
-        if not self.expiration:
-            return None
-        return datetime.datetime.strptime(self.expiration, _EXPIRATION_FMT)
-
     def s3_expiration_str(self):
         """
         Returns a human readable time string of auth token, if possible.
         If token expiration date is not set, returns an empty string.
         """
-        expiration_dt = self.s3_expiration_dt()
-        if not expiration_dt:
+        if not self.expiration:
             return ""
-        return expiration_dt.strftime("%a %b %d %H:%M:%S %Y")
+        return self.expiration.strftime("%a %b %d %H:%M:%S %Y")
 
 
 class Auth:
@@ -271,9 +278,9 @@ class Auth:
             msg += " missing field 'expires_in'"
             logging.info(msg)
 
-        expire_dt = datetime.datetime.now() + datetime.timedelta(seconds=expires_in_sec)
-
-        self.state.idp_token_expiration = expire_dt.strftime(_EXPIRATION_FMT)
+        self.state.idp_token_expiration = (
+            datetime.datetime.now() + datetime.timedelta(seconds=expires_in_sec)
+        )
         self.state.idp_token = token
         self.state.save(self.credentials_file)
 
@@ -377,7 +384,7 @@ class Auth:
         self.state.access_key_id = access_key_id
         self.state.secret_access_key = secret_access_key
         self.state.session_token = session_token
-        self.state.expiration = expiration
+        self.state.expiration = _parse_expiration(expiration)
 
         self.state.save(self.credentials_file)
 
