@@ -431,9 +431,9 @@ class PatchTest(RiftProjectTestCase):
                 commit 0ac8155e2655321ceb28bbf716ff66d1a9e30f29 (HEAD -> master)
                 Author: Myself <buddy@somewhere.org>
                 Date:   Thu Apr 25 14:30:41 2019 +0200
-                
+
                     project wrong file
-                
+
                 diff --git a/wrong b/wrong
                 new file mode 100644
                 index 0000000..68344bf
@@ -454,9 +454,9 @@ class PatchTest(RiftProjectTestCase):
                 commit 0ac8155e2655321ceb28bbf716ff66d1a9e30f29 (HEAD -> master)
                 Author: Myself <buddy@somewhere.org>
                 Date:   Thu Apr 25 14:30:41 2019 +0200
-                
+
                     packages: Wrong file
-                
+
                 diff --git a/packages/pkg/wrong b/packages/pkg/wrong
                 new file mode 100644
                 index 0000000..68344bf
@@ -478,9 +478,9 @@ class PatchTest(RiftProjectTestCase):
                 commit 0ac8155e2655321ceb28bbf716ff66d1a9e30f29 (HEAD -> master)
                 Author: Myself <buddy@somewhere.org>
                 Date:   Thu Apr 25 14:30:41 2019 +0200
-                
+
                     packages: update 'pkg' infos
-                
+
                 diff --git a/packages/pkg/info.yaml b/packages/pkg/info.yaml
                 new file mode 100644
                 index 0000000..68344bf
@@ -511,9 +511,9 @@ class PatchTest(RiftProjectTestCase):
                 commit 0ac8155e2655321ceb28bbf716ff66d1a9e30f29 (HEAD -> master)
                 Author: Myself <buddy@somewhere.org>
                 Date:   Thu Apr 25 14:30:41 2019 +0200
-                
+
                     modules: add 'Section'
-                
+
                 diff --git a/packages/modules.yaml b/packages/modules.yaml
                 new file mode 100644
                 index 0000000..68344bf
@@ -541,9 +541,9 @@ class PatchTest(RiftProjectTestCase):
             commit 0ac8155e2655321ceb28bbf716ff66d1a9e30f29 (HEAD -> master)
             Author: Myself <buddy@somewhere.org>
             Date:   Thu Apr 25 14:30:41 2019 +0200
-        
+
                 packages: document 'pkg'
-            
+
             diff --git a/packages/pkg/{0} b/packages/pkg/{0}
             new file mode 100644
             index 0000000..e845566
@@ -579,9 +579,9 @@ class PatchTest(RiftProjectTestCase):
                 commit 0ac8155e2655321ceb28bbf716ff66d1a9e30f29 (HEAD -> master)
                 Author: Myself <buddy@somewhere.org>
                 Date:   Thu Apr 25 14:30:41 2019 +0200
-                
+
                     packages: update 'pkg' sources
-                
+
                 diff --git /dev/null b/{0}
                 index fcd49dd..91ef207 100644
                 Binary files a/sources/a.tar.gz and b/sources/a.tar.gz differ
@@ -608,15 +608,15 @@ class PatchTest(RiftProjectTestCase):
                 commit 0ac8155e2655321ceb28bbf716ff66d1a9e30f29 (HEAD -> master)
                 Author: Myself <buddy@somewhere.org>
                 Date:   Thu Apr 25 14:30:41 2019 +0200
-                
+
                     packages: update 'pkg' sources
-                
+
                 diff --git /dev/null b/{0}
                 index 6cd0ff6ec591f7f51a3479d7b66c6951a2b4afa9..91ef2076b67f3158ec1670fa7b88d88b2816aa91 100644
                 GIT binary patch
                 literal 8
                 PcmZQ%;Sf+z_{{#tQ1BL-x
-                
+
                 literal 4
                 LcmZQ%;Sc}}-05kv|
                 """.format(pkgsrc)
@@ -739,9 +739,9 @@ class PatchTest(RiftProjectTestCase):
                 commit f8c1a88ea96adfccddab0bf43c0a90f05ab26dc5 (HEAD -> playground)
                 Author: Myself <buddy@somewhere.org>
                 Date:   Thu Apr 25 14:30:41 2019 +0200
-                
+
                     packages: rename 'pkg' to 'pkgnew'
-                
+
                 diff --git a/packages/pkg/info.yaml b/packages/pkgnew/info.yaml
                 similarity index 100%
                 rename from packages/pkg/info.yaml

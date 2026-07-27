@@ -58,8 +58,10 @@ Format and sort imports manually with:
 $ ruff check --fix lib tests && ruff format lib tests
 ```
 
-[prek](https://prek.j178.dev/) runs the same checks as a git commit hook and
-in CI on every push and pull request to `master`. Install it with either:
+[prek](https://prek.j178.dev/) runs Ruff plus generic file checks (trailing
+whitespace, end-of-file newlines, YAML/TOML syntax, merge-conflict markers,
+LF line endings) as a git commit hook and in CI on every push and pull
+request to `master`. Install it with either:
 
 ```sh
 $ pip install prek
@@ -77,4 +79,3 @@ Or run all hooks on the whole tree with:
 ```sh
 $ prek run --all-files
 ```
-
