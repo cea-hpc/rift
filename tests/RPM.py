@@ -2,37 +2,37 @@
 # Copyright (C) 2020 CEA
 #
 import os
-import time
-import rpm
 import shutil
 import subprocess
+import time
 from unittest.mock import MagicMock, patch
 
-from .TestUtils import (
-    make_temp_dir,
-    gen_rpm_spec,
-    read_file,
-    host_rpmlint,
-    RiftTestCase,
-    RiftProjectTestCase,
-)
+import rpm
+
 from rift import RiftError
-from rift.RPM import Spec, Variable, RPM
-from rift.Mock import Mock, RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2
+from rift.Mock import RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2, Mock
+from rift.RPM import RPM, Spec, Variable
+
+from .TestUtils import (
+    RiftProjectTestCase,
+    RiftTestCase,
+    gen_rpm_spec,
+    host_rpmlint,
+    make_temp_dir,
+    read_file,
+)
 
 
 def rpmlint_v2():
     """Return True if host rpmlint major version is 2."""
     try:
         proc = subprocess.run(
-            ['rpmlint', '--version'],
+            ["rpmlint", "--version"],
             stdout=subprocess.PIPE,
             check=True,
         )
     except subprocess.CalledProcessError as err:
-        raise RiftError(
-            f"Unable to get rpmlint version: {str(err)}"
-        ) from err
+        raise RiftError(f"Unable to get rpmlint version: {str(err)}") from err
     return proc.stdout.decode().startswith("2")
 
 
@@ -42,10 +42,10 @@ class SpecTest(RiftTestCase):
     """
 
     def setUp(self):
-        self.name='pkg'
-        self.version='1.0'
-        self.release='1'
-        self.arch='noarch'
+        self.name = "pkg"
+        self.version = "1.0"
+        self.release = "1"
+        self.arch = "noarch"
         # /tmp/rift-*/pkg.spec
         self.directory = make_temp_dir()
         self.spec = os.path.join(self.directory, "{0}.spec".format(self.name))
@@ -82,7 +82,7 @@ class SpecTest(RiftTestCase):
         os.rmdir(self.directory)
 
     def test_init(self):
-        """ Test Spec instanciation """
+        """Test Spec instanciation"""
         spec = Spec(self.spec, self.mock, None)
         self.assertIn(self.name, spec.pkgnames)
         self.assertEqual(len(spec.pkgnames), 1)
@@ -97,39 +97,39 @@ class SpecTest(RiftTestCase):
         self.mock.read_spec.assert_called_once_with(self.spec)
 
     def test_init_variant(self):
-        """ Test Spec instanciation """
-        self.variants = ['variant1', 'variant2']
+        """Test Spec instanciation"""
+        self.variants = ["variant1", "variant2"]
         self.update_spec()
-        spec = Spec(self.spec, self.mock, None, variant='variant1')
+        spec = Spec(self.spec, self.mock, None, variant="variant1")
         self.assertIn(self.name, spec.pkgnames)
         self.assertEqual(len(spec.pkgnames), 2)
-        self.assertCountEqual(spec.pkgnames, ['pkg', 'pkg-variant1'])
-        spec = Spec(self.spec, self.mock, None, variant='variant2')
+        self.assertCountEqual(spec.pkgnames, ["pkg", "pkg-variant1"])
+        spec = Spec(self.spec, self.mock, None, variant="variant2")
         self.assertIn(self.name, spec.pkgnames)
         self.assertEqual(len(spec.pkgnames), 2)
-        self.assertCountEqual(spec.pkgnames, ['pkg', 'pkg-variant2'])
+        self.assertCountEqual(spec.pkgnames, ["pkg", "pkg-variant2"])
 
     def test_init_fails(self):
-        """ Test Spec instanciation with error """
-        path = '/nowhere.spec'
-        self.assert_except(RiftError, "{0} does not exist".format(path), Spec, path, self.mock, None)
-
+        """Test Spec instanciation with error"""
+        path = "/nowhere.spec"
+        self.assert_except(
+            RiftError, "{0} does not exist".format(path), Spec, path, self.mock, None
+        )
 
     def test_specfile_check(self):
-        """ Test specfile check function """
-        with patch.object(self.mock, 'rpmlint', host_rpmlint):
+        """Test specfile check function"""
+        with patch.object(self.mock, "rpmlint", host_rpmlint):
             self.assertIsNone(Spec(self.spec, self.mock, None).check())
 
-
     def test_specfile_check_with_rpmlint_v1(self):
-        """ Test specfile check function with a custom rpmlint v1 file"""
+        """Test specfile check function with a custom rpmlint v1 file"""
         # Make an errorneous specfile with hardcoded /lib
         if rpmlint_v2():
             self.skipTest("This test requires rpmlint v1")
         self.files = "/lib/test"
         self.update_spec()
-        with patch.object(self.mock, 'rpmlint', host_rpmlint):
-            with self.assertRaisesRegex(RiftError, 'rpmlint reported errors'):
+        with patch.object(self.mock, "rpmlint", host_rpmlint):
+            with self.assertRaisesRegex(RiftError, "rpmlint reported errors"):
                 Spec(self.spec, self.mock, None).check()
 
             # Create rpmlint config to ignore hardcoded library path
@@ -140,14 +140,14 @@ class SpecTest(RiftTestCase):
         os.unlink(rpmlintfile)
 
     def test_specfile_check_with_rpmlint_v2(self):
-        """ Test specfile check function with a custom rpmlint v2 file"""
+        """Test specfile check function with a custom rpmlint v2 file"""
         if not rpmlint_v2():
             self.skipTest("This test requires rpmlint v2")
         self.buildsteps = "$RPM_BUILD_ROOT"
         self.update_spec()
 
-        with patch.object(self.mock, 'rpmlint', host_rpmlint):
-            with self.assertRaisesRegex(RiftError, 'rpmlint reported errors'):
+        with patch.object(self.mock, "rpmlint", host_rpmlint):
+            with self.assertRaisesRegex(RiftError, "rpmlint reported errors"):
                 Spec(self.spec, self.mock, None).check()
 
             # Create rpmlint config file to ignore rpm-buildroot-usage
@@ -158,28 +158,30 @@ class SpecTest(RiftTestCase):
         os.unlink(rpmlintfile)
 
     def test_bump_release(self):
-        """ Test bump_release """
+        """Test bump_release"""
         spec = Spec(self.spec, self.mock, None)
-        spec.release = '1'
+        spec.release = "1"
         spec.bump_release()
-        self.assertEqual(spec.release, '2')
+        self.assertEqual(spec.release, "2")
         # Check with %dist macro
-        dist = rpm.expandMacro('%dist')
+        dist = rpm.expandMacro("%dist")
         spec.release = "1{}".format(dist)
         spec.bump_release()
-        self.assertEqual(spec.release, '2{}'.format(dist))
+        self.assertEqual(spec.release, "2{}".format(dist))
         # Check with prefix in release
         spec.release = "1.keyword1{}".format(dist)
         spec.bump_release()
-        self.assertEqual(spec.release, '1.keyword2{}'.format(dist))
+        self.assertEqual(spec.release, "1.keyword2{}".format(dist))
         # Check with invalid release
-        spec.release = 'a'
-        self.assert_except(RiftError,
-                           'Cannot parse package release: {}'.format(spec.release),
-                           spec.bump_release)
+        spec.release = "a"
+        self.assert_except(
+            RiftError,
+            "Cannot parse package release: {}".format(spec.release),
+            spec.bump_release,
+        )
 
     def test_add_changelog_entry(self):
-        """ Test add_changelog_entry """
+        """Test add_changelog_entry"""
         spec = Spec(self.spec, self.mock, None)
         comment = "- New feature"
         userstr = "John Doe"
@@ -187,108 +189,106 @@ class SpecTest(RiftTestCase):
 
         # Check adding changelog entry
         spec.add_changelog_entry(userstr, comment)
-        with open(spec.filepath, 'r') as fspec:
+        with open(spec.filepath, "r") as fspec:
             lines = fspec.readlines()
         self.assertTrue("* {} {} - {}\n".format(date, userstr, spec.evr) in lines)
         self.assertTrue("{}\n".format(comment) in lines)
 
     def test_add_changelog_entry_bump(self):
-        """ Test add_changelog_entry with bump release"""
+        """Test add_changelog_entry with bump release"""
         spec = Spec(self.spec, self.mock, None)
         comment = "- New feature (Bumped)"
         userstr = "John Doe"
         date = time.strftime("%a %b %d %Y", time.gmtime())
 
         spec.add_changelog_entry(userstr, comment, bump=True)
-        with open(spec.filepath, 'r') as fspec:
+        with open(spec.filepath, "r") as fspec:
             lines = fspec.readlines()
         self.assertTrue("Release:        {}\n".format(spec.release) in lines)
         self.assertTrue("* {} {} - {}\n".format(date, userstr, spec.evr) in lines)
         self.assertTrue("{}\n".format(comment) in lines)
 
-
     def test_parse_vars(self):
-        """ Test spec variables parsing """
+        """Test spec variables parsing"""
         spec = Spec(self.spec, self.mock, None)
-        self.assertTrue(str(spec.variables['foo']) == '1.%{bar}')
-        self.assertTrue(spec.variables['foo'].value == '1.%{bar}')
-        self.assertTrue(spec.variables['foo'].name == 'foo')
-        self.assertTrue(spec.variables['foo'].index == 0)
-        self.assertTrue(spec.variables['foo'].keyword == 'global')
-        self.assertTrue(str(spec.variables['bar']) == '1')
-        self.assertTrue(spec.variables['bar'].keyword == 'define')
-        self.assertTrue(spec.variables['bar'].index == 1)
+        self.assertTrue(str(spec.variables["foo"]) == "1.%{bar}")
+        self.assertTrue(spec.variables["foo"].value == "1.%{bar}")
+        self.assertTrue(spec.variables["foo"].name == "foo")
+        self.assertTrue(spec.variables["foo"].index == 0)
+        self.assertTrue(spec.variables["foo"].keyword == "global")
+        self.assertTrue(str(spec.variables["bar"]) == "1")
+        self.assertTrue(spec.variables["bar"].keyword == "define")
+        self.assertTrue(spec.variables["bar"].index == 1)
 
     def test_match_var(self):
-        """ Tests variable detection in pattern """
+        """Tests variable detection in pattern"""
         spec = Spec(self.spec, self.mock, None)
-        foo = spec.variables['foo']
-        bar = spec.variables['bar']
-        self.assertTrue(spec._match_var('%{foo}', r'^1') == foo)
-        self.assertTrue(spec._match_var('%{foo}') == bar)
-        self.assertTrue(spec._match_var('%{?foo}') == bar)
-        self.assertTrue(spec._match_var('%{foo}%{bar}') == bar)
-        self.assertTrue(spec._match_var('%{bar}') == bar)
-        self.assertTrue(spec._match_var('%{notthere}') is None)
-        self.assertTrue(spec._match_var('%{notthere}%{foo}') == bar)
-        self.assertTrue(spec._match_var('%{foo}%{?dist}') == bar)
-        self.assertTrue(spec._match_var('%{foo}%{bar}%{?dist}') == bar)
-        self.assertTrue(spec._match_var('no vars inside') is None)
+        foo = spec.variables["foo"]
+        bar = spec.variables["bar"]
+        self.assertTrue(spec._match_var("%{foo}", r"^1") == foo)
+        self.assertTrue(spec._match_var("%{foo}") == bar)
+        self.assertTrue(spec._match_var("%{?foo}") == bar)
+        self.assertTrue(spec._match_var("%{foo}%{bar}") == bar)
+        self.assertTrue(spec._match_var("%{bar}") == bar)
+        self.assertTrue(spec._match_var("%{notthere}") is None)
+        self.assertTrue(spec._match_var("%{notthere}%{foo}") == bar)
+        self.assertTrue(spec._match_var("%{foo}%{?dist}") == bar)
+        self.assertTrue(spec._match_var("%{foo}%{bar}%{?dist}") == bar)
+        self.assertTrue(spec._match_var("no vars inside") is None)
 
     def test_supports_arch_w_exclusive_arch(self):
-        """ Test supports_arch() with ExclusiveArch"""
+        """Test supports_arch() with ExclusiveArch"""
         self.exclusive_arch = "x86_64"
         self.update_spec()
         spec = Spec(self.spec, self.mock, None)
-        self.assertTrue(spec.supports_arch('x86_64'))
-        self.assertFalse(spec.supports_arch('aarch64'))
+        self.assertTrue(spec.supports_arch("x86_64"))
+        self.assertFalse(spec.supports_arch("aarch64"))
 
     def test_supports_arch_wo_exclusive_arch(self):
-        """ Test supports_arch() without ExclusiveArch"""
+        """Test supports_arch() without ExclusiveArch"""
         spec = Spec(self.spec, self.mock, None)
-        self.assertTrue(spec.supports_arch('x86_64'))
-        self.assertTrue(spec.supports_arch('aarch64'))
+        self.assertTrue(spec.supports_arch("x86_64"))
+        self.assertTrue(spec.supports_arch("aarch64"))
+
 
 class VariableTest(RiftTestCase):
-    """ Test Variable class """
+    """Test Variable class"""
+
     def test_str(self):
-        """ Test string representation """
-        var = Variable(index=3, name='foo', value='bar', keyword='define')
-        self.assertTrue(str(var) == 'bar' )
+        """Test string representation"""
+        var = Variable(index=3, name="foo", value="bar", keyword="define")
+        self.assertTrue(str(var) == "bar")
 
     def test_spec_output(self):
-        """ Test variable format output """
-        var = Variable(index=0, name='foo', value='bar', keyword='define')
-        self.assertTrue(var.spec_output() == '%define foo bar' )
-        buff = ['']
+        """Test variable format output"""
+        var = Variable(index=0, name="foo", value="bar", keyword="define")
+        self.assertTrue(var.spec_output() == "%define foo bar")
+        buff = [""]
         var.spec_output(buff)
-        self.assertTrue(buff[0] == '%define foo bar\n')
+        self.assertTrue(buff[0] == "%define foo bar\n")
 
 
 class RPMTest(RiftProjectTestCase):
-    """ Test RPM class """
+    """Test RPM class"""
+
     def setUp(self):
         super().setUp()
         tests_dir = os.path.dirname(os.path.abspath(__file__))
-        self.bin_rpm = os.path.join(
-            tests_dir, 'materials', 'pkg-1.0-1.noarch.rpm'
-        )
-        self.src_rpm = os.path.join(
-            tests_dir, 'materials', 'pkg-1.0-1.src.rpm'
-        )
+        self.bin_rpm = os.path.join(tests_dir, "materials", "pkg-1.0-1.noarch.rpm")
+        self.src_rpm = os.path.join(tests_dir, "materials", "pkg-1.0-1.src.rpm")
 
     def test_load(self):
         """RPM initializer works with bin/src RPM with/without conf."""
         # test load bin RPM without config
         rpm = RPM(self.bin_rpm)
-        self.assertEqual(rpm.name, 'pkg')
-        self.assertEqual(rpm.arch, 'noarch')
+        self.assertEqual(rpm.name, "pkg")
+        self.assertEqual(rpm.arch, "noarch")
         self.assertEqual(rpm.is_source, False)
 
         # test load src RPM with config
         rpm = RPM(self.src_rpm, self.config)
-        self.assertEqual(rpm.name, 'pkg')
-        self.assertEqual(rpm.arch, 'noarch')
+        self.assertEqual(rpm.name, "pkg")
+        self.assertEqual(rpm.arch, "noarch")
         self.assertEqual(rpm.is_source, True)
 
     def test_extract_srpm(self):
@@ -301,9 +301,9 @@ class RPMTest(RiftProjectTestCase):
         rpm.extract_srpm(specdir, srcdir)
 
         # Verify files have been properly extracted
-        for spec in ['pkg.spec', 'pkg.spec.orig']:
+        for spec in ["pkg.spec", "pkg.spec.orig"]:
             self.assertTrue(os.path.exists(os.path.join(specdir, spec)))
-        self.assertTrue(os.path.exists(os.path.join(srcdir, 'pkg-1.0.tar.gz')))
+        self.assertTrue(os.path.exists(os.path.join(srcdir, "pkg-1.0.tar.gz")))
 
         # Clean up everything
         shutil.rmtree(specdir)
@@ -320,8 +320,7 @@ class RPMTest(RiftProjectTestCase):
         rpm = RPM(self.src_rpm, self.config)
         with self.assertRaisesRegex(
             RiftError,
-            "^Unable to retrieve GPG configuration, unable to sign package "
-            ".*\.rpm$"
+            "^Unable to retrieve GPG configuration, unable to sign package .*\.rpm$",
         ):
             rpm.sign()
 
@@ -329,9 +328,9 @@ class RPMTest(RiftProjectTestCase):
         """RPM.sign() fail with nonexistent keyring."""
         self.config.options.update(
             {
-                'gpg': {
-                  'keyring': '/path/to/nonexistent/keyring',
-                  'key': 'rift',
+                "gpg": {
+                    "keyring": "/path/to/nonexistent/keyring",
+                    "key": "rift",
                 }
             }
         )
@@ -340,39 +339,41 @@ class RPMTest(RiftProjectTestCase):
         with self.assertRaisesRegex(
             RiftError,
             "^GPG keyring path /path/to/nonexistent/keyring does not exist, "
-            "unable to sign package .*\.rpm$"
+            "unable to sign package .*\.rpm$",
         ):
             rpm.sign()
 
-    def sign_copy(self, gpg_passphrase, rpm_pkg, conf_passphrase=None, preset_passphrase=None):
+    def sign_copy(
+        self, gpg_passphrase, rpm_pkg, conf_passphrase=None, preset_passphrase=None
+    ):
         """
         Generate keyring with provided gpg passphrase, update configuration with
         generated keyring, copy unsigned rpm_pkg, sign it, verify signature and
         cleanup everything.
         """
-        gpg_home = os.path.join(self.projdir, '.gnupg')
+        gpg_home = os.path.join(self.projdir, ".gnupg")
 
         # Launch the agent with --allow-preset-passphrase to accept passphrase
         # provided non-interactively by gpg-preset-passphrase.
         cmd = [
-          'gpg-agent',
-          '--homedir',
-          gpg_home,
-          '--allow-preset-passphrase',
-          '--daemon',
+            "gpg-agent",
+            "--homedir",
+            gpg_home,
+            "--allow-preset-passphrase",
+            "--daemon",
         ]
         subprocess.run(cmd)
 
         # Generate keyring
-        gpg_key = 'rift'
+        gpg_key = "rift"
         cmd = [
-            'gpg',
-            '--homedir',
+            "gpg",
+            "--homedir",
             gpg_home,
-            '--batch',
-            '--passphrase',
-            gpg_passphrase or '',
-            '--quick-generate-key',
+            "--batch",
+            "--passphrase",
+            gpg_passphrase or "",
+            "--quick-generate-key",
             gpg_key,
         ]
         subprocess.run(cmd)
@@ -383,39 +384,37 @@ class RPMTest(RiftProjectTestCase):
             # First find keygrip
             keygrip = None
             cmd = [
-                'gpg',
-                '--homedir',
+                "gpg",
+                "--homedir",
                 gpg_home,
-                '--fingerprint',
-                '--with-keygrip',
-                '--with-colons',
-                gpg_key
+                "--fingerprint",
+                "--with-keygrip",
+                "--with-colons",
+                gpg_key,
             ]
             proc = subprocess.run(cmd, stdout=subprocess.PIPE)
-            for line in proc.stdout.decode().split('\n'):
-                if line.startswith('grp'):
-                    keygrip = line.split(':')[9]
+            for line in proc.stdout.decode().split("\n"):
+                if line.startswith("grp"):
+                    keygrip = line.split(":")[9]
                     break
             # Run gpg-preset-passphrase to add passphrase in agent
-            cmd = ['/usr/libexec/gpg-preset-passphrase', '--preset', keygrip]
+            cmd = ["/usr/libexec/gpg-preset-passphrase", "--preset", keygrip]
             subprocess.run(
-                cmd,
-                env={'GNUPGHOME': gpg_home},
-                input=preset_passphrase.encode()
+                cmd, env={"GNUPGHOME": gpg_home}, input=preset_passphrase.encode()
             )
 
         # Update project configuration with generated key
         self.config.options.update(
             {
-                'gpg': {
-                    'keyring': gpg_home,
-                    'key': gpg_key,
+                "gpg": {
+                    "keyring": gpg_home,
+                    "key": gpg_key,
                 }
             }
         )
 
         if conf_passphrase is not None:
-            self.config.options['gpg']['passphrase'] = conf_passphrase
+            self.config.options["gpg"]["passphrase"] = conf_passphrase
         self.config._check()
 
         # Copy provided rpm_pkg in temporary project directory
@@ -426,9 +425,9 @@ class RPMTest(RiftProjectTestCase):
         rpm = RPM(rpm_copy, self.config)
         self.assertFalse(rpm.is_signed)
         try:
-            os.environ['GNUPGHOME'] = gpg_home
+            os.environ["GNUPGHOME"] = gpg_home
             rpm.sign()
-            del os.environ['GNUPGHOME']
+            del os.environ["GNUPGHOME"]
             # Reload RPM package and check signature
             rpm._load()
             self.assertTrue(rpm.is_signed)
@@ -437,7 +436,7 @@ class RPMTest(RiftProjectTestCase):
             os.remove(rpm_copy)
 
             # Kill GPG agent launched for the test
-            cmd = ['gpgconf', '--homedir', gpg_home, '--kill', 'gpg-agent']
+            cmd = ["gpgconf", "--homedir", gpg_home, "--kill", "gpg-agent"]
             subprocess.run(cmd)
 
             # Remove temporary GPG home with generated key
@@ -445,19 +444,16 @@ class RPMTest(RiftProjectTestCase):
 
     def test_sign_src_rpm(self):
         """Source RPM package signature."""
-        self.sign_copy('TOPSECRET', self.src_rpm, 'TOPSECRET')
+        self.sign_copy("TOPSECRET", self.src_rpm, "TOPSECRET")
 
     def test_sign_bin_rpm(self):
         """Binary RPM package signature."""
-        self.sign_copy('TOPSECRET', self.bin_rpm, 'TOPSECRET')
+        self.sign_copy("TOPSECRET", self.bin_rpm, "TOPSECRET")
 
     def test_sign_wrong_passphrase(self):
         """Package signature raises RiftError with wrong passphrase."""
-        with self.assertRaisesRegex(
-            RiftError,
-            "^Error with signing package.*"
-        ):
-            self.sign_copy('TOPSECRET', self.src_rpm, 'WRONG_PASSPHRASE')
+        with self.assertRaisesRegex(RiftError, "^Error with signing package.*"):
+            self.sign_copy("TOPSECRET", self.src_rpm, "WRONG_PASSPHRASE")
 
     def test_sign_passphrase_agent_not_interactive(self):
         """Package signature with passphrase in agent not interactive."""
@@ -465,7 +461,7 @@ class RPMTest(RiftProjectTestCase):
         # in Rift configuration but loaded in GPG agent, Rift must sign the
         # package without making the agent launch pinentry to ask for the
         # passphrase interactively.
-        self.sign_copy('TOPSECRET', self.src_rpm, preset_passphrase='TOPSECRET')
+        self.sign_copy("TOPSECRET", self.src_rpm, preset_passphrase="TOPSECRET")
 
     def test_sign_empty_passphrase_not_interactive(self):
         """Package signature with empty passphrase no interactive passphrase."""

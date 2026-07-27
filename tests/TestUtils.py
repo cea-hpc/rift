@@ -7,11 +7,7 @@ Helper module to write unit tests for Rift project.
 It contains several helper methods or classes like temporary file management.
 """
 
-from collections import OrderedDict
-from collections import namedtuple
-from contextlib import contextmanager
 import io
-import jinja2
 import os
 import pathlib as pl
 import random
@@ -21,11 +17,14 @@ import tarfile
 import tempfile
 import time
 import unittest
+from collections import OrderedDict, namedtuple
+from contextlib import contextmanager
+
+import jinja2
 import yaml
 
-
-from rift.Config import Config, Staff, Modules
-from rift.Mock import Mock, rpmlint_env, rpmlint_chroot_script
+from rift.Config import Config, Modules, Staff
+from rift.Mock import Mock, rpmlint_chroot_script, rpmlint_env
 from rift.run import run_command
 
 MOCK_CONF = '''\
@@ -174,7 +173,7 @@ PackageTestDef = namedtuple("PackageTestDef", ["name", "local", "formats"])
 class RiftTestCase(unittest.TestCase):
     """unittest.TestCase subclass with additional features"""
 
-    def __init__(self, methodName='runTest'):
+    def __init__(self, methodName="runTest"):
         unittest.TestCase.__init__(self, methodName)
         # Allow to show the full content of a diff
         self.maxDiff = None
@@ -195,6 +194,7 @@ class RiftTestCase(unittest.TestCase):
         if not pl.Path(path).resolve().is_file():
             self.fail("File '%s' does not exist" % str(path))
 
+
 class RiftProjectTestCase(RiftTestCase):
     """
     RiftTestCase that setup a dummy project tree filled with minimal
@@ -205,10 +205,10 @@ class RiftProjectTestCase(RiftTestCase):
         self.cwd = os.getcwd()
         self.projdir = make_temp_dir()
         # ./packages/
-        self.packagesdir = os.path.join(self.projdir, 'packages')
+        self.packagesdir = os.path.join(self.projdir, "packages")
         os.mkdir(self.packagesdir)
         # ./packages/staff.yaml
-        self.staffpath = os.path.join(self.packagesdir, 'staff.yaml')
+        self.staffpath = os.path.join(self.packagesdir, "staff.yaml")
         with open(self.staffpath, "w") as staff:
             staff.write(
                 "staff:\n"
@@ -216,7 +216,7 @@ class RiftProjectTestCase(RiftTestCase):
                 "  Another: {email: another@elsewhere.org}\n"
             )
         # ./packages/modules.yaml
-        self.modulespath = os.path.join(self.packagesdir, 'modules.yaml')
+        self.modulespath = os.path.join(self.packagesdir, "modules.yaml")
         with open(self.modulespath, "w") as mod:
             mod.write(
                 "modules:\n"
@@ -226,7 +226,7 @@ class RiftProjectTestCase(RiftTestCase):
                 "    manager: Another\n"
             )
         # ./annex/
-        self.annexdir = os.path.join(self.projdir, 'annex')
+        self.annexdir = os.path.join(self.projdir, "annex")
         os.mkdir(self.annexdir)
         # ./project.conf
         self.projectconf = os.path.join(self.projdir, Config._DEFAULT_FILES[0])
@@ -268,24 +268,20 @@ class RiftProjectTestCase(RiftTestCase):
             if os.path.exists(src):
                 os.unlink(src)
         for pkgdir in self.pkgdirs.values():
-            info_path = os.path.join(pkgdir, 'info.yaml')
+            info_path = os.path.join(pkgdir, "info.yaml")
             if os.path.exists(info_path):
                 os.unlink(info_path)
-            os.rmdir(os.path.join(pkgdir, 'sources'))
-            if os.path.exists(os.path.join(pkgdir, 'tests')):
-                for test in os.listdir(os.path.join(pkgdir, 'tests')):
-                    os.unlink(os.path.join(pkgdir, 'tests', test))
-                os.rmdir(os.path.join(pkgdir, 'tests'))
+            os.rmdir(os.path.join(pkgdir, "sources"))
+            if os.path.exists(os.path.join(pkgdir, "tests")):
+                for test in os.listdir(os.path.join(pkgdir, "tests")):
+                    os.unlink(os.path.join(pkgdir, "tests", test))
+                os.rmdir(os.path.join(pkgdir, "tests"))
             os.rmdir(pkgdir)
         # Remove potentially generated files for VM related tests
         for path in [
-            self.config.project_path(
-                self.config.get('vm').get('cloud_init_tpl')
-            ),
-            self.config.project_path(
-                self.config.get('vm').get('build_post_script')
-            ),
-            self.config.project_path(self.config.get('vm').get('image')),
+            self.config.project_path(self.config.get("vm").get("cloud_init_tpl")),
+            self.config.project_path(self.config.get("vm").get("build_post_script")),
+            self.config.project_path(self.config.get("vm").get("image")),
         ]:
             if os.path.exists(path):
                 os.unlink(path)
@@ -293,26 +289,28 @@ class RiftProjectTestCase(RiftTestCase):
 
     def update_project_conf(self):
         """Update project YAML configuration file with new Config options."""
+
         class OrderedDumper(yaml.SafeDumper):
             pass
+
         def _dict_representer(dumper, data):
             return dumper.represent_mapping(
-                yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
-                data.items()
+                yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, data.items()
             )
+
         OrderedDumper.add_representer(OrderedDict, _dict_representer)
-        with open(self.projectconf, 'w') as fh:
+        with open(self.projectconf, "w") as fh:
             fh.write(yaml.dump(self.config.options, Dumper=OrderedDumper))
 
     def make_pkg(
         self,
-        name='pkg',
+        name="pkg",
         formats=None,
-        version='1.0',
-        release='1',
+        version="1.0",
+        release="1",
         metadata=None,
-        build_requires=['br-package'],
-        requires=['another-package'],
+        build_requires=["br-package"],
+        requires=["another-package"],
         subpackages=[],
         variants=None,
         src_top_dir=None,
@@ -320,10 +318,10 @@ class RiftProjectTestCase(RiftTestCase):
     ):
         # By default, make package in all supported formats
         if formats is None:
-            formats = ['rpm', 'oci']
+            formats = ["rpm", "oci"]
         # Check provide package formats are supported
         for _format in formats:
-            assert(_format in ['rpm', 'oci'])
+            assert _format in ["rpm", "oci"]
         # Set default source top dir name
         if src_top_dir is None:
             src_top_dir = f"{name}-{version}"
@@ -331,43 +329,35 @@ class RiftProjectTestCase(RiftTestCase):
         self.pkgdirs[name] = os.path.join(self.packagesdir, name)
         os.mkdir(self.pkgdirs[name])
         # ./packages/pkg/info.yaml
-        info = os.path.join(self.pkgdirs[name], 'info.yaml')
+        info = os.path.join(self.pkgdirs[name], "info.yaml")
         if metadata is None:
             metadata = {}
         with open(info, "w") as nfo:
             nfo.write("package:\n")
             nfo.write("    maintainers:\n")
             nfo.write("        - Myself\n")
+            nfo.write("    module: {}\n".format(metadata.get("module", "Great module")))
+            nfo.write("    origin: {}\n".format(metadata.get("origin", "Vendor")))
             nfo.write(
-                "    module: {}\n".format(
-                    metadata.get('module', 'Great module')
-                )
+                "    reason: {}\n".format(metadata.get("reason", "Missing feature"))
             )
-            nfo.write(
-                "    origin: {}\n".format(metadata.get('origin', 'Vendor'))
-            )
-            nfo.write(
-                "    reason: {}\n".format(
-                    metadata.get('reason', 'Missing feature')
-                )
-            )
-            if 'depends' in metadata:
-                nfo.write("    depends: {}\n".format(metadata.get('depends')))
-            if 'exclude_archs' in metadata:
+            if "depends" in metadata:
+                nfo.write("    depends: {}\n".format(metadata.get("depends")))
+            if "exclude_archs" in metadata:
                 nfo.write(
-                    "    exclude_archs: {}\n".format(metadata.get('exclude_archs'))
+                    "    exclude_archs: {}\n".format(metadata.get("exclude_archs"))
                 )
             if variants:
                 nfo.write("    variants:\n")
                 for variant in variants:
                     nfo.write(f"    - {variant}\n")
-            if 'oci' in formats:
+            if "oci" in formats:
                 nfo.write("    oci:\n")
                 nfo.write(f"        version: '{version}'\n")
                 nfo.write(f"        release: '{release}'\n")
 
         # ./packages/pkg/pkg.spec
-        if 'rpm' in formats:
+        if "rpm" in formats:
             buildfile = os.path.join(self.pkgdirs[name], "{0}.spec".format(name))
             with open(buildfile, "w") as spec:
                 spec.write(
@@ -377,27 +367,26 @@ class RiftProjectTestCase(RiftTestCase):
                         release=release,
                         build_requires=build_requires,
                         requires=requires,
-                        arch='noarch',
+                        arch="noarch",
                         subpackages=subpackages,
-                        variants=variants
+                        variants=variants,
                     )
                 )
             self.buildfiles[f"{name}:rpm"] = buildfile
 
         # ./packages/pkg/Containerfile
-        if 'oci' in formats:
-            buildfile = os.path.join(self.pkgdirs[name], 'Containerfile')
+        if "oci" in formats:
+            buildfile = os.path.join(self.pkgdirs[name], "Containerfile")
             with open(buildfile, "w") as fh:
-                fh.write('FROM debian:stable')
+                fh.write("FROM debian:stable")
             self.buildfiles[f"{name}:oci"] = buildfile
 
         # ./packages/pkg/sources
-        srcdir = os.path.join(self.pkgdirs[name], 'sources')
+        srcdir = os.path.join(self.pkgdirs[name], "sources")
         os.mkdir(srcdir)
 
         # ./packages/pkg/sources/pkg-version.tar.gz
-        self.pkgsrc[name] = os.path.join(srcdir,
-                                         "{0}-{1}.tar.gz".format(name, version))
+        self.pkgsrc[name] = os.path.join(srcdir, "{0}-{1}.tar.gz".format(name, version))
         with tarfile.open(self.pkgsrc[name], "w:gz") as tar:
             # Add folder in archive
             dir_info = tarfile.TarInfo(name=f"{src_top_dir}/")
@@ -416,12 +405,10 @@ class RiftProjectTestCase(RiftTestCase):
 
         # Add dummy test ./tests/0_test.sh by default
         if tests is None:
-            tests = [
-                PackageTestDef(name='0_test.sh', local=False, formats=[])
-            ]
+            tests = [PackageTestDef(name="0_test.sh", local=False, formats=[])]
 
         # ./tests
-        testsdir = os.path.join(self.pkgdirs[name], 'tests')
+        testsdir = os.path.join(self.pkgdirs[name], "tests")
 
         # If at least one test is present, create tests directory
         if tests:
@@ -431,16 +418,16 @@ class RiftProjectTestCase(RiftTestCase):
         for test in tests:
             test_file = os.path.join(testsdir, test.name)
             with open(test_file, "w") as fh:
-                fh.write('#!/bin/sh\n')
+                fh.write("#!/bin/sh\n")
                 if test.local:
-                    fh.write('# *** RIFT LOCAL ***\n')
+                    fh.write("# *** RIFT LOCAL ***\n")
                 for _format in test.formats:
                     fh.write(f"# *** RIFT FORMAT {_format} ***\n")
-                fh.write('true')
+                fh.write("true")
 
     def clean_mock_environments(self):
         """Remove mock build environments."""
-        for arch in self.config.get('arch'):
+        for arch in self.config.get("arch"):
             mock = Mock(self.config, arch)
             mock.scrub()
 
@@ -449,13 +436,11 @@ class RiftProjectTestCase(RiftTestCase):
         shutil.copy(
             os.path.join(
                 os.path.dirname(os.path.realpath(__file__)),
-                '..',
-                'template',
-                'cloud-init.tpl',
+                "..",
+                "template",
+                "cloud-init.tpl",
             ),
-            self.config.project_path(
-                self.config.get('vm').get('cloud_init_tpl')
-            ),
+            self.config.project_path(self.config.get("vm").get("cloud_init_tpl")),
         )
 
     def copy_build_post_script(self):
@@ -463,22 +448,19 @@ class RiftProjectTestCase(RiftTestCase):
         shutil.copy(
             os.path.join(
                 os.path.dirname(os.path.realpath(__file__)),
-                '..',
-                'template',
-                'build-post.sh',
+                "..",
+                "template",
+                "build-post.sh",
             ),
-            self.config.project_path(
-                self.config.get('vm').get('build_post_script')
-            ),
+            self.config.project_path(self.config.get("vm").get("build_post_script")),
         )
 
     def ensure_vm_images_cache_dir(self):
         """Ensure VM images cache directory exists."""
-        cache_dir =  self.config.project_path(
-            self.config.get('vm').get('images_cache')
-        )
+        cache_dir = self.config.project_path(self.config.get("vm").get("images_cache"))
         if not os.path.exists(cache_dir):
             os.mkdir(cache_dir)
+
 
 #
 # RPM spec file
@@ -486,14 +468,18 @@ class RiftProjectTestCase(RiftTestCase):
 def gen_rpm_spec(**kwargs):
     return jinja2.Template(SPEC_TPL).render(**kwargs)
 
+
 def read_file(filepath):
     """Read a text file and return its content."""
     return open(filepath).read()
+
+
 #
 # Containerfile
 #
 def gen_containerfile(**kwargs):
     return jinja2.Template(CONTAINERFILE_TPL).render(**kwargs)
+
 
 def host_rpmlint(filepath, configdir=None):
     """
@@ -503,27 +489,29 @@ def host_rpmlint(filepath, configdir=None):
     spec_fp = os.path.realpath(filepath)
     script = rpmlint_chroot_script(spec_fp)
     return run_command(
-        ['bash', '-lc', script],
+        ["bash", "-lc", script],
         capture_output=True,
         merge_out_err=False,
         env=rpmlint_env(configdir),
     )
+
 
 #
 # Temp files
 #
 def make_temp_dir():
     """Create and return the name of a temporary directory."""
-    return tempfile.mkdtemp(prefix='rift-test-')
+    return tempfile.mkdtemp(prefix="rift-test-")
+
 
 def make_temp_filename():
     """Return a temporary name for a file."""
-    return (tempfile.mkstemp(prefix='rift-test-'))[1]
+    return (tempfile.mkstemp(prefix="rift-test-"))[1]
+
 
 def make_temp_file(text, delete=True, suffix=None):
-    """ Create a temporary file with the provided text."""
-    tmp = tempfile.NamedTemporaryFile(prefix='rift-test-', delete=delete,
-                                      suffix=suffix)
+    """Create a temporary file with the provided text."""
+    tmp = tempfile.NamedTemporaryFile(prefix="rift-test-", delete=delete, suffix=suffix)
     tmp.write(text.encode())
     tmp.flush()
     return tmp
@@ -537,25 +525,20 @@ def nullcontext():
     """Context manager that does nothing."""
     yield
 
+
 def make_temp_tar():
-    """ Create temporary tarball with one random file"""
+    """Create temporary tarball with one random file"""
     # Create temporary file
     with tempfile.NamedTemporaryFile(
         delete=False, mode="w+", suffix=".txt"
     ) as tmp_inner:
         tmp_inner.write(
-            ''.join(
-                random.choices(
-                    string.ascii_letters + string.digits, k=2**10
-                )
-            )
+            "".join(random.choices(string.ascii_letters + string.digits, k=2**10))
         )
         inner_path = tmp_inner.name
 
     # Create tarball archive
-    with tempfile.NamedTemporaryFile(
-        delete=False, suffix=".tar"
-    ) as tmp_tar:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".tar") as tmp_tar:
         tar_path = tmp_tar.name
         with tarfile.open(fileobj=tmp_tar, mode="w:") as tar:
             tar.add(inner_path, arcname=os.path.basename(inner_path))
@@ -565,9 +548,11 @@ def make_temp_tar():
 
     return tar_path
 
+
 #
 # Executable commands utilities
 #
+
 
 def command_available(command):
     """
@@ -588,8 +573,12 @@ def command_available(command):
         return _is_executable_file(command)
 
     # Check if it's a relative path (contains path separators or starts with ./)
-    if (os.sep in command or (os.altsep and os.altsep in command) or
-        command.startswith('./') or command.startswith('../')):
+    if (
+        os.sep in command
+        or (os.altsep and os.altsep in command)
+        or command.startswith("./")
+        or command.startswith("../")
+    ):
         # Resolve relative path
         resolved_path = os.path.abspath(command)
         return _is_executable_file(resolved_path)

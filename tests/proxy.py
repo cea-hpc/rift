@@ -9,6 +9,7 @@ from rift.proxy import (
     AuthenticatedRepositoryProxyRuntime,
     _TokenAuthRepositoryProxyHandler,
 )
+
 from .TestUtils import RiftTestCase
 
 

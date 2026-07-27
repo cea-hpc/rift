@@ -1,5 +1,7 @@
 from unidiff import parse_unidiff
-from .TestUtils import make_temp_file, make_temp_dir, RiftTestCase
+
+from .TestUtils import RiftTestCase, make_temp_dir, make_temp_file
+
 
 class UnidiffTest(RiftTestCase):
     """
@@ -7,7 +9,7 @@ class UnidiffTest(RiftTestCase):
     """
 
     def testMultiFilePatch(self):
-        """ Test if unidiff parse correctly a patch with mutliple files """
+        """Test if unidiff parse correctly a patch with mutliple files"""
         unifiedpatch = make_temp_file("""
 commit 0ac8155e2655321ceb28bbf716ff66d1a9e30f29 (HEAD -> master)
 Author: Myself <buddy@somewhere.org>
@@ -37,7 +39,7 @@ index 0000000..257cc56
 @@ -0,0 +1 @@
 +pub
 """)
-        with open(unifiedpatch.name, 'r') as f:
+        with open(unifiedpatch.name, "r") as f:
             patchedfiles = parse_unidiff(f)
         self.assertEqual(len(patchedfiles), 3)
         filenames = []
@@ -48,7 +50,7 @@ index 0000000..257cc56
         self.assertTrue("file3" in filenames)
 
     def testRenamedPatch(self):
-        """ Test if unidiff parse correctly a patch with renamed files """
+        """Test if unidiff parse correctly a patch with renamed files"""
         unifiedpatch = make_temp_file("""
 commit 0ac8155e2655321ceb28bbf716ff66d1a9e30f29 (HEAD -> master)
 Author: Myself <buddy@somewhere.org>
@@ -61,13 +63,13 @@ similarity index 100%
 rename from foo
 rename to bar
 """)
-        with open(unifiedpatch.name, 'r') as f:
+        with open(unifiedpatch.name, "r") as f:
             patchedfiles = parse_unidiff(f)
         for patchedfile in patchedfiles:
             self.assertTrue(patchedfile.renamed)
 
     def testDeletedPatch(self):
-        """ Test if unidiff parse correctly a patch with deleted files """
+        """Test if unidiff parse correctly a patch with deleted files"""
         unifiedpatch = make_temp_file("""
 commit 0ac8155e2655321ceb28bbf716ff66d1a9e30f29 (HEAD -> master)
 Author: Myself <buddy@somewhere.org>
@@ -88,7 +90,7 @@ deleted file mode 100644
 index c2e4672..0000000
 Binary files a/packages/slurm/sources/slurm-18.08.6.tar.bz2 and /dev/null differ
 """)
-        with open(unifiedpatch.name, 'r') as f:
+        with open(unifiedpatch.name, "r") as f:
             patchedfiles = parse_unidiff(f)
         for patchedfile in patchedfiles:
             self.assertTrue(patchedfile.is_deleted_file)
@@ -114,7 +116,7 @@ diff --git /dev/null b/bar
 index fcd49dd..91ef207 100644
 Binary files a/sources/a.tar.gz and b/sources/a.tar.gz differ
 """)
-        with open(unifiedpatch.name, 'r') as f:
+        with open(unifiedpatch.name, "r") as f:
             patchedfiles = parse_unidiff(f)
         for patchedfile in patchedfiles:
             self.assertTrue(patchedfile.binary)

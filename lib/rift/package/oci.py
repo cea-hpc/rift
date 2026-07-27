@@ -31,27 +31,28 @@
 #
 """Manage packages in OCI format."""
 
-import os
-import shutil
-import time
-import tempfile
-import tarfile
 import glob
 import logging
+import os
+import shutil
+import tarfile
+import tempfile
+import time
 
 from rift import RiftError
-from rift.Config import _DEFAULT_VARIANT
-from rift.package._base import Package, ActionableArchPackage
 from rift.annex import Annex
+from rift.Config import _DEFAULT_VARIANT
+from rift.container import ContainerArchive, ContainerFile, ContainerRuntime
+from rift.package._base import ActionableArchPackage, Package
 from rift.TestResults import TestCase, TestResults
-from rift.container import ContainerRuntime, ContainerFile, ContainerArchive
-from rift.utils import message, banner
+from rift.utils import banner, message
+
 
 class PackageOCI(Package):
     """Handle rift project package in OCI format."""
 
     def __init__(self, name, config, staff, modules):
-        super().__init__(name, config, staff, modules, 'oci', 'Containerfile')
+        super().__init__(name, config, staff, modules, "oci", "Containerfile")
         self.containerfile = None
         self.version = None
         self.release = None
@@ -61,29 +62,28 @@ class PackageOCI(Package):
     def _serialize_specific_metadata(self):
         """Return dict of format specific metadata to write in metadata file."""
         data = {}
-        data['oci'] = {
-            'version': self.version,
-            'release': self.release
-        }
+        data["oci"] = {"version": self.version, "release": self.release}
         if self.main_source:
-            data['oci']['main_source'] = self.main_source
+            data["oci"]["main_source"] = self.main_source
         if self.source_topdir:
-            data['oci']['source_topdir'] = self.source_topdir
+            data["oci"]["source_topdir"] = self.source_topdir
         return data
 
     def _deserialize_specific_metadata(self, data):
         """Set format specific object attribute with values in metadata dict."""
-        oci = data.get('oci')
+        oci = data.get("oci")
+
         def str_or_none(value):
             """If value is not None, return its string representation."""
             if value is not None:
                 return str(value)
             return value
+
         if oci:
-            self.version = str_or_none(oci.get('version'))
-            self.release = str_or_none(oci.get('release'))
-            self.main_source = oci.get('main_source')
-            self.source_topdir = oci.get('source_topdir')
+            self.version = str_or_none(oci.get("version"))
+            self.release = str_or_none(oci.get("release"))
+            self.main_source = oci.get("main_source")
+            self.source_topdir = oci.get("source_topdir")
 
     def _check_specific_info(self):
         """Check info.yaml OCI specific content is correct."""
@@ -104,7 +104,7 @@ class PackageOCI(Package):
 
         # Check Containerfile
         assert self.containerfile is not None
-        message('Validate Containerfile...')
+        message("Validate Containerfile...")
         self.containerfile.check()
 
     def subpackages(self):
@@ -147,7 +147,7 @@ class ActionableArchPackageOCI(ActionableArchPackage):
 
     def __init__(self, package, arch):
         super().__init__(package, arch)
-        self.tempdir = tempfile.TemporaryDirectory(prefix='rift-container-setup-')
+        self.tempdir = tempfile.TemporaryDirectory(prefix="rift-container-setup-")
         self.runtime = ContainerRuntime(self.config)
 
     @property
@@ -166,21 +166,20 @@ class ActionableArchPackageOCI(ActionableArchPackage):
     def build(self, **kwargs):
         """Build container image of an OCI package."""
         sources_topdir = self._setup_sources()
-        message(f"Building container image '{self.name}' on "
-                f"architecture {self.arch}")
+        message(f"Building container image '{self.name}' on architecture {self.arch}")
         self.runtime.build(self, sources_topdir)
         message("Container image successfully built")
 
     def _setup_sources(self):
         """Prepare build context directory with extracted sources and Containerfile."""
         extracted_archive = None
-        tmp_sourcesdir = Annex(self.config).import_dir(self.package.sourcesdir,
-                                                       force_temp=True)
+        tmp_sourcesdir = Annex(self.config).import_dir(
+            self.package.sourcesdir, force_temp=True
+        )
         if not self.package.sources:
             raise RiftError(f"Unable to find sources for package {self.name}")
         if len(self.package.sources) == 1:
-            _main_source = os.path.join(tmp_sourcesdir.path,
-                                        self.package.sources.pop())
+            _main_source = os.path.join(tmp_sourcesdir.path, self.package.sources.pop())
             self._extract_archive(_main_source)
             extracted_archive = _main_source
         else:
@@ -189,28 +188,31 @@ class ActionableArchPackageOCI(ActionableArchPackage):
                 if self.package.main_source not in self.package.sources:
                     raise RiftError(
                         f"Unable to find main source {self.package.main_source} among "
-                        f"available package sources: {self.package.sources}")
-                _main_source = os.path.join(tmp_sourcesdir.path,
-                                            self.package.main_source)
+                        f"available package sources: {self.package.sources}"
+                    )
+                _main_source = os.path.join(
+                    tmp_sourcesdir.path, self.package.main_source
+                )
                 self._extract_archive(_main_source)
                 extracted_archive = _main_source
             else:
                 # Search archive matching default glob
                 found_sources = glob.glob(
-                    os.path.join(tmp_sourcesdir.path,
-                                 self.default_main_source_glob))
+                    os.path.join(tmp_sourcesdir.path, self.default_main_source_glob)
+                )
                 if len(found_sources) != 1:
                     raise RiftError(
                         "Unable to determine main package source among "
-                        f"available package sources: {self.package.sources}")
+                        f"available package sources: {self.package.sources}"
+                    )
                 self._extract_archive(found_sources[0])
                 extracted_archive = found_sources[0]
         # Determine top dir
-        topdir = os.path.join(self.tempdir.name,
-                              self.package.source_topdir or self.default_source_topdir)
+        topdir = os.path.join(
+            self.tempdir.name, self.package.source_topdir or self.default_source_topdir
+        )
         if not os.path.isdir(topdir):
-            raise RiftError(
-                f"Unable to find package source top directory {topdir}")
+            raise RiftError(f"Unable to find package source top directory {topdir}")
         # Copy all other sources
         for source in self.package.sources:
             _source = os.path.join(tmp_sourcesdir.path, source)
@@ -233,7 +235,7 @@ class ActionableArchPackageOCI(ActionableArchPackage):
                     # compatible with older Python version, fallback without
                     # this argument.
                     try:
-                        _tarball.extract(member, path=self.tempdir.name, filter='data')
+                        _tarball.extract(member, path=self.tempdir.name, filter="data")
                     except TypeError:
                         _tarball.extract(member, path=self.tempdir.name)
         except (tarfile.ReadError, tarfile.CompressionError) as err:
@@ -246,23 +248,22 @@ class ActionableArchPackageOCI(ActionableArchPackage):
         for member in tarball.getmembers():
             if os.path.isabs(member.name):
                 raise RiftError(
-                    f"Source archive contains file {member.name} with absolute "
-                    "path")
+                    f"Source archive contains file {member.name} with absolute path"
+                )
             target = os.path.realpath(os.path.join(self.tempdir.name, member.name))
             if os.path.commonpath([target, self.tempdir.name]) != self.tempdir.name:
                 raise RiftError(
-                    f"Source archive contains file {target} outside file tree")
+                    f"Source archive contains file {target} outside file tree"
+                )
             yield member
 
     def test(self, **kwargs):
         """Execute test in OCI container and return TestResults"""
-        results = TestResults('test')
+        results = TestResults("test")
         banner(f"Starting tests of package {self.name} on architecture {self.arch}")
         tests = list(self.package.tests())
         for test in tests:
-            case = TestCase(
-                test.name, self.name, _DEFAULT_VARIANT, self.arch, 'oci'
-            )
+            case = TestCase(test.name, self.name, _DEFAULT_VARIANT, self.arch, "oci")
             now = time.time()
             message(f"Running test '{case.fullname}' on architecture '{self.arch}'")
             if test.local:
@@ -280,7 +281,7 @@ class ActionableArchPackageOCI(ActionableArchPackage):
     def publish(self, **kwargs):
         """Publish archive of a container in OCI registry."""
         # No notion of staging repository in OCI format, no-op in this case.
-        if kwargs.get('staging', False):
+        if kwargs.get("staging", False):
             return
 
         assert self.repos.path is not None
@@ -291,11 +292,10 @@ class ActionableArchPackageOCI(ActionableArchPackage):
             self.config,
             os.path.join(
                 self.repos.path,
-                f"{self.name}_{self.package.version}-{self.package.release}.{self.arch}.tar"
-            )
+                f"{self.name}_{self.package.version}-{self.package.release}.{self.arch}.tar",
+            ),
         )
         self.runtime.archive(self, container_archive)
-        if kwargs.get('sign', False):
-            logging.info(
-                "Signing OCI archive %s with GPG key", container_archive.path)
+        if kwargs.get("sign", False):
+            logging.info("Signing OCI archive %s with GPG key", container_archive.path)
             container_archive.sign()

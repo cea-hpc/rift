@@ -32,14 +32,13 @@
 
 """Threads classes and utilities to build for architectures in parallel."""
 
+import contextlib
+import io
 import sys
 import threading
-import contextlib
 import traceback
-import io
 
 from rift.TestResults import TestResults
-
 
 # Python provides standards context managers contextlib.redirect_{stdout,stderr}
 # but they are not thread-safe unfortunately. For redirecting threads
@@ -49,8 +48,10 @@ from rift.TestResults import TestResults
 #   default process stdout/stderr
 # - thread-safe context manager which sets up a thread local stream.
 
+
 class _ThreadLocalStream:
     """Rift stdout/stderr proxies, to support threads local buffering."""
+
     def __init__(self, default):
         # Store the original global stream (real sys.stdout / sys.stderr)
         self._default = default
@@ -119,10 +120,11 @@ def redirect_output_threadsafe(output):
 
 class RiftThread(threading.Thread):
     """Base thread for Rift parallel processing"""
+
     def __init__(self, target, name, args):
         # Initializing the Thread class
         super().__init__(None, target, name, args=args)
-        self.output = io.StringIO()   # output buffer, for stdout/stderr
+        self.output = io.StringIO()  # output buffer, for stdout/stderr
         self.results = TestResults()  # build/validate tests results
 
     def run(self):

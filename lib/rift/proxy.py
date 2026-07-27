@@ -66,6 +66,7 @@ class _ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
     """
     Threading HTTP server for repository proxy.
     """
+
     # Handle each request in its own daemon thread so long-running RPM downloads
     # do not block other clients and do not prevent process exit.
     daemon_threads = True
@@ -81,6 +82,7 @@ class _TokenAuthRepositoryProxyHandler(BaseHTTPRequestHandler):
     """
     HTTP repository proxy request handler for bearer token protected repositories.
     """
+
     # Advertise a proxy-specific Server header for troubleshooting.
     server_version = "RiftAuthRepoProxy/1.0"
     # Use HTTP/1.1 responses to keep transfer/framing behavior aligned with
@@ -132,7 +134,9 @@ class _TokenAuthRepositoryProxyHandler(BaseHTTPRequestHandler):
         )
 
         try:
-            with urllib.request.urlopen(request, timeout=self.server.runtime.timeout) as response:
+            with urllib.request.urlopen(
+                request, timeout=self.server.runtime.timeout
+            ) as response:
                 self._log_proxy_request(upstream_url, response.getcode())
                 self._send_upstream_response(response)
         except urllib.error.HTTPError as err:
@@ -260,9 +264,7 @@ class AuthenticatedRepositoryProxyRuntime:
         self._config = config
         self._timeout = timeout
         self.repositories = {
-            repo.name: repo
-            for repo in repositories
-            if repo.authenticated()
+            repo.name: repo for repo in repositories if repo.authenticated()
         }
         self.token = None
         self.server = None

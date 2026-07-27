@@ -33,6 +33,7 @@
 Class and function to detect binary files and push them into a file repository
 called an annex.
 """
+
 import errno
 import logging
 import os
@@ -40,7 +41,6 @@ import shutil
 import sys
 import tempfile
 import time
-
 from datetime import datetime as dt
 from urllib.parse import urlparse
 
@@ -49,9 +49,9 @@ import botocore
 import yaml
 
 from rift import RiftError
-from rift.auth import Auth
 from rift.annex.generic_annex import GenericAnnex
-from rift.annex.utils import get_info_from_digest, _INFOSUFFIX
+from rift.annex.utils import _INFOSUFFIX, get_info_from_digest
+from rift.auth import Auth
 
 
 class S3Annex(GenericAnnex):
@@ -64,6 +64,7 @@ class S3Annex(GenericAnnex):
 
     For now, files are stored in a flat namespace.
     """
+
     def __init__(self, config, annex_path):
         self.annex_path = annex_path
 
@@ -93,11 +94,13 @@ class S3Annex(GenericAnnex):
         if not self.push_s3_auth.authenticate():
             raise RiftError("authentication failed; cannot get push_s3_client")
 
-        self.push_s3_client = boto3.client('s3',
-            aws_access_key_id = self.push_s3_auth.config["access_key_id"],
-            aws_secret_access_key = self.push_s3_auth.config["secret_access_key"],
-            aws_session_token = self.push_s3_auth.config["session_token"],
-            endpoint_url = self.push_s3_endpoint)
+        self.push_s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=self.push_s3_auth.config["access_key_id"],
+            aws_secret_access_key=self.push_s3_auth.config["secret_access_key"],
+            aws_session_token=self.push_s3_auth.config["session_token"],
+            endpoint_url=self.push_s3_endpoint,
+        )
 
         return self.push_s3_client
 
@@ -116,12 +119,12 @@ class S3Annex(GenericAnnex):
         # s3.meta.events.register('choose-signer.s3.*', botocore.handlers.disable_signing)
 
         success = False
-        with tempfile.NamedTemporaryFile(mode='wb', delete=False) as tmp_file:
+        with tempfile.NamedTemporaryFile(mode="wb", delete=False) as tmp_file:
             try:
                 s3.download_fileobj(self.push_s3_bucket, key, tmp_file)
                 success = True
             except botocore.exceptions.ClientError as error:
-                if error.response['Error']['Code'] == '404':
+                if error.response["Error"]["Code"] == "404":
                     logging.info("object not found: %s", key)
                 logging.error(error)
             except Exception as error:
@@ -130,7 +133,7 @@ class S3Annex(GenericAnnex):
         if not success:
             return False
 
-        logging.debug('Extracting %s to %s', identifier, destpath)
+        logging.debug("Extracting %s to %s", identifier, destpath)
         shutil.move(tmp_file.name, destpath)
 
         return True
@@ -150,18 +153,17 @@ class S3Annex(GenericAnnex):
         s3 = self.get_push_s3_client()
 
         # disable signing if accessing anonymously
-        s3.meta.events.register('choose-signer.s3.*', botocore.handlers.disable_signing)
+        s3.meta.events.register("choose-signer.s3.*", botocore.handlers.disable_signing)
 
         response = s3.list_objects_v2(
-            Bucket=self.read_s3_bucket,
-            Prefix=self.read_s3_prefix
+            Bucket=self.read_s3_bucket, Prefix=self.read_s3_prefix
         )
-        if 'Contents' not in response:
+        if "Contents" not in response:
             logging.info("No files found in %s", self.read_s3_prefix)
             return
 
-        for obj in response['Contents']:
-            key = obj['Key']
+        for obj in response["Contents"]:
+            key = obj["Key"]
             filename = os.path.basename(key)
 
             if filename.endswith(_INFOSUFFIX):
@@ -169,13 +171,13 @@ class S3Annex(GenericAnnex):
 
             meta_obj_name = get_info_from_digest(key)
             meta_obj = s3.get_object(Bucket=self.read_s3_bucket, Key=meta_obj_name)
-            info = yaml.safe_load(meta_obj['Body']) or {}
-            names = info.get('filenames', [])
+            info = yaml.safe_load(meta_obj["Body"]) or {}
+            names = info.get("filenames", [])
             for annexed_file in names.values():
-                insertion_time = annexed_file['date']
+                insertion_time = annexed_file["date"]
                 insertion_time = dt.strptime(insertion_time, "%c").timestamp()
 
-            size = obj['Size']
+            size = obj["Size"]
 
             yield filename, size, insertion_time, names
 
@@ -200,11 +202,13 @@ class S3Annex(GenericAnnex):
         metadata = {}
         try:
             meta_obj = s3.get_object(Bucket=self.push_s3_bucket, Key=meta_obj_name)
-            metadata = yaml.safe_load(meta_obj['Body']) or {}
+            metadata = yaml.safe_load(meta_obj["Body"]) or {}
         except s3.exceptions.NoSuchKey:
             logging.info("metadata not found in s3: %s", meta_obj_name)
         except yaml.YAMLError:
-            logging.info("retrieved metadata could not be parsed as yaml: %s", meta_obj_name)
+            logging.info(
+                "retrieved metadata could not be parsed as yaml: %s", meta_obj_name
+            )
 
         originfo = os.stat(filepath)
         destinfo = None
@@ -212,16 +216,21 @@ class S3Annex(GenericAnnex):
             destinfo = s3.get_object(Bucket=self.push_s3_bucket, Key=key)
         except s3.exceptions.NoSuchKey:
             logging.info("key not found in s3: %s", key)
-        if destinfo and destinfo["ContentLength"] == originfo.st_size and \
-          filename in metadata.get('filenames', {}):
+        if (
+            destinfo
+            and destinfo["ContentLength"] == originfo.st_size
+            and filename in metadata.get("filenames", {})
+        ):
             logging.debug("%s is already into annex, skipping it", filename)
         else:
             # Update them and write them back
-            fileset = metadata.setdefault('filenames', {})
+            fileset = metadata.setdefault("filenames", {})
             fileset.setdefault(filename, {})
-            fileset[filename]['date'] = time.strftime("%c")
+            fileset[filename]["date"] = time.strftime("%c")
 
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.info') as f:
+            with tempfile.NamedTemporaryFile(
+                mode="w", delete=False, suffix=".info"
+            ) as f:
                 yaml.dump(metadata, f, default_flow_style=False)
                 s3.upload_file(f.name, self.push_s3_bucket, meta_obj_name)
             logging.debug("Importing %s into annex (%s)", filepath, digest)

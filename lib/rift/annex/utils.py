@@ -32,6 +32,7 @@
 """
 Utils class for the annexes
 """
+
 import hashlib
 import string
 
@@ -39,15 +40,18 @@ import string
 _TEXTCHARS = bytearray([9, 10, 13] + list(range(32, 127)))
 
 # Suffix of metadata filename
-_INFOSUFFIX = '.info'
+_INFOSUFFIX = ".info"
+
 
 def get_digest_from_path(path):
     """Get file id from the givent path"""
-    return open(path, encoding='utf-8').read()
+    return open(path, encoding="utf-8").read()
+
 
 def get_info_from_digest(digest):
     """Get file info id"""
     return digest + _INFOSUFFIX
+
 
 def is_binary(filepath, blocksize=65536):
     """
@@ -59,7 +63,7 @@ def is_binary(filepath, blocksize=65536):
     If there is a very small number of binary characters compared to the whole
     file, we still consider it as non-binary to avoid using Annex uselessly.
     """
-    with open(filepath, 'rb') as srcfile:
+    with open(filepath, "rb") as srcfile:
         data = srcfile.read(blocksize)
         binchars = data.translate(None, _TEXTCHARS)
         if len(data) == 0:
@@ -72,13 +76,14 @@ def is_binary(filepath, blocksize=65536):
             result = bool(binchars)
     return result
 
+
 def is_pointer(filepath):
     """
     Return true if content of file at filepath looks like a valid digest
     identifier.
     """
     try:
-        with open(filepath, encoding='utf-8') as fh:
+        with open(filepath, encoding="utf-8") as fh:
             identifier = fh.read()
             # Remove possible trailing whitespace, newline and carriage return
             # characters.
@@ -95,10 +100,11 @@ def is_pointer(filepath):
     # If the identifier is not a valid Rift Annex pointer
     return False
 
+
 def hashfile(filepath, iosize=65536):
     """Compute a digest of filepath content."""
     hasher = hashlib.sha3_256()
-    with open(filepath, 'rb') as srcfile:
+    with open(filepath, "rb") as srcfile:
         buf = srcfile.read(iosize)
         while len(buf) > 0:
             hasher.update(buf)

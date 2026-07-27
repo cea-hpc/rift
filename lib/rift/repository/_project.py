@@ -35,9 +35,9 @@
 import logging
 
 from rift import RiftError
-from rift.TempDir import TempDir
-from rift.repository.rpm import ArchRepositoriesRPM, StagingRepositoryRPM
 from rift.repository.oci import ArchRepositoriesOCI
+from rift.repository.rpm import ArchRepositoriesRPM, StagingRepositoryRPM
+from rift.TempDir import TempDir
 
 
 class ProjectArchRepositories:
@@ -46,15 +46,12 @@ class ProjectArchRepositories:
     formats.
     """
 
-    FORMAT_CLASSES = {
-        'rpm': ArchRepositoriesRPM,
-        'oci': ArchRepositoriesOCI
-    }
+    FORMAT_CLASSES = {"rpm": ArchRepositoriesRPM, "oci": ArchRepositoriesOCI}
 
     def __init__(self, config, arch):
         self.config = config
         self.arch = arch
-        self.working_dir = config.get('working_repo', arch=arch)
+        self.working_dir = config.get("working_repo", arch=arch)
 
     def can_publish(self):
         """
@@ -76,20 +73,18 @@ class ProjectArchRepositories:
         """Get concrete repository object for the provided format."""
         if _format not in ProjectArchRepositories.FORMAT_CLASSES:
             raise RiftError(f"Unsupported repository format {_format}")
-        return self.FORMAT_CLASSES[_format](
-            self.config, self.working_dir, self.arch)
+        return self.FORMAT_CLASSES[_format](self.config, self.working_dir, self.arch)
 
 
 class StagingRepository:
     """Handle staging repositories for all supported packages formats."""
-    FORMAT_CLASSES = {
-        'rpm': StagingRepositoryRPM
-    }
+
+    FORMAT_CLASSES = {"rpm": StagingRepositoryRPM}
 
     def __init__(self, config):
         self.config = config
-        logging.info('Creating temporary staging repository')
-        self.stagedir = TempDir('stagedir')
+        logging.info("Creating temporary staging repository")
+        self.stagedir = TempDir("stagedir")
         self.stagedir.create()
         self._repos = {}
         for _format, _class in self.FORMAT_CLASSES.items():

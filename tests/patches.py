@@ -33,16 +33,16 @@
 import os
 import textwrap
 
-from .TestUtils import make_temp_file, RiftProjectTestCase
-
 from rift import RiftError
 from rift.patches import get_packages_from_patch
 
-class PatchTest(RiftProjectTestCase):
+from .TestUtils import RiftProjectTestCase, make_temp_file
 
+
+class PatchTest(RiftProjectTestCase):
     def test_package_rpm_modified(self):
-        """ Test detect modified RPM package in patch"""
-        self.make_pkg('pkg')
+        """Test detect modified RPM package in patch"""
+        self.make_pkg("pkg")
         patch = make_temp_file(
             textwrap.dedent("""
                 diff --git a/packages/pkg/pkg.spec b/packages/pkg/pkg.spec
@@ -65,19 +65,20 @@ class PatchTest(RiftProjectTestCase):
                  # Nothing to build
                  %install
                  # Nothing to install
-                """))
+                """)
+        )
         with open(patch.name) as p:
             (updated, removed) = get_packages_from_patch(
                 p, self.config, self.modules, self.staff
             )
             self.assertEqual(len(updated), 1)
             self.assertEqual(len(removed), 0)
-            self.assertEqual(updated[0].name, 'pkg')
-            self.assertEqual(updated[0].format, 'rpm')
+            self.assertEqual(updated[0].name, "pkg")
+            self.assertEqual(updated[0].format, "rpm")
 
     def test_package_oci_modified(self):
-        """ Test detect modified OCI package in patch"""
-        self.make_pkg('pkg')
+        """Test detect modified OCI package in patch"""
+        self.make_pkg("pkg")
         patch = make_temp_file(
             textwrap.dedent("""
                 diff --git a/packages/pkg/Containerfile b/packages/pkg/Containerfile
@@ -100,19 +101,20 @@ class PatchTest(RiftProjectTestCase):
                          version: 1.0
                 -        release: 1
                 +        release: 2
-                """))
+                """)
+        )
         with open(patch.name) as p:
             (updated, removed) = get_packages_from_patch(
                 p, self.config, self.modules, self.staff
             )
             self.assertEqual(len(updated), 1)
             self.assertEqual(len(removed), 0)
-            self.assertEqual(updated[0].name, 'pkg')
-            self.assertEqual(updated[0].format, 'oci')
+            self.assertEqual(updated[0].name, "pkg")
+            self.assertEqual(updated[0].format, "oci")
 
     def test_package_multiformats_modified(self):
-        """ Test detect modified multiformats package in patch"""
-        self.make_pkg('pkg')
+        """Test detect modified multiformats package in patch"""
+        self.make_pkg("pkg")
         patch = make_temp_file(
             textwrap.dedent("""
                 diff --git a/packages/pkg/Containerfile b/packages/pkg/Containerfile
@@ -155,7 +157,8 @@ class PatchTest(RiftProjectTestCase):
                  # Nothing to build
                  %install
                  # Nothing to install
-                """))
+                """)
+        )
         with open(patch.name) as p:
             (updated, removed) = get_packages_from_patch(
                 p, self.config, self.modules, self.staff
@@ -163,18 +166,21 @@ class PatchTest(RiftProjectTestCase):
             self.assertEqual(len(updated), 2)
             self.assertEqual(len(removed), 0)
             for package in updated:
-                self.assertEqual(package.name, 'pkg')
+                self.assertEqual(package.name, "pkg")
             self.assertCountEqual(
-                [package.format for package in updated], ['rpm', 'oci'])
+                [package.format for package in updated], ["rpm", "oci"]
+            )
 
     def test_package_rpm_removed(self):
-        """ Test detect removed RPM package in patch"""
-        pkgname = 'pkg'
+        """Test detect removed RPM package in patch"""
+        pkgname = "pkg"
         pkgvers = 1.0
-        pkgsrc = os.path.join('packages', pkgname, 'sources',
-                              '{0}-{1}.tar.gz'.format(pkgname, pkgvers))
+        pkgsrc = os.path.join(
+            "packages", pkgname, "sources", "{0}-{1}.tar.gz".format(pkgname, pkgvers)
+        )
         patch = make_temp_file(
-            textwrap.dedent("""
+            textwrap.dedent(
+                """
                 diff --git a/packages/pkg/info.yaml b/packages/pkg/info.yaml
                 deleted file mode 100644
                 index 32ac08e..0000000
@@ -225,7 +231,9 @@ class PatchTest(RiftProjectTestCase):
                 @@ -1 +0,0 @@
                 -ACACACACACACACAC
                 \ No newline at end of file
-                """.format(pkgsrc)))
+                """.format(pkgsrc)
+            )
+        )
 
         with open(patch.name) as p:
             (updated, removed) = get_packages_from_patch(
@@ -233,17 +241,19 @@ class PatchTest(RiftProjectTestCase):
             )
             self.assertEqual(len(updated), 0)
             self.assertEqual(len(removed), 1)
-            self.assertEqual(removed[0].name, 'pkg')
-            self.assertEqual(removed[0].format, '_virtual')
+            self.assertEqual(removed[0].name, "pkg")
+            self.assertEqual(removed[0].format, "_virtual")
 
     def test_package_oci_removed(self):
-        """ Test detect removed OCI package in patch"""
-        pkgname = 'pkg'
+        """Test detect removed OCI package in patch"""
+        pkgname = "pkg"
         pkgvers = 1.0
-        pkgsrc = os.path.join('packages', pkgname, 'sources',
-                              '{0}-{1}.tar.gz'.format(pkgname, pkgvers))
+        pkgsrc = os.path.join(
+            "packages", pkgname, "sources", "{0}-{1}.tar.gz".format(pkgname, pkgvers)
+        )
         patch = make_temp_file(
-            textwrap.dedent("""
+            textwrap.dedent(
+                """
                 diff --git a/packages/pkg/Containerfile b/packages/pkg/Containerfile
                 deleted file mode 100644
                 index b3c1dc24..00000000
@@ -279,7 +289,9 @@ class PatchTest(RiftProjectTestCase):
                 @@ -1 +0,0 @@
                 -ACACACACACACACAC
                 \ No newline at end of file
-                """.format(pkgsrc)))
+                """.format(pkgsrc)
+            )
+        )
 
         with open(patch.name) as p:
             (updated, removed) = get_packages_from_patch(
@@ -287,17 +299,19 @@ class PatchTest(RiftProjectTestCase):
             )
             self.assertEqual(len(updated), 0)
             self.assertEqual(len(removed), 1)
-            self.assertEqual(removed[0].name, 'pkg')
-            self.assertEqual(removed[0].format, '_virtual')
+            self.assertEqual(removed[0].name, "pkg")
+            self.assertEqual(removed[0].format, "_virtual")
 
     def test_package_multiformats_removed(self):
-        """ Test detect removed multiformats package in patch"""
-        pkgname = 'pkg'
+        """Test detect removed multiformats package in patch"""
+        pkgname = "pkg"
         pkgvers = 1.0
-        pkgsrc = os.path.join('packages', pkgname, 'sources',
-                              '{0}-{1}.tar.gz'.format(pkgname, pkgvers))
+        pkgsrc = os.path.join(
+            "packages", pkgname, "sources", "{0}-{1}.tar.gz".format(pkgname, pkgvers)
+        )
         patch = make_temp_file(
-            textwrap.dedent("""
+            textwrap.dedent(
+                """
                 diff --git a/packages/pkg/Containerfile b/packages/pkg/Containerfile
                 deleted file mode 100644
                 index b3c1dc24..00000000
@@ -363,7 +377,9 @@ class PatchTest(RiftProjectTestCase):
                 @@ -1 +0,0 @@
                 -ACACACACACACACAC
                 \ No newline at end of file
-                """.format(pkgsrc)))
+                """.format(pkgsrc)
+            )
+        )
 
         with open(patch.name) as p:
             (updated, removed) = get_packages_from_patch(
@@ -371,11 +387,11 @@ class PatchTest(RiftProjectTestCase):
             )
             self.assertEqual(len(updated), 0)
             self.assertEqual(len(removed), 1)
-            self.assertEqual(removed[0].name, 'pkg')
-            self.assertEqual(removed[0].format, '_virtual')
+            self.assertEqual(removed[0].name, "pkg")
+            self.assertEqual(removed[0].format, "_virtual")
 
     def test_tests_directory(self):
-        """ Test if package tests directory structure is fine """
+        """Test if package tests directory structure is fine"""
         patch = make_temp_file(
             textwrap.dedent("""
                 diff --git a/packages/pkg/tests/sources/deep/source.c b/packages/pkg/tests/sources/deep/source.c
@@ -389,18 +405,21 @@ class PatchTest(RiftProjectTestCase):
                 +    exit(0);
                 +}
                 \ No newline at end of file
-                """))
+                """)
+        )
         # Ensure package exists
-        self.make_pkg('pkg')
-        with open(patch.name, 'r') as f:
+        self.make_pkg("pkg")
+        with open(patch.name, "r") as f:
             (updated, removed) = get_packages_from_patch(
                 f, self.config, self.modules, self.staff
             )
             self.assertEqual(len(updated), 2)
             self.assertEqual(len(removed), 0)
             for package in updated:
-                self.assertEqual(package.name, 'pkg')
-            self.assertCountEqual([package.format for package in updated], ['rpm', 'oci'])
+                self.assertEqual(package.name, "pkg")
+            self.assertCountEqual(
+                [package.format for package in updated], ["rpm", "oci"]
+            )
 
     def test_invalid_file(self):
         """Test invalid project file is detected in patch"""
@@ -419,13 +438,11 @@ class PatchTest(RiftProjectTestCase):
                 +++ b/wrong
                 @@ -0,0 +1 @@
                 +README
-                """))
-        with open(patch.name, 'r') as f:
-            with self.assertRaisesRegex(RiftError,
-                                        "Unknown file pattern: wrong"):
-                get_packages_from_patch(
-                    f, self.config, self.modules, self.staff
-                )
+                """)
+        )
+        with open(patch.name, "r") as f:
+            with self.assertRaisesRegex(RiftError, "Unknown file pattern: wrong"):
+                get_packages_from_patch(f, self.config, self.modules, self.staff)
 
     def test_invalid_pkg_file(self):
         """Test invalid package file is detected in patch"""
@@ -444,14 +461,13 @@ class PatchTest(RiftProjectTestCase):
                 +++ b/packages/pkg/wrong
                 @@ -0,0 +1 @@
                 +README
-                """))
-        with open(patch.name, 'r') as f:
+                """)
+        )
+        with open(patch.name, "r") as f:
             with self.assertRaisesRegex(
-                RiftError,
-                "Unknown file pattern in 'pkg' directory: packages/pkg/wrong"):
-                get_packages_from_patch(
-                    f, self.config, self.modules, self.staff
-                )
+                RiftError, "Unknown file pattern in 'pkg' directory: packages/pkg/wrong"
+            ):
+                get_packages_from_patch(f, self.config, self.modules, self.staff)
 
     def test_info(self):
         patch = make_temp_file(
@@ -474,11 +490,12 @@ class PatchTest(RiftProjectTestCase):
                 -  origin: Somewhere
                 +  origin: Elsewhere
                    reason: Missing feature
-                """))
+                """)
+        )
         self.make_pkg()
         # For this patch, get_packages_from_patch() must not return updated nor
         # removed packages.
-        with open(patch.name, 'r') as p:
+        with open(patch.name, "r") as p:
             (updated, removed) = get_packages_from_patch(
                 p, config=self.config, modules=self.modules, staff=self.staff
             )
@@ -503,10 +520,11 @@ class PatchTest(RiftProjectTestCase):
                 +modules:
                 +  User Tools:
                 +    manager: John Doe
-                """))
+                """)
+        )
         # For this patch, get_packages_from_patch() must not return updated nor
         # removed packages.
-        with open(patch.name, 'r') as p:
+        with open(patch.name, "r") as p:
             (updated, removed) = get_packages_from_patch(
                 p, config=self.config, modules=self.modules, staff=self.staff
             )
@@ -514,7 +532,7 @@ class PatchTest(RiftProjectTestCase):
         self.assertEqual(len(removed), 0)
 
     def test_readme(self):
-        """ Should allow README files """
+        """Should allow README files"""
         self.make_pkg()
         patch_template = textwrap.dedent("""
             commit 0ac8155e2655321ceb28bbf716ff66d1a9e30f29 (HEAD -> master)
@@ -532,12 +550,12 @@ class PatchTest(RiftProjectTestCase):
             +README
             """)
 
-        for fmt in '', 'rst', 'md', 'txt':
-            filename = 'README'
+        for fmt in "", "rst", "md", "txt":
+            filename = "README"
             if fmt:
                 filename = "{0}.{1}".format(filename, fmt)
             patch = make_temp_file(patch_template.format(filename))
-            with open(patch.name, 'r') as f:
+            with open(patch.name, "r") as f:
                 (updated, removed) = get_packages_from_patch(
                     f, self.config, self.modules, self.staff
                 )
@@ -545,14 +563,16 @@ class PatchTest(RiftProjectTestCase):
                 self.assertEqual(len(removed), 0)
 
     def test_binary(self):
-        """ Should fail if source file is a binary file """
-        pkgname = 'pkg'
+        """Should fail if source file is a binary file"""
+        pkgname = "pkg"
         pkgvers = 1.0
         self.make_pkg(name=pkgname, version=pkgvers)
-        pkgsrc = os.path.join('packages', 'pkgname', 'sources',
-                              '{0}-{1}.tar.gz'.format(pkgname, pkgvers))
+        pkgsrc = os.path.join(
+            "packages", "pkgname", "sources", "{0}-{1}.tar.gz".format(pkgname, pkgvers)
+        )
         patch = make_temp_file(
-            textwrap.dedent("""
+            textwrap.dedent(
+                """
                 commit 0ac8155e2655321ceb28bbf716ff66d1a9e30f29 (HEAD -> master)
                 Author: Myself <buddy@somewhere.org>
                 Date:   Thu Apr 25 14:30:41 2019 +0200
@@ -562,24 +582,26 @@ class PatchTest(RiftProjectTestCase):
                 diff --git /dev/null b/{0}
                 index fcd49dd..91ef207 100644
                 Binary files a/sources/a.tar.gz and b/sources/a.tar.gz differ
-                """.format(pkgsrc)))
-        with open(patch.name, 'r') as f:
+                """.format(pkgsrc)
+            )
+        )
+        with open(patch.name, "r") as f:
             with self.assertRaisesRegex(
-                RiftError,
-                "Binary file detected: {0}".format(pkgsrc)):
-                get_packages_from_patch(
-                    f, self.config, self.modules, self.staff
-                )
+                RiftError, "Binary file detected: {0}".format(pkgsrc)
+            ):
+                get_packages_from_patch(f, self.config, self.modules, self.staff)
 
     def test_binary_with_content(self):
-        """ Should fail if source file is a binary file (diff --binary) """
-        pkgname = 'pkg'
+        """Should fail if source file is a binary file (diff --binary)"""
+        pkgname = "pkg"
         pkgvers = 1.0
         self.make_pkg(name=pkgname, version=pkgvers)
-        pkgsrc = os.path.join('packages', 'pkgname', 'sources',
-                              '{0}-{1}.tar.gz'.format(pkgname, pkgvers))
+        pkgsrc = os.path.join(
+            "packages", "pkgname", "sources", "{0}-{1}.tar.gz".format(pkgname, pkgvers)
+        )
         patch = make_temp_file(
-            textwrap.dedent("""
+            textwrap.dedent(
+                """
                 commit 0ac8155e2655321ceb28bbf716ff66d1a9e30f29 (HEAD -> master)
                 Author: Myself <buddy@somewhere.org>
                 Date:   Thu Apr 25 14:30:41 2019 +0200
@@ -594,18 +616,20 @@ class PatchTest(RiftProjectTestCase):
                 
                 literal 4
                 LcmZQ%;Sc}}-05kv|
-                """.format(pkgsrc)))
-        with open(patch.name, 'r') as f:
-            with self.assertRaisesRegex(RiftError, "Binary file detected: {0}".format(pkgsrc)):
-                get_packages_from_patch(
-                    f, self.config, self.modules, self.staff
-                )
+                """.format(pkgsrc)
+            )
+        )
+        with open(patch.name, "r") as f:
+            with self.assertRaisesRegex(
+                RiftError, "Binary file detected: {0}".format(pkgsrc)
+            ):
+                get_packages_from_patch(f, self.config, self.modules, self.staff)
 
     def test_rename_rpm_package(self):
-        """ Test if renaming RPM package trigger a build """
-        pkgname = 'pkgnew'
+        """Test if renaming RPM package trigger a build"""
+        pkgname = "pkgnew"
         pkgvers = 1.0
-        self.make_pkg(name=pkgname, version=pkgvers, formats=['rpm'])
+        self.make_pkg(name=pkgname, version=pkgvers, formats=["rpm"])
         patch = make_temp_file(
             textwrap.dedent("""
                 diff --git a/packages/pkg/pkg.spec b/packages/pkgnew/pkgnew.spec
@@ -620,23 +644,24 @@ class PatchTest(RiftProjectTestCase):
                 similarity index 100%
                 rename from packages/pkg/sources/pkg-1.0.tar.gz
                 rename to packages/pkgnew/sources/pkgnew-1.0.tar.gz
-                """))
+                """)
+        )
         # For this patch, get_packages_from_patch() must return an updated
         # RPM package named pkgnew.
-        with open(patch.name, 'r') as p:
+        with open(patch.name, "r") as p:
             (updated, removed) = get_packages_from_patch(
                 p, config=self.config, modules=self.modules, staff=self.staff
             )
         self.assertEqual(len(updated), 1)
         self.assertEqual(len(removed), 0)
-        self.assertEqual(updated[0].name, 'pkgnew')
-        self.assertEqual(updated[0].format, 'rpm')
+        self.assertEqual(updated[0].name, "pkgnew")
+        self.assertEqual(updated[0].format, "rpm")
 
     def test_rename_oci_package(self):
-        """ Test if renaming OCI package trigger a build """
-        pkgname = 'pkgnew'
+        """Test if renaming OCI package trigger a build"""
+        pkgname = "pkgnew"
         pkgvers = 1.0
-        self.make_pkg(name=pkgname, version=pkgvers, formats=['oci'])
+        self.make_pkg(name=pkgname, version=pkgvers, formats=["oci"])
         patch = make_temp_file(
             textwrap.dedent("""
                 diff --git a/packages/pkg/Containerfile b/packages/pkgnew/Containerfile
@@ -651,21 +676,22 @@ class PatchTest(RiftProjectTestCase):
                 similarity index 100%
                 rename from packages/pkg/sources/pkg-1.0.tar.gz
                 rename to packages/pkgnew/sources/pkg-1.0.tar.gz
-                """))
+                """)
+        )
         # For this patch, get_packages_from_patch() must return an updated
         # OCI package named pkgnew.
-        with open(patch.name, 'r') as p:
+        with open(patch.name, "r") as p:
             (updated, removed) = get_packages_from_patch(
                 p, config=self.config, modules=self.modules, staff=self.staff
             )
         self.assertEqual(len(updated), 1)
         self.assertEqual(len(removed), 0)
-        self.assertEqual(updated[0].name, 'pkgnew')
-        self.assertEqual(updated[0].format, 'oci')
+        self.assertEqual(updated[0].name, "pkgnew")
+        self.assertEqual(updated[0].format, "oci")
 
     def test_rename_multiformats_package(self):
-        """ Test if renaming multiformats package trigger a build """
-        pkgname = 'pkgnew'
+        """Test if renaming multiformats package trigger a build"""
+        pkgname = "pkgnew"
         pkgvers = 1.0
         self.make_pkg(name=pkgname, version=pkgvers)
         patch = make_temp_file(
@@ -686,24 +712,25 @@ class PatchTest(RiftProjectTestCase):
                 similarity index 100%
                 rename from packages/pkg/sources/pkg-1.0.tar.gz
                 rename to packages/pkgnew/sources/pkg-1.0.tar.gz
-                """))
+                """)
+        )
         # For this patch, get_packages_from_patch() must return updated RPM and
         # OCI packages named pkgnew.
-        with open(patch.name, 'r') as p:
+        with open(patch.name, "r") as p:
             (updated, removed) = get_packages_from_patch(
                 p, config=self.config, modules=self.modules, staff=self.staff
             )
         self.assertEqual(len(updated), 2)
         self.assertEqual(len(removed), 0)
         for package in updated:
-            self.assertEqual(package.name, 'pkgnew')
-        self.assertCountEqual([package.format for package in updated], ['rpm', 'oci'])
+            self.assertEqual(package.name, "pkgnew")
+        self.assertCountEqual([package.format for package in updated], ["rpm", "oci"])
 
     def test_rename_and_update_rpm_package(self):
-        """ Test if renaming and updating RPM package trigger a build """
-        pkgname = 'pkgnew'
+        """Test if renaming and updating RPM package trigger a build"""
+        pkgname = "pkgnew"
         pkgvers = 1.0
-        self.make_pkg(name=pkgname, version=pkgvers, formats=['rpm'])
+        self.make_pkg(name=pkgname, version=pkgvers, formats=["rpm"])
         patch = make_temp_file(
             textwrap.dedent("""
                 commit f8c1a88ea96adfccddab0bf43c0a90f05ab26dc5 (HEAD -> playground)
@@ -736,23 +763,24 @@ class PatchTest(RiftProjectTestCase):
                 similarity index 100%
                 rename from packages/pkg/sources/pkg-1.0.tar.gz
                 rename to packages/pkgnew/sources/pkgnew-1.0.tar.gz
-                """))
+                """)
+        )
         # For this patch, get_packages_from_patch() must return an updated
         # package named pkgnew.
-        with open(patch.name, 'r') as p:
+        with open(patch.name, "r") as p:
             (updated, removed) = get_packages_from_patch(
                 p, config=self.config, modules=self.modules, staff=self.staff
             )
         self.assertEqual(len(updated), 1)
         self.assertEqual(len(removed), 0)
-        self.assertEqual(updated[0].name, 'pkgnew')
-        self.assertEqual(updated[0].format, 'rpm')
+        self.assertEqual(updated[0].name, "pkgnew")
+        self.assertEqual(updated[0].format, "rpm")
 
     def test_rename_and_update_oci_package(self):
-        """ Test if renaming and updating OCI package trigger a build """
-        pkgname = 'pkgnew'
+        """Test if renaming and updating OCI package trigger a build"""
+        pkgname = "pkgnew"
         pkgvers = 1.0
-        self.make_pkg(name=pkgname, version=pkgvers, formats=['oci'])
+        self.make_pkg(name=pkgname, version=pkgvers, formats=["oci"])
         patch = make_temp_file(
             textwrap.dedent("""
                 diff --git a/packages/pkg/Containerfile b/packages/pkgnew/Containerfile
@@ -776,23 +804,24 @@ class PatchTest(RiftProjectTestCase):
                 similarity index 100%
                 rename from packages/pkg/sources/pkg-1.0.tar.gz
                 rename to packages/pkgnew/sources/pkg-1.0.tar.gz
-                """))
+                """)
+        )
         # For this patch, get_packages_from_patch() must return an updated
         # package named pkgnew.
-        with open(patch.name, 'r') as p:
+        with open(patch.name, "r") as p:
             (updated, removed) = get_packages_from_patch(
                 p, config=self.config, modules=self.modules, staff=self.staff
             )
         self.assertEqual(len(updated), 1)
         self.assertEqual(len(removed), 0)
-        self.assertEqual(updated[0].name, 'pkgnew')
-        self.assertEqual(updated[0].format, 'oci')
+        self.assertEqual(updated[0].name, "pkgnew")
+        self.assertEqual(updated[0].format, "oci")
 
     def test_rename_and_update_multiformats_package(self):
-        """ Test if renaming and updating multiformats package trigger a build """
-        pkgname = 'pkgnew'
+        """Test if renaming and updating multiformats package trigger a build"""
+        pkgname = "pkgnew"
         pkgvers = 1.0
-        self.make_pkg(name=pkgname, version=pkgvers, formats=['rpm', 'oci'])
+        self.make_pkg(name=pkgname, version=pkgvers, formats=["rpm", "oci"])
         patch = make_temp_file(
             textwrap.dedent("""
                 diff --git a/packages/pkg/Containerfile b/packages/pkgnew/Containerfile
@@ -831,16 +860,16 @@ class PatchTest(RiftProjectTestCase):
                 similarity index 100%
                 rename from packages/pkg/sources/pkg-1.0.tar.gz
                 rename to packages/pkgnew/sources/pkg-1.0.tar.gz
-                """))
+                """)
+        )
         # For this patch, get_packages_from_patch() must return an updated
         # package named pkgnew.
-        with open(patch.name, 'r') as p:
+        with open(patch.name, "r") as p:
             (updated, removed) = get_packages_from_patch(
                 p, config=self.config, modules=self.modules, staff=self.staff
             )
         self.assertEqual(len(updated), 2)
         self.assertEqual(len(removed), 0)
         for package in updated:
-            self.assertEqual(package.name, 'pkgnew')
-        self.assertCountEqual(
-            [package.format for package in updated], ['rpm', 'oci'])
+            self.assertEqual(package.name, "pkgnew")
+        self.assertCountEqual([package.format for package in updated], ["rpm", "oci"])

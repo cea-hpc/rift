@@ -36,21 +36,24 @@ Helper to push REST review to Gerrit Code Reviewer server.
 
 import json
 import logging
+
 try:
     import urllib2 as urllib
 except ImportError:
     import urllib.request as urllib
 
 import ssl
+
 from rift import RiftError
 
-class Review():
+
+class Review:
     """Gerrit review."""
 
     def __init__(self):
-        self.labels = {'W': 'warning', 'E': 'error'}
-        self.stats = {'E': 0}
-        self.msg_header = 'Rift review'
+        self.labels = {"W": "warning", "E": "error"}
+        self.stats = {"E": 0}
+        self.msg_header = "Rift review"
         self.comments = {}
         self.validated = True
 
@@ -61,15 +64,14 @@ class Review():
 
         msg = f"({self.labels[label]}) {message}"
         comment = {
-            'message': msg,
+            "message": msg,
         }
         if line is not None:
-            comment['line'] = line
+            comment["line"] = line
         self.comments.setdefault(filepath, []).append(comment)
 
     def _message(self):
-        stats = ((cnt, self.labels[code])
-                 for code, cnt in list(self.stats.items()))
+        stats = ((cnt, self.labels[code]) for code, cnt in list(self.stats.items()))
         msg = ", ".join(f"{cnt} {label}(s)" for cnt, label in stats)
         return f"{self.msg_header}: {msg}"
 
@@ -79,44 +81,46 @@ class Review():
 
     def push(self, config, changeid, revid):
         """Send REST request to Gerrit server from config"""
-        auth_methods = ('digest', 'basic')
+        auth_methods = ("digest", "basic")
 
-        gerrit_config = config.get('gerrit')
+        gerrit_config = config.get("gerrit")
         if gerrit_config is None:
             raise RiftError("Gerrit configuration is not defined")
 
-        realm = gerrit_config.get('realm')
-        server = gerrit_config.get('server')
-        username = gerrit_config.get('username')
-        password = gerrit_config.get('password')
-        auth_method = gerrit_config.get('auth_method', 'basic')
+        realm = gerrit_config.get("realm")
+        server = gerrit_config.get("server")
+        username = gerrit_config.get("username")
+        password = gerrit_config.get("password")
+        auth_method = gerrit_config.get("auth_method", "basic")
 
         if realm is None:
             raise RiftError("Gerrit realm is not defined")
-        if server is None and gerrit_config.get('url') is None:
+        if server is None and gerrit_config.get("url") is None:
             raise RiftError("Gerrit url is not defined")
         if username is None:
             raise RiftError("Gerrit username is not defined")
         if password is None:
             raise RiftError("Gerrit password is not defined")
         if auth_method not in auth_methods:
-            raise RiftError(f"Gerrit auth_method is not correct (supported {auth_methods})")
+            raise RiftError(
+                f"Gerrit auth_method is not correct (supported {auth_methods})"
+            )
 
         # Set a default url if only gerrit_server was defined
-        url = gerrit_config.get('url', f"https://{server}")
+        url = gerrit_config.get("url", f"https://{server}")
 
         # FIXME: Don't check certificate
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        #https_sslv3_handler = urllib.HTTPSHandler(context=ssl.SSLContext(ssl.PROTOCOL_SSLv3))
+        # https_sslv3_handler = urllib.HTTPSHandler(context=ssl.SSLContext(ssl.PROTOCOL_SSLv3))
         https_sslv3_handler = urllib.HTTPSHandler(context=ctx)
 
         api_url = f"{url}/gerrit/a/changes/{changeid}/revisions/{revid}/review"
-        if auth_method == 'digest':
+        if auth_method == "digest":
             authhandler = urllib.HTTPDigestAuthHandler()
             authhandler.add_password(realm, server, username, password)
-        elif auth_method == 'basic':
+        elif auth_method == "basic":
             pw_mgr = urllib.HTTPPasswordMgrWithDefaultRealm()
             # this creates a password manager
             pw_mgr.add_password(None, url, username, password)
@@ -132,14 +136,14 @@ class Review():
             "comments": self.comments,
         }
         if self.validated:
-            request['labels'] = {"Code-Review": '+1'}
+            request["labels"] = {"Code-Review": "+1"}
         data = json.dumps(request, indent=2)
-
 
         logging.debug("Sending review request to %s", api_url)
         logging.debug("Request content: %s", data)
 
-        req = urllib.Request(api_url, data.encode("utf8"),
-                             {'Content-Type': 'application/json'})
-        req.get_method = lambda: 'POST'
+        req = urllib.Request(
+            api_url, data.encode("utf8"), {"Content-Type": "application/json"}
+        )
+        req.get_method = lambda: "POST"
         urllib.urlopen(req).read()

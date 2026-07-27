@@ -35,31 +35,32 @@ Contains helper class to work with 'mock' tool, used to build RPMS in a chroot
 environment.
 """
 
-import os
-import shutil
-import glob
 import getpass
+import glob
 import logging
+import os
+import shlex
+import shutil
 import threading
 from contextlib import contextmanager
-import shlex
 from textwrap import dedent
+
 from jinja2 import Template
 
 from rift import RiftError
-from rift.TempDir import TempDir
-from rift.RPM import RPM
-from rift.run import run_command
 from rift.Config import _DEFAULT_VARIANT
 from rift.proxy import AuthenticatedRepositoryProxyRuntime
+from rift.RPM import RPM
+from rift.run import run_command
+from rift.TempDir import TempDir
 
 # Global dictionary of re-entrant locks for each mock name.
 _mock_chroot_locks = {}
 # Mutex to serialize access to _mock_chroot_locks dictionary.
 _mock_chroot_global_mutex = threading.Lock()
 
-RPMLINT_CONFIG_V1 = 'rpmlint'
-RPMLINT_CONFIG_V2 = 'rpmlint.toml'
+RPMLINT_CONFIG_V1 = "rpmlint"
+RPMLINT_CONFIG_V2 = "rpmlint.toml"
 
 
 def rpmlint_env(configdir=None):
@@ -71,7 +72,7 @@ def rpmlint_env(configdir=None):
     if not configdir:
         return None
     env = os.environ.copy()
-    env['XDG_CONFIG_HOME'] = os.path.realpath(configdir)
+    env["XDG_CONFIG_HOME"] = os.path.realpath(configdir)
     return env
 
 
@@ -103,16 +104,16 @@ def rpmlint_chroot_script(spec_filepath):
     """).strip()
 
 
-class Mock():
+class Mock:
     """
     Interact with 'mock' command, manage its config files and created RPMS.
     """
 
-    MOCK_DIR = '/etc/mock'
-    MOCK_TEMPLATE = 'mock.tpl'
-    MOCK_DEFAULT = 'default.cfg'
-    MOCK_FILES = ['logging.ini', 'site-defaults.cfg']
-    MOCK_RESULT = '/var/lib/mock/%s/result'
+    MOCK_DIR = "/etc/mock"
+    MOCK_TEMPLATE = "mock.tpl"
+    MOCK_DEFAULT = "default.cfg"
+    MOCK_FILES = ["logging.ini", "site-defaults.cfg"]
+    MOCK_RESULT = "/var/lib/mock/%s/result"
 
     def __init__(self, config, arch, proj_vers=None):
         self._config = config
@@ -143,8 +144,8 @@ class Mock():
             _lock.release()
 
     def _build_template_ctx(self, repolist):
-        """ Create a context to build mock template """
-        context = {'name': self._mockname, 'arch': self._arch, 'repos': []}
+        """Create a context to build mock template"""
+        context = {"name": self._mockname, "arch": self._arch, "repos": []}
         # Populate with repolist
         prio = 1000
         for idx, repo in enumerate(repolist, start=1):
@@ -154,30 +155,29 @@ class Mock():
             if self._repo_proxy and repo.authenticated():
                 repo_url = self._repo_proxy.repo_url(repo, "127.0.0.1")
             repo_ctx = {
-                'name': repo.name or f"repo{idx}",
-                'priority': prio,
-                'url': repo_url,
-                'variants': repo.variants,
-                'authenticated': repo.authenticated(),
-                }
+                "name": repo.name or f"repo{idx}",
+                "priority": prio,
+                "url": repo_url,
+                "variants": repo.variants,
+                "authenticated": repo.authenticated(),
+            }
             if repo.module_hotfixes:
-                repo_ctx['module_hotfixes'] = repo.module_hotfixes
+                repo_ctx["module_hotfixes"] = repo.module_hotfixes
             if repo.excludepkgs:
-                repo_ctx['excludepkgs'] = repo.excludepkgs
+                repo_ctx["excludepkgs"] = repo.excludepkgs
             if repo.proxy:
-                repo_ctx['proxy'] = repo.proxy
-            context['repos'].append(repo_ctx)
+                repo_ctx["proxy"] = repo.proxy
+            context["repos"].append(repo_ctx)
         return context
-
 
     def _create_template(self, repolist, dstpath):
         """Create 'default.cfg' config file based on a template."""
         # Read template
         tplfile = self._config.project_path(self.MOCK_TEMPLATE)
-        with open(tplfile, encoding='utf-8') as fh:
+        with open(tplfile, encoding="utf-8") as fh:
             tpl = Template(fh.read())
         # Write file content
-        with open(dstpath, 'w', encoding='utf-8') as fmock:
+        with open(dstpath, "w", encoding="utf-8") as fmock:
             fmock.write(tpl.render(self._build_template_ctx(repolist)))
         # We have to keep template timestamp to avoid being detected as a new
         # one each time.
@@ -197,7 +197,7 @@ class Mock():
         if repolist is None:
             repolist = []
 
-        self._tmpdir = TempDir('mock')
+        self._tmpdir = TempDir("mock")
         self._tmpdir.create()
         dstpath = os.path.join(self._tmpdir.path, self.MOCK_DEFAULT)
         self._create_template(repolist, dstpath)
@@ -212,14 +212,15 @@ class Mock():
                     f"Repository {repo.path} does not exist, unable to "
                     "initialize Mock environment"
                 )
+
     def _build_macro_args(self):
-        """ Return mock argument to define rpm_macros file """
-        rpm_macros = self._config.get('rpm_macros', {})
+        """Return mock argument to define rpm_macros file"""
+        rpm_macros = self._config.get("rpm_macros", {})
         if not rpm_macros:
             return []
         # Generate rpm.macro file
-        macropath = os.path.join(self._tmpdir.path, 'rpm.macro')
-        with open(macropath, 'w', encoding='utf-8') as fmacro:
+        macropath = os.path.join(self._tmpdir.path, "rpm.macro")
+        with open(macropath, "w", encoding="utf-8") as fmacro:
             for key, value in rpm_macros.items():
                 logging.debug("> adding macro %s=%s", key, value)
                 fmacro.write(f"%{key} {value}\n")
@@ -227,17 +228,17 @@ class Mock():
 
     def _mock_base(self):
         """Return base argument to launch mock"""
-        args = [f'--configdir={self._tmpdir.path}'] + self._build_macro_args()
+        args = [f"--configdir={self._tmpdir.path}"] + self._build_macro_args()
         logging.debug("> adding mock arguments %s", args)
         # Force mock to print build commands output with print_main_output=yes,
         # no matter if stdout/stderr is a TTY. It is required to capture this
         # output and have the possibility to report it junit files in case of
         # failure, in all execution environments.
         return [
-            'mock',
-            '--config-opts',
-            'print_main_output=yes',
-            f"--configdir={self._tmpdir.path}"
+            "mock",
+            "--config-opts",
+            "print_main_output=yes",
+            f"--configdir={self._tmpdir.path}",
         ] + self._build_macro_args()
 
     def _exec(self, cmd, merge_out_err=True):
@@ -246,13 +247,13 @@ class Mock():
         RiftError with its output in case of error.
         """
         cmd = self._mock_base() + cmd
-        logging.debug('Running mock: %s', ' '.join(cmd))
+        logging.debug("Running mock: %s", " ".join(cmd))
         proc = run_command(
             cmd,
             live_output=logging.getLogger().isEnabledFor(logging.INFO),
             capture_output=True,
             merge_out_err=merge_out_err,
-            cwd='/'
+            cwd="/",
         )
         if proc.returncode != 0:
             raise RiftError(proc.out if merge_out_err else proc.err)
@@ -268,13 +269,13 @@ class Mock():
         self._repo_proxy = AuthenticatedRepositoryProxyRuntime(self._config, repolist)
         self._repo_proxy.start()
         self._init_tmp_conf(repolist)
-        self._exec(['--init'])
+        self._exec(["--init"])
 
     def _bind_mount_dirs_opt(self, paths):
         """Return mock bind_mount plugin option for dirs (host path = chroot path)."""
         unique = sorted({os.path.realpath(p) for p in paths})
         pairs = ",".join(f"('{p}', '{p}')" for p in unique)
-        return f'--plugin-option=bind_mount:dirs=[{pairs}]'
+        return f"--plugin-option=bind_mount:dirs=[{pairs}]"
 
     def read_spec(self, filepath):
         """
@@ -286,12 +287,12 @@ class Mock():
         proc = self._exec(
             [
                 self._bind_mount_dirs_opt([filepath_rp]),
-                'chroot',
-                'rpmspec',
-                '--parse',
-                filepath_rp
+                "chroot",
+                "rpmspec",
+                "--parse",
+                filepath_rp,
             ],
-            merge_out_err=False
+            merge_out_err=False,
         )
 
         lines = []
@@ -329,14 +330,14 @@ class Mock():
         # Install rpmlint and kernel-devel in the chroot (removed by --clean).
         self._exec(
             [
-                '--no-clean',
-                '--no-cleanup-after',
-                '--quiet',
-                '--pm-cmd',
-                'install',
-                '-y',
-                'rpmlint',
-                'kernel-devel',
+                "--no-clean",
+                "--no-cleanup-after",
+                "--quiet",
+                "--pm-cmd",
+                "install",
+                "-y",
+                "rpmlint",
+                "kernel-devel",
             ]
         )
 
@@ -344,27 +345,27 @@ class Mock():
         # because callers need return code and output of rpmlint command.
         cmd = self._mock_base() + [
             bind_opt,
-            '--quiet',
-            'chroot',
-            '--',
-            'bash',
-            '-c',
+            "--quiet",
+            "chroot",
+            "--",
+            "bash",
+            "-c",
             rpmlint_chroot_script(spec_fp),
         ]
-        logging.debug('Running mock rpmlint chroot: %s', ' '.join(cmd[:8]))
+        logging.debug("Running mock rpmlint chroot: %s", " ".join(cmd[:8]))
         try:
             return run_command(
                 cmd,
                 capture_output=True,
                 merge_out_err=False,
-                cwd='/',
+                cwd="/",
                 env=rpmlint_env(configdir),
             )
         finally:
             # Clean the chroot to remove rpmlint, kernel-devel, and deps.
-            self._exec(['--quiet', '--clean'])
+            self._exec(["--quiet", "--clean"])
 
-    def resultrpms(self, pattern='*.rpm', sources=True):
+    def resultrpms(self, pattern="*.rpm", sources=True):
         """
         Iterate over built RPMS matching `pattern' in mock result directory.
         """
@@ -389,7 +390,7 @@ class Mock():
         """Remove Mock environments (ie. chroots directories) from disk."""
         with self.lock():
             self._init_tmp_conf()
-            self._exec(['--scrub=all'])
+            self._exec(["--scrub=all"])
 
     def _stop_repo_proxy(self):
         """Stop repository proxy runtime if currently active."""
@@ -404,11 +405,11 @@ class Mock():
         """
         specpath = os.path.realpath(specpath)
         sourcedir = os.path.realpath(sourcedir)
-        cmd = ['--buildsrpm']
-        cmd += ['--no-clean', '--no-cleanup-after']
-        cmd += ['--spec', specpath, '--source', sourcedir]
+        cmd = ["--buildsrpm"]
+        cmd += ["--no-clean", "--no-cleanup-after"]
+        cmd += ["--spec", specpath, "--source", sourcedir]
         self._exec(cmd)
-        package = list(self.resultrpms('*.src.rpm'))[0]
+        package = list(self.resultrpms("*.src.rpm"))[0]
         # Sign source package
         if sign:
             package.sign()
@@ -417,16 +418,16 @@ class Mock():
 
     def build_rpms(self, srpm, variant, repos, sign):
         """Build binary RPMS using the provided Source RPM pointed by `srpm'"""
-        cmd = ['--no-clean', '--no-cleanup-after']
+        cmd = ["--no-clean", "--no-cleanup-after"]
 
         cmd += [srpm.filepath]
         if variant != _DEFAULT_VARIANT:
-            cmd += ['--with', variant]
+            cmd += ["--with", variant]
             for repo in repos.for_variant(variant):
-                cmd += ['--enablerepo', repo.name]
+                cmd += ["--enablerepo", repo.name]
         self._exec(cmd)
 
-        packages = list(self.resultrpms('*.rpm', sources=False))
+        packages = list(self.resultrpms("*.rpm", sources=False))
         # Sign all built binary packages
         if sign:
             for package in packages:

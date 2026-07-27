@@ -31,5 +31,6 @@
 #
 
 """Module to handle different annexes target."""
+
 from rift.annex._base import Annex
 from rift.annex.utils import is_binary, is_pointer

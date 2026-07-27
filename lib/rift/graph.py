@@ -34,19 +34,21 @@
 Module to track dependencies between packages in Rift projects in a graph and
 solve recursive build requirements.
 """
+
+import logging
+import textwrap
 import time
 from collections import namedtuple
-import textwrap
-import logging
 
-from rift.package import ProjectPackages
 from rift import RiftError
+from rift.package import ProjectPackages
 
 BuildRequirement = namedtuple("BuildRequirement", ["package", "reasons"])
 
 
 class PackageDependencyNode:
     """Node in PackagesDependencyGraph."""
+
     def __init__(self, package):
         self.package = package
         self.subpackages = package.subpackages()
@@ -62,14 +64,13 @@ class PackageDependencyNode:
         # Check depends in info.yaml
         if self.package.depends is not None:
             return (
-                node.package.format == self.package.format and
-                node.package.name in self.package.depends
+                node.package.format == self.package.format
+                and node.package.name in self.package.depends
             )
         # If dependencies are not defined in info.yaml, look at build requires
         # and produced subpackages found in spec file.
         return any(
-            build_require in node.subpackages
-            for build_require in self.build_requires
+            build_require in node.subpackages for build_require in self.build_requires
         )
 
     def required_subpackages(self, rdep):
@@ -92,9 +93,7 @@ class PackageDependencyNode:
         """
         if rdep.package.depends is not None:
             return f"depends on {self.package.format}:{self.package.name}"
-        return 'build depends on ' + ', '.join(
-            self.required_subpackages(rdep)
-        )
+        return "build depends on " + ", ".join(self.required_subpackages(rdep))
 
     def draw_label(self):
         """
@@ -103,19 +102,21 @@ class PackageDependencyNode:
         return (
             '<<table border="0" cellborder="0" cellpadding="1"><tr>'
             '<td bgcolor="#555555" align="center">'
-            f"<font color=\"white\">{self.package.format}:{self.package.name}</font>"
-            '</td></tr>'
-            + ''.join(
+            f'<font color="white">{self.package.format}:{self.package.name}</font>'
+            "</td></tr>"
+            + "".join(
                 [
-                    f"<tr><td align=\"center\">{subpackage}</td></tr>"
+                    f'<tr><td align="center">{subpackage}</td></tr>'
                     for subpackage in self.subpackages
                 ]
             )
-            + '</table>>'
+            + "</table>>"
         )
+
 
 class PackagesDependencyGraph:
     """Graph of dependencies between packages in Rift project."""
+
     def __init__(self):
         self.nodes = []
         self.path = None
@@ -135,7 +136,7 @@ class PackagesDependencyGraph:
                         f"{rdep.package.format}:{rdep.package.name}"
                         for rdep in node.rdeps
                     ]
-                )
+                ),
             )
 
     def draw(self, external, packages):
@@ -149,12 +150,12 @@ class PackagesDependencyGraph:
         # cases, there are generally more relations and default dot layout is
         # preferred.
         print(
-            'digraph rift {\n'
+            "digraph rift {\n"
             f"  layout={'dot' if external or packages else 'circo'} \n"
             '  fontname="Helvetica,Arial,sans-serif"\n'
             '  node [fontname="Helvetica,Arial,sans-serif", style=filled, '
-            'fillcolor=white, penwidth=1, fontsize=8, shape=Mrecord, '
-            'height=0.25]\n'
+            "fillcolor=white, penwidth=1, fontsize=8, shape=Mrecord, "
+            "height=0.25]\n"
             '  edge [fontname="Helvetica,Arial,sans-serif", fontsize=6, '
             'fontcolor="#444444"]\n'
         )
@@ -177,7 +178,7 @@ class PackagesDependencyGraph:
         if node in self.represented_nodes:
             return
         print(
-            f"  \"{node.package.format}:{node.package.name}\" "
+            f'  "{node.package.format}:{node.package.name}" '
             f"[ label = {node.draw_label()} ];"
         )
         self.represented_nodes.append(node)
@@ -199,12 +200,10 @@ class PackagesDependencyGraph:
         if packages:
             logging.debug(
                 "Dependency graph represented with this list of packages: %s",
-                str(packages)
+                str(packages),
             )
         else:
-            logging.debug(
-                "Dependency graph represented with all project packages"
-            )
+            logging.debug("Dependency graph represented with all project packages")
         for node in self.nodes:
             # If a subset of packages is specified and node's package is not in
             # this list, skip this node.
@@ -222,9 +221,7 @@ class PackagesDependencyGraph:
         # distinctive color.
         if external:
             for external_dep in self.external_deps:
-                print(
-                    f"  \"{external_dep}\" [fillcolor=orange];"
-                )
+                print(f'  "{external_dep}" [fillcolor=orange];')
 
     def _draw_relations(self, external):
         """
@@ -239,11 +236,11 @@ class PackagesDependencyGraph:
                 if rdep not in self.represented_nodes:
                     continue
                 print(
-                    f"  \"{rdep.package.format}:{rdep.package.name}\" -> "
-                    f"\"{node.package.format}:{node.package.name}\" "
+                    f'  "{rdep.package.format}:{rdep.package.name}" -> '
+                    f'"{node.package.format}:{node.package.name}" '
                     '[ label = "',
                     textwrap.fill(node.rdep_reason(rdep), 20),
-                    '" ];'
+                    '" ];',
                 )
             # If external dependencies have to be represented, draw relations
             # between project packages and these external dependencies.
@@ -252,10 +249,10 @@ class PackagesDependencyGraph:
                     build_require_str = f"{node.package.format}:{build_require}"
                     if build_require_str in self.external_deps:
                         print(
-                            f"  \"{node.package.format}:{node.package.name}\" "
-                            f"-> \"{build_require_str}\";"
+                            f'  "{node.package.format}:{node.package.name}" '
+                            f'-> "{build_require_str}";'
                         )
-        print('}')
+        print("}")
 
     def _dep_index(self, new, result):
         """
@@ -296,16 +293,14 @@ class PackagesDependencyGraph:
         result = []
         logging.debug(
             "%s→ Source package %s:%s must be rebuilt",
-            '  '*depth,
+            "  " * depth,
             node.package.format,
-            node.package.name
+            node.package.name,
         )
-        result.append(
-            BuildRequirement(node.package, [reason])
-        )
+        result.append(BuildRequirement(node.package, [reason]))
 
         # Remove the end of the processing path after the current node
-        del self.path[max(0, depth-1):-1]
+        del self.path[max(0, depth - 1) : -1]
         # Add current node to the processing path
         self.path.append(node)
 
@@ -317,11 +312,11 @@ class PackagesDependencyGraph:
             if rdep in self.path[0:depth]:
                 logging.debug(
                     "%s   ⥀ Loop detected on node %s:%s at depth %d: %s",
-                    '  '*depth,
+                    "  " * depth,
                     rdep.package.format,
                     rdep.package.name,
                     depth,
-                    '→'.join(
+                    "→".join(
                         f"{node.package.format}:{node.package.name}"
                         for node in self.path + [rdep]
                     ),
@@ -330,21 +325,19 @@ class PackagesDependencyGraph:
                 continue
             logging.debug(
                 "%s  Exploring reverse dependency %s:%s",
-                '  '*depth,
+                "  " * depth,
                 rdep.package.format,
-                rdep.package.name
+                rdep.package.name,
             )
             # Iterate over all recursively solved build requirements for this
             # reverse dependency.
-            build_requirements = self._solve(rdep, reason, depth+1)
+            build_requirements = self._solve(rdep, reason, depth + 1)
             for idx, build_requirement in enumerate(build_requirements):
                 found, position = self._dep_index(build_requirements[idx:], result)
                 if found:
                     # Build requirement already present in result, just extend
                     # the build reasons.
-                    result[position].reasons.extend(
-                        build_requirement.reasons
-                    )
+                    result[position].reasons.extend(build_requirement.reasons)
                 elif position == -1:
                     # The recursive build requirements of the new build
                     # requirement are not present in the list, just append the
@@ -363,8 +356,8 @@ class PackagesDependencyGraph:
         self.path = []  # Start with empty path
         for node in self.nodes:
             if (
-                node.package.name == package.name and
-                node.package.format == package.format
+                node.package.name == package.name
+                and node.package.format == package.format
             ):
                 return self._solve(node, "User request")
 
@@ -390,8 +383,9 @@ class PackagesDependencyGraph:
             try:
                 package.load()
             except (RiftError, FileNotFoundError) as err:
-                logging.warning("Skipping package '%s' unable to load: %s",
-                                package.name, err)
+                logging.warning(
+                    "Skipping package '%s' unable to load: %s", package.name, err
+                )
                 continue
             self._insert(package)
         toc = time.perf_counter()
@@ -404,9 +398,9 @@ class PackagesDependencyGraph:
         graph = cls()
         graph.build(
             [
-                package for package in ProjectPackages.list(
-                    config, staff, modules
-                ) if not formats or package.format in formats
+                package
+                for package in ProjectPackages.list(config, staff, modules)
+                if not formats or package.format in formats
             ]
         )
         return graph

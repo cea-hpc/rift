@@ -37,26 +37,26 @@ Class to manipulate packages and package tests with Rift.
 import glob
 import logging
 import os
+import re
+import shlex
 from abc import ABC, abstractmethod
 
-import shlex
-import re
 import yaml
 
 from rift import RiftError
 from rift.Config import OrderedLoader
-from rift.utils import message
-from rift.run import run_command
 from rift.repository import ProjectArchRepositories
+from rift.run import run_command
+from rift.utils import message
 
-_META_FILE = 'info.yaml'
-_SOURCES_DIR = 'sources'
-_TESTS_DIR = 'tests'
-_DOC_FILES = ['README', 'README.md', 'README.rst', 'README.txt']
+_META_FILE = "info.yaml"
+_SOURCES_DIR = "sources"
+_TESTS_DIR = "tests"
+_DOC_FILES = ["README", "README.md", "README.rst", "README.txt"]
 
 
 # Rift supported package formats
-RIFT_SUPPORTED_FORMATS = ('rpm', 'oci')
+RIFT_SUPPORTED_FORMATS = ("rpm", "oci")
 
 
 class Package(ABC):
@@ -73,7 +73,7 @@ class Package(ABC):
         self.name = name
         # Check package format. Allow special _virtual format to handle
         # unexisting package (typically package being removed).
-        if _format not in RIFT_SUPPORTED_FORMATS + ('_virtual',):
+        if _format not in RIFT_SUPPORTED_FORMATS + ("_virtual",):
             raise RiftError(f"Unsupported package format {_format}")
         self.format = _format
 
@@ -86,7 +86,7 @@ class Package(ABC):
         self.exclude_archs = None
 
         # Static paths
-        pkgdir = os.path.join(self._config.get('packages_dir'), self.name)
+        pkgdir = os.path.join(self._config.get("packages_dir"), self.name)
         self.dir = self._config.project_path(pkgdir)
         self.sourcesdir = os.path.join(self.dir, _SOURCES_DIR)
         self.testsdir = os.path.join(self.dir, _TESTS_DIR)
@@ -113,7 +113,7 @@ class Package(ABC):
 
     def check(self):
         """Load package and check info."""
-        message('Validate package info...')
+        message("Validate package info...")
         self.check_info()
 
     def _check_generic_info(self):
@@ -155,17 +155,17 @@ class Package(ABC):
         """Return dict of package generic metadata to write in metadata file."""
         data = {}
         if self.module:
-            data['module'] = self.module
+            data["module"] = self.module
         if self.reason:
-            data['reason'] = self.reason
+            data["reason"] = self.reason
         if self.maintainers:
-            data['maintainers'] = self.maintainers
+            data["maintainers"] = self.maintainers
         if self.origin:
-            data['origin'] = self.origin
+            data["origin"] = self.origin
         if self.depends:
-            data['depends'] = self.depends
+            data["depends"] = self.depends
         if self.exclude_archs:
-            data['exclude_archs'] = self.exclude_archs
+            data["exclude_archs"] = self.exclude_archs
         return data
 
     @abstractmethod
@@ -194,28 +194,28 @@ class Package(ABC):
 
         # Write meta information
         data = self._serialize_metadata()
-        with open(self.metafile, 'w', encoding='utf-8') as fyaml:
-            yaml.dump({'package': data}, fyaml, default_flow_style=False)
+        with open(self.metafile, "w", encoding="utf-8") as fyaml:
+            yaml.dump({"package": data}, fyaml, default_flow_style=False)
 
     def _deserialize_generic_metadata(self, data):
         """Set generic package object attribute with values in metadata dict."""
-        self.module = data.get('module')
-        if isinstance(data.get('maintainers'), str):
-            self.maintainers = [data['maintainers']]
+        self.module = data.get("module")
+        if isinstance(data.get("maintainers"), str):
+            self.maintainers = [data["maintainers"]]
         else:
-            self.maintainers = data.get('maintainers')
-        self.reason = data.get('reason')
-        self.origin = data.get('origin')
-        depends = data.get('depends')
+            self.maintainers = data.get("maintainers")
+        self.reason = data.get("reason")
+        self.origin = data.get("origin")
+        depends = data.get("depends")
         if depends is not None:
             if isinstance(depends, str):
                 self.depends = [depends]
             else:
                 self.depends = depends
-        if isinstance(data.get('exclude_archs'), str):
-            self.exclude_archs = [data.get('exclude_archs')]
+        if isinstance(data.get("exclude_archs"), str):
+            self.exclude_archs = [data.get("exclude_archs")]
         else:
-            self.exclude_archs = data.get('exclude_archs', [])
+            self.exclude_archs = data.get("exclude_archs", [])
 
     @abstractmethod
     def _deserialize_specific_metadata(self, data):
@@ -239,10 +239,10 @@ class Package(ABC):
                 raise RiftError(msg)
             infopath = self.metafile
 
-        with open(infopath, encoding='utf-8') as fyaml:
+        with open(infopath, encoding="utf-8") as fyaml:
             data = yaml.load(fyaml, Loader=OrderedLoader)
 
-        data = data.pop('package') or {}
+        data = data.pop("package") or {}
         self._deserialize_metadata(data)
 
         self.check_info()
@@ -264,7 +264,7 @@ class Package(ABC):
 
     def tests(self):
         """An iterator over Test objects for each test files."""
-        testspattern = os.path.join(self.testsdir, '*.sh')
+        testspattern = os.path.join(self.testsdir, "*.sh")
         for testpath in glob.glob(testspattern):
             test = Test(testpath)
             # Skip the test if restricted to other specific package formats.
@@ -300,15 +300,16 @@ class ActionableArchPackage(ABC):
     architecture. This class must be overriden with expected methods for every
     supported package formats.
     """
+
     def __init__(self, package, arch):
         self.name = package.name
         self.buildfile = package.buildfile
         self.config = package._config
         self.package = package
         self.arch = arch
-        self.repos = ProjectArchRepositories(
-            self.config, self.arch
-        ).for_format(self.package.format)
+        self.repos = ProjectArchRepositories(self.config, self.arch).for_format(
+            self.package.format
+        )
 
     @abstractmethod
     def build(self, **kwargs):
@@ -324,7 +325,7 @@ class ActionableArchPackage(ABC):
         provided. Shell will be initialized with these functions before running
         the test.
         """
-        cmd = ''
+        cmd = ""
         if not funcs:
             funcs = {}
         for func, code in funcs.items():
@@ -345,7 +346,7 @@ class ActionableArchPackage(ABC):
         """
 
 
-class Test():
+class Test:
     """
     Wrapper around test scripts or test commands.
 
@@ -353,8 +354,8 @@ class Test():
     specific package formats.
     """
 
-    _LOCAL_PATTERN = '*** RIFT LOCAL ***'
-    _FORMAT_PATTERN = r'\*\*\* RIFT FORMAT (\S+) \*\*\*'
+    _LOCAL_PATTERN = "*** RIFT LOCAL ***"
+    _FORMAT_PATTERN = r"\*\*\* RIFT FORMAT (\S+) \*\*\*"
 
     def __init__(self, command, name=None):
         self.command = command
@@ -370,7 +371,7 @@ class Test():
         Look for special patterns (local or format restrictions) in file header
         and flag the test accordingly.
         """
-        with open(self.command, 'rt', encoding='utf-8') as ftest:
+        with open(self.command, "rt", encoding="utf-8") as ftest:
             data = ftest.read(blocksize)
             if self._LOCAL_PATTERN in data:
                 logging.debug("Test '%s' detected as local", self.name)
@@ -381,5 +382,6 @@ class Test():
             if self.formats:
                 logging.debug(
                     "Test '%s' restricted to specific formats: %s",
-                    self.name, ', '.join(self.formats)
+                    self.name,
+                    ", ".join(self.formats),
                 )

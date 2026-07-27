@@ -35,15 +35,14 @@ Function to run a command with possibility to capture output while streaming
 live output on stdout/stderr.
 """
 
-import sys
-import io
 import collections
+import io
 import selectors
 import subprocess
+import sys
 
-RunResult = collections.namedtuple(
-    'RunResult', ['returncode', 'out', 'err']
-)
+RunResult = collections.namedtuple("RunResult", ["returncode", "out", "err"])
+
 
 def _handle_process_output(process, capture_output, live_output, merge_out_err):
     """Handle process output until it is terminated."""
@@ -63,6 +62,7 @@ def _handle_process_output(process, capture_output, live_output, merge_out_err):
             buf_out.write(line)
         if live_output:
             sys.stdout.write(line)
+
     def handle_stderr_line(line):
         if capture_output:
             buf_err.write(line)
@@ -72,6 +72,7 @@ def _handle_process_output(process, capture_output, live_output, merge_out_err):
     # Process output event handlers
     def handle_stdout_event(stream):
         handle_stdout_line(stream.readline())
+
     def handle_stderr_event(stream):
         handle_stderr_line(stream.readline())
 
@@ -105,13 +106,13 @@ def _handle_process_output(process, capture_output, live_output, merge_out_err):
 
 
 def run_command(
-        cmd,
-        live_output=True,
-        capture_output=False,
-        merge_out_err=False,
-        manage_output=True,
-        **kwargs
-    ):
+    cmd,
+    live_output=True,
+    capture_output=False,
+    merge_out_err=False,
+    manage_output=True,
+    **kwargs,
+):
     """
     Run a command and return a RunResult named tuple. When live_output is True,
     command stdout/stderr are redirected to current process stdout/stderr. When
@@ -141,9 +142,8 @@ def run_command(
         stdout=channel,
         stderr=channel,
         universal_newlines=True,
-        **kwargs
+        **kwargs,
     ) as process:
-
         if manage_output and (capture_output or live_output):
             # Handle process output
             buf_out, buf_err = _handle_process_output(
