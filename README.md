@@ -41,3 +41,40 @@ Pytest is configured in [pyproject.toml](./pyproject.toml) and in [pytest.ini](p
 > you do not have direct access to Internet, you must define this environment
 > variable with your network's proxy server to run the tests successfully.
 
+
+## Formatting
+
+Python code is formatted with [Ruff](https://docs.astral.sh/ruff/). Install it
+with either:
+
+```sh
+$ pip install ruff
+$ uv tool install ruff
+```
+
+Format and sort imports manually with:
+
+```sh
+$ ruff check --fix lib tests && ruff format lib tests
+```
+
+[prek](https://prek.j178.dev/) runs the same checks as a git commit hook and
+in CI on every push and pull request to `master`. Install it with either:
+
+```sh
+$ pip install prek
+$ uv tool install prek
+```
+
+Then enable the commit hook:
+
+```sh
+$ prek install
+```
+
+Or run all hooks on the whole tree with:
+
+```sh
+$ prek run --all-files
+```
+
