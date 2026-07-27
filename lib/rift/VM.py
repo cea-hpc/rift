@@ -174,7 +174,7 @@ class VM:
         # default emulated cpu architecture
         if self.arch == "aarch64":
             self.cpu_type = vm_config.get("cpu", "cortex-a72")
-        elif self.enable_kvm == False:
+        elif not self.enable_kvm:
             self.cpu_type = vm_config.get("cpu", "qemu64")
         else:
             self.cpu_type = vm_config.get("cpu", "host")

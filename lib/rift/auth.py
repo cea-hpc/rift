@@ -227,7 +227,8 @@ class Auth:
         token = self.config.get("idp_token")
         if not token:
             raise RiftError(
-                f"Missing idp_token in authentication state file {self.credentials_file}. "
+                "Missing idp_token in authentication state file "
+                f"{self.credentials_file}. "
                 "Run 'rift auth' first."
             )
         return token
@@ -235,9 +236,10 @@ class Auth:
     # Step 2: Get S3 credentials using token from (1)
     def get_s3_credentials(self):
         """
-        Obtains an S3 credential using an already-obtained OpenID credential, unless
-        an S3 credential is already available in auth object's config, in which case the credential
-        is considered to have already been obtained.
+        Obtains an S3 credential using an already-obtained OpenID credential,
+        unless an S3 credential is already available in auth object's config,
+        in which case the credential is considered to have already been
+        obtained.
 
         Returns True on success, False on failure.
         """
@@ -275,12 +277,18 @@ class Auth:
 
         creds = res_xml.get("AssumeRoleWithWebIdentityResponse")
         if not creds:
-            msg = "S3 credential response missing expected key: AssumeRoleWithWebIdentityResponse"
+            msg = (
+                "S3 credential response missing expected key: "
+                "AssumeRoleWithWebIdentityResponse"
+            )
             raise RiftError(msg)
 
         creds = creds.get("AssumeRoleWithWebIdentityResult")
         if not creds:
-            msg = "S3 credential response missing expected key: AssumeRoleWithWebIdentityResult"
+            msg = (
+                "S3 credential response missing expected key: "
+                "AssumeRoleWithWebIdentityResult"
+            )
             raise RiftError(msg)
 
         creds = creds.get("Credentials")
@@ -328,7 +336,10 @@ class Auth:
             msg = (
                 "found AWS S3 variables in environment; will bypass credentials file\n"
             )
-            msg += "to allow use of credential file, please clear these environment variables:"
+            msg += (
+                "to allow use of credential file, please clear these "
+                "environment variables:"
+            )
             msg += " AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN"
             logging.info(msg)
             self.config["access_key_id"] = aws_access_key_id

@@ -70,7 +70,7 @@ class ServerAnnex(GenericAnnex):
         self._auth = Auth(config) if auth == "idp_token" else None
 
     def _request_headers(self):
-        """Return HTTP headers for annex requests, including Bearer token if configured."""
+        """Return HTTP headers for annex requests, with Bearer token if set."""
         if self._auth is None:
             return {}
         token = self._auth.get_idp_token_noninteractive()

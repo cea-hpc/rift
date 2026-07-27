@@ -695,7 +695,7 @@ class ConfigTest(RiftTestCase):
         self.assertIsNone(config.get("repos")["repo3"].get("sync"))
 
     def test_load_sync_repo_missing_source(self):
-        """load() fails with DeclError when repositories synchronization source URL is missing."""
+        """load() fails when sync repo source URL is missing."""
         # Load minimal config
         cfgfile = make_temp_file(
             textwrap.dedent(
@@ -718,7 +718,7 @@ class ConfigTest(RiftTestCase):
             config.load(cfgfile.name)
 
     def test_load_sync_repo_invalid_method(self):
-        """load() fails with DeclError when repositories synchronization method is invalid."""
+        """load() fails when sync repo method is invalid."""
         # Load minimal config
         cfgfile = make_temp_file(
             textwrap.dedent(
@@ -1199,7 +1199,7 @@ class ConfigTestSyntax(RiftTestCase):
         self.assertEqual(param0["key2"], 1)
 
     def test_load_dict_merged_syntax_missing_required(self):
-        """load() merges dict from multiple files with syntax and required param missing in one file"""
+        """load() merges dicts and reports missing required param."""
         self._add_fake_params()
         conf_files = [
             make_temp_file(

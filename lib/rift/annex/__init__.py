@@ -34,3 +34,9 @@
 
 from rift.annex._base import Annex
 from rift.annex.utils import is_binary, is_pointer
+
+__all__ = [
+    "Annex",
+    "is_binary",
+    "is_pointer",
+]

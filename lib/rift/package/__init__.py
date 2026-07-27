@@ -34,3 +34,10 @@
 
 from rift.package._base import RIFT_SUPPORTED_FORMATS, Package, Test
 from rift.package._project import ProjectPackages
+
+__all__ = [
+    "RIFT_SUPPORTED_FORMATS",
+    "Package",
+    "ProjectPackages",
+    "Test",
+]

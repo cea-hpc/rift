@@ -112,11 +112,14 @@ class S3Annex(GenericAnnex):
 
     def get(self, identifier, destpath):
         """Get a file identified by identifier and copy it at destpath."""
-        # Checking annex push, expecting annex push path to be an s3-providing http(s) url
+        # Checking annex push, expecting annex push path to be an
+        # s3-providing http(s) url
         key = os.path.join(self.push_s3_prefix, identifier)
 
         s3 = self.get_push_s3_client()
-        # s3.meta.events.register('choose-signer.s3.*', botocore.handlers.disable_signing)
+        # s3.meta.events.register(
+        #     'choose-signer.s3.*', botocore.handlers.disable_signing
+        # )
 
         success = False
         with tempfile.NamedTemporaryFile(mode="wb", delete=False) as tmp_file:

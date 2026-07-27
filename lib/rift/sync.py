@@ -211,7 +211,7 @@ class RepoSyncIndexed(RepoSyncBase):
         if self.patterns.include:
             match_include = False
             for pattern in self.patterns.include:
-                if not re.match(pattern, relpath) is None:
+                if re.match(pattern, relpath) is not None:
                     match_include = True
                     break
             if not match_include:
@@ -222,7 +222,7 @@ class RepoSyncIndexed(RepoSyncBase):
 
         # Check file does not match any exclude pattern.
         for pattern in self.patterns.exclude:
-            if not re.search(pattern, relpath) is None:
+            if re.search(pattern, relpath) is not None:
                 logging.debug(
                     "Skipping file %s which matches exclude pattern %s",
                     relpath,
@@ -242,7 +242,7 @@ class RepoSyncIndexed(RepoSyncBase):
                 if skip_repodata and filename.startswith("repodata"):
                     continue
                 path = os.path.join(root, filename)
-                if not path in self.indexed_files:
+                if path not in self.indexed_files:
                     self.log_write(f"rm {path}")
                     logging.info("Removing unindexed file %s", path)
                     os.remove(path)

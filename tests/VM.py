@@ -376,9 +376,7 @@ class VMTest(RiftTestCase):
         self.assertNotEqual(helper_args, [])
 
     def test_make_drive_cmd_unexisting_repo(self):
-        """
-        Check drive command line generation raise error when file repository does not exist
-        """
+        """Test drive cmdline errors when file repository is missing."""
         vm = VM(self.config, None)
         vm._repos = [ConsumableRepository("file:///fail")]
         # test for all supported shared FS types
@@ -427,7 +425,7 @@ class VMTest(RiftTestCase):
         args = vm._gen_qemu_args(image_path, "/path/to/seed/iso")
         self.assertEqual(
             args,
-            expected_args + ["-drive", f"driver=raw,file=/path/to/seed/iso,if=virtio"],
+            expected_args + ["-drive", "driver=raw,file=/path/to/seed/iso,if=virtio"],
         )
         # Test with another arch
         vm.arch = "aarch64"
@@ -624,7 +622,7 @@ class VMTest(RiftTestCase):
     def test_download_last_modified_bearer(
         self, mock_download_file, mock_auth_cls, mock_last_modified
     ):
-        """Test VM download last modified check uses Bearer token when vm.auth is idp_token."""
+        """Test VM download Last-Modified check uses Bearer idp_token."""
         mock_auth_cls.return_value.get_idp_token_noninteractive.return_value = (
             "tok-head"
         )

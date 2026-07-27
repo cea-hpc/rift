@@ -30,6 +30,9 @@
 # knowledge of the CeCILL license and that you accept its terms.
 #
 
+# Embedded git-diff fixtures contain long lines that must stay intact.
+# ruff: noqa: E501
+
 import os
 import textwrap
 

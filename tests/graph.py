@@ -351,7 +351,7 @@ class GraphTest(RiftProjectTestCase):
         self.assertIsInstance(build_requirements[0].package, PackageRPM)
 
     def test_multiple_packages_with_provides(self):
-        """Test graph with multiple packages and dependencies on provides in RPM spec files"""
+        """Test graph with packages depending on RPM Provides."""
         # Define 2 packages without depends in info.yaml but with build requires
         # on other subpackages provides.
         self.make_pkg(

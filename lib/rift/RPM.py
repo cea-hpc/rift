@@ -312,7 +312,10 @@ class Spec:
         """
         Update epoch:version-release
         """
-        self.evr = f"{self.epoch}{self.version}-{rift.utils.removesuffix(self.release, self.dist)}"
+        self.evr = (
+            f"{self.epoch}{self.version}-"
+            f"{rift.utils.removesuffix(self.release, self.dist)}"
+        )
 
     def _inc_release(self, release):
         dist = self.dist
@@ -461,10 +464,12 @@ class Spec:
 
             # Check if all sources are declared and present in package directory
             if pkg.sources - set(self.sources):
-                msg = f"Unused source file(s): {' '.join(pkg.sources - set(self.sources))}"
+                unused = pkg.sources - set(self.sources)
+                msg = f"Unused source file(s): {' '.join(unused)}"
                 raise RiftError(msg)
             if set(self.sources) - pkg.sources:
-                msg = f"Missing source file(s): {' '.join(set(self.sources) - pkg.sources)}"
+                missing = set(self.sources) - pkg.sources
+                msg = f"Missing source file(s): {' '.join(missing)}"
                 raise RiftError(msg)
 
         with self.mock.lock():

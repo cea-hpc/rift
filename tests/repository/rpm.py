@@ -513,7 +513,7 @@ class ArchRepositoriesRPMTest(RiftTestCase):
         shutil.rmtree(working_repo_path)
 
     def test_delete_matching_not_found(self):
-        """Test delete_matching() call expected method on working repo when package not found"""
+        """Test delete_matching() when package is not found."""
         working_repo_path = make_temp_dir()
         repos = ArchRepositoriesRPM(self.config, working_repo_path, "x86_64")
         repos.working = Mock(spec=LocalRepository)

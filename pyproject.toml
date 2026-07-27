@@ -35,6 +35,8 @@ target-version = "py37"  # ruff >=0.16 dropped py36; pylint still targets 3.6
 src = ["lib", "tests"]
 extend-exclude = ["vendor"]
 
+# E: pycodestyle errors
+# F: Pyflakes
 # I: isort — sort and organize imports
 [tool.ruff.lint]
-select = ["I"]
+select = ["E", "F", "I"]

@@ -609,7 +609,7 @@ class Config:
             return self._record_value(syntax, value)
         if check == "enum":
             enum_values = syntax.get("values", [])
-            if not value in enum_values:
+            if value not in enum_values:
                 raise DeclError(
                     f"Bad value {value} ({value.__class__.__name__}) for "
                     f"'{key}' (correct values: {', '.join(enum_values)})"

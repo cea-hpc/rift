@@ -1,6 +1,9 @@
+# Embedded git-diff fixtures contain long lines that must stay intact.
+# ruff: noqa: E501
+
 from unidiff import parse_unidiff
 
-from .TestUtils import RiftTestCase, make_temp_dir, make_temp_file
+from .TestUtils import RiftTestCase, make_temp_file
 
 
 class UnidiffTest(RiftTestCase):

@@ -113,7 +113,9 @@ class Review:
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        # https_sslv3_handler = urllib.HTTPSHandler(context=ssl.SSLContext(ssl.PROTOCOL_SSLv3))
+        # https_sslv3_handler = urllib.HTTPSHandler(
+        #     context=ssl.SSLContext(ssl.PROTOCOL_SSLv3)
+        # )
         https_sslv3_handler = urllib.HTTPSHandler(context=ctx)
 
         api_url = f"{url}/gerrit/a/changes/{changeid}/revisions/{revid}/review"

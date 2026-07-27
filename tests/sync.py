@@ -33,7 +33,7 @@ class RepoSyncFactoryTest(RiftTestCase):
         RepoSyncFactory.check_valid_method("epel")
 
     def test_check_valid_method_invalid_value(self):
-        """Test RepoSyncFactory check_valid_method() raises RiftError with invalid value."""
+        """Test check_valid_method() raises RiftError on invalid value."""
         with self.assertRaisesRegex(
             RiftError, "^Unsupported repository synchronization method fail$"
         ):
@@ -309,7 +309,7 @@ class RepoSyncEpelTest(RiftTestCase):
         )
 
     def test_clean(self):
-        """Test RepoSyncEpelTest synchronization clean unindexed files and directories."""
+        """Test RepoSyncEpel clean removes unindexed files and dirs."""
         self._init_fake_epel_repo(
             {
                 "repo1": {

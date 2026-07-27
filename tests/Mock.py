@@ -321,7 +321,7 @@ class MockTest(RiftProjectTestCase):
 
     @patch("rift.Mock.run_command")
     def test_rpmlint(self, mock_run_command):
-        """Test Mock.rpmlint() installs rpmlint, runs it in chroot, cleans, returns result."""
+        """Test Mock.rpmlint() installs, runs, cleans, and returns result."""
         spec_path = "/dev/package.spec"
         expected_script = rpmlint_chroot_script(spec_path)
 

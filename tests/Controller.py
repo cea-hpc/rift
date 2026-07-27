@@ -2,6 +2,9 @@
 # Copyright (C) 2018 CEA
 #
 
+# Wide expected query-table fixtures contain long lines that must stay intact.
+# ruff: noqa: E501
+
 import atexit
 import os.path
 import shutil
@@ -334,7 +337,8 @@ class ControllerProjectActionQueryTest(RiftProjectTestCase):
                 [
                     "query",
                     "--format",
-                    "%name %module %origin %reason %format %tests %version %arch %release "
+                    "%name %module %origin %reason %format %tests %version "
+                    "%arch %release "
                     "%changelogname %changelogtime %maintainers %modulemanager "
                     "%buildrequires",
                 ]
@@ -680,8 +684,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
     """
 
     def _check_qemuuserstatic(self):
-        """Skip the test if none qemu-$arch-static executable is found for all
-        architectures declared in project configuration."""
+        """Skip if no qemu-$arch-static binary for configured architectures."""
         if not any(
             [
                 os.path.exists(f"/usr/bin/qemu-{arch}-static")
@@ -1565,7 +1568,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
 
     @patch("rift.Controller.PackagesDependencyGraph")
     def test_build_graph(self, mock_graph_class):
-        """Test build generates graph of packages dependencies with dependency tracking enabled."""
+        """Test build builds dependency graph when tracking is enabled."""
         # Enable dependency tracking in configuration
         self.config.set("dependency_tracking", True)
         self.update_project_conf()
@@ -1577,7 +1580,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
     def test_build_graph_tracking_disabled(
         self, mock_graph_class, mock_project_packages_class
     ):
-        """Test build does not build graph of packages dependencies with dependency tracking disabled."""
+        """Test build skips dependency graph when tracking is disabled."""
         # Return empty list of packages with Package.list() to avoid actual
         # build iterations.
         mock_project_packages_class.list.return_value = []
@@ -1600,7 +1603,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
 
     @patch("rift.Controller.PackagesDependencyGraph")
     def test_validate_graph(self, mock_graph_class):
-        """Test validate generates graph of packages dependencies with dependency tracking enabled."""
+        """Test validate builds dependency graph when tracking is enabled."""
         # Enable dependency tracking in configuration
         self.config.set("dependency_tracking", True)
         self.update_project_conf()
@@ -1612,7 +1615,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
     def test_validate_graph_tracking_disabled(
         self, mock_graph_class, mock_project_packages_class
     ):
-        """Test validate does not build graph of packages dependencies with dependency tracking disabled."""
+        """Test validate skips dependency graph when tracking is disabled."""
         # Return empty list of packages with Package.list() to avoid actual
         # build iterations.
         mock_project_packages_class.list.return_value = []
@@ -1635,7 +1638,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         mock_graph_class.from_project.assert_not_called()
 
     def test_get_packages_to_build_tracking_disabled(self):
-        """Test get_packages_to_build() with tracking disabled (by default) returns user provided packages."""
+        """Test get_packages_to_build() returns given pkgs when tracking off."""
         args = Mock()
         args.skip_deps = False
         args.packages = ["pkg"]
@@ -1643,7 +1646,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         self.assertEqual([pkg.name for pkg in pkgs], ["pkg"])
 
     def test_get_packages_to_build_skip_deps(self):
-        """Test get_packages_to_build() with skip deps (tracking enabled) returns user provided packages."""
+        """Test get_packages_to_build() returns given pkgs with skip_deps."""
         self.config.set("dependency_tracking", True)
         args = Mock()
         args.skip_deps = True
@@ -1652,7 +1655,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         self.assertEqual([pkg.name for pkg in pkgs], ["pkg"])
 
     def test_get_packages_to_build_no_package(self):
-        """Test get_packages_to_build() (tracking enabled, w/o skip deps) returns empty with unexisting package."""
+        """Test get_packages_to_build() is empty for unknown package."""
         self.config.set("dependency_tracking", True)
         args = Mock()
         args.skip_deps = False
@@ -1664,7 +1667,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
 
     @patch("rift.package.rpm.Mock")
     def test_get_packages_to_build_package_order(self, mock_mock):
-        """Test get_packages_to_build() returns correctly ordered list of reverse dependencies."""
+        """Test get_packages_to_build() orders reverse dependencies."""
         """
         Test get_packages_to_build() returns correctly ordered list of reverse
         dependencies.
@@ -1765,7 +1768,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
 
     @patch("rift.package.rpm.Mock")
     def test_get_packages_to_build_cyclic_deps(self, mock_mock):
-        """Test get_packages_to_build() returns correctly ordered list of reverse dependencies."""
+        """Test get_packages_to_build() orders reverse dependencies."""
         self.make_pkg(name="libone", metadata={"depends": "libtwo"})
         self.make_pkg(name="libtwo", metadata={"depends": "libthree"})
         self.make_pkg(name="libthree", metadata={"depends": "libone"})
