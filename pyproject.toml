@@ -29,3 +29,12 @@ py-version = "3.6"
 # E1101: Used when a variable is accessed for a nonexistent member.
 # W0511: Used when a warning note as FIXME or XXX is detected.
 disable = ["E1101", "W0511"]
+
+[tool.ruff]
+target-version = "py37"  # ruff >=0.16 dropped py36; pylint still targets 3.6
+src = ["lib", "tests"]
+extend-exclude = ["vendor"]
+
+# I: isort — sort and organize imports
+[tool.ruff.lint]
+select = ["I"]
