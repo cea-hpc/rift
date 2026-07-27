@@ -266,7 +266,7 @@ class AuthenticatedRepositoryProxyRuntime:
         self.repositories = {
             repo.name: repo for repo in repositories if repo.authenticated()
         }
-        self.token = None
+        self._auth = None
         self.server = None
         self._thread = None
 
@@ -274,6 +274,19 @@ class AuthenticatedRepositoryProxyRuntime:
     def timeout(self):
         """Get repository proxy timeout."""
         return self._timeout
+
+    @property
+    def token(self):
+        """
+        Return a current IDP access token, refreshing when needed.
+
+        Fetched per access so long-running proxy sessions pick up refreshed
+        tokens before the access token expires. Returns None when the proxy
+        is not running.
+        """
+        if self._auth is None:
+            return None
+        return self._auth.get_idp_token_noninteractive()
 
     @property
     def active(self):
@@ -293,8 +306,10 @@ class AuthenticatedRepositoryProxyRuntime:
             logging.debug("No repositories need proxy, skipping proxy startup")
             return
 
-        # Get IDP token non-interactively.
-        self.token = Auth(self._config).get_idp_token_noninteractive()
+        # Ensure an IDP token is available before accepting proxy traffic.
+        # Tokens are re-fetched per upstream request via the token property.
+        self._auth = Auth(self._config)
+        self._auth.get_idp_token_noninteractive()
 
         # Start HTTP server in a separate thread.
         self.server = _ThreadingHTTPServer(
@@ -315,7 +330,7 @@ class AuthenticatedRepositoryProxyRuntime:
         self.server.server_close()
         self.server = None
         self._thread = None
-        self.token = None
+        self._auth = None
         logging.debug("Stopped repository proxy")
 
     @property

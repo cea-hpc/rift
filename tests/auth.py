@@ -1,15 +1,43 @@
+import base64
 import json
 import os
 import re
 import stat
 import unittest
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from rift import RiftError
-from rift.auth import Auth, AuthState
+from rift.auth import Auth, AuthState, jwt_expiration_dt
 
 from .test_utils import make_temp_file
+
+
+def _make_jwt(payload):
+    """Build a dummy unsigned JWT-like string with the given payload dict."""
+    header = base64.urlsafe_b64encode(b'{"alg":"none"}').rstrip(b"=").decode("ascii")
+    body = (
+        base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8"))
+        .rstrip(b"=")
+        .decode("ascii")
+    )
+    return f"{header}.{body}.sig"
+
+
+class JwtExpirationDtTest(unittest.TestCase):
+    """Unit tests for jwt_expiration_dt helper."""
+
+    def test_reads_exp(self):
+        exp = int((datetime.now() + timedelta(hours=1)).timestamp())
+        token = _make_jwt({"exp": exp})
+        self.assertEqual(jwt_expiration_dt(token), datetime.fromtimestamp(exp))
+
+    def test_non_jwt_returns_none(self):
+        self.assertIsNone(jwt_expiration_dt("not-a-jwt"))
+        self.assertIsNone(jwt_expiration_dt(None))
+
+    def test_missing_exp_returns_none(self):
+        self.assertIsNone(jwt_expiration_dt(_make_jwt({"sub": "user"})))
 
 
 class AuthStateTest(unittest.TestCase):
@@ -33,6 +61,7 @@ class AuthStateTest(unittest.TestCase):
         data = {
             "idp_token": "tok",
             "idp_token_expiration": "2099-01-01T00:00:00Z",
+            "idp_refresh_token": "refresh",
             "access_key_id": "ak",
             "secret_access_key": "sk",
             "session_token": "st",
@@ -53,6 +82,7 @@ class AuthStateTest(unittest.TestCase):
             {
                 "idp_token": "expired",
                 "idp_token_expiration": past,
+                "idp_refresh_token": "refresh",
                 "access_key_id": "ak",
                 "secret_access_key": "sk",
                 "session_token": "st",
@@ -71,6 +101,7 @@ class AuthStateTest(unittest.TestCase):
         )
         self.assertIsNone(restored.idp_token)
         self.assertIsNone(restored.idp_token_expiration)
+        self.assertIsNone(restored.idp_refresh_token)
         self.assertIsNone(restored.access_key_id)
         self.assertIsNone(restored.secret_access_key)
         self.assertIsNone(restored.session_token)
@@ -98,6 +129,7 @@ class AuthStateTest(unittest.TestCase):
         state = AuthState(
             idp_token="tok-from-file",
             idp_token_expiration=exp,
+            idp_refresh_token="refresh-from-file",
             access_key_id="ak",
             secret_access_key="sk",
             session_token="st",
@@ -109,6 +141,7 @@ class AuthStateTest(unittest.TestCase):
 
         restored = AuthState.restore(self._cred_path)
         self.assertEqual(restored.idp_token, "tok-from-file")
+        self.assertEqual(restored.idp_refresh_token, "refresh-from-file")
         self.assertEqual(restored.access_key_id, "ak")
         self.assertTrue(restored.has_s3_credentials())
         self.assertIsInstance(restored.expiration, datetime)
@@ -153,6 +186,16 @@ class AuthStateTest(unittest.TestCase):
             exp.strftime("%a %b %d %H:%M:%S %Y"),
         )
 
+    def test_idp_seconds_remaining(self):
+        """idp_seconds_remaining reflects stored datetime expiry."""
+        self.assertIsNone(AuthState().idp_seconds_remaining())
+        future = datetime.now() + timedelta(seconds=120)
+        state = AuthState(idp_token_expiration=future)
+        remaining = state.idp_seconds_remaining()
+        self.assertIsNotNone(remaining)
+        self.assertGreater(remaining, 100)
+        self.assertLess(remaining, 130)
+
 
 class AuthTest(unittest.TestCase):
     """Unit tests for rift.auth.Auth; add new test groups as methods here."""
@@ -164,6 +207,8 @@ class AuthTest(unittest.TestCase):
         self._minimal_config = {
             "idp_app_token": "app-token",
             "s3_credential_file": self._cred_path,
+            "idp_auth_endpoint": "https://idp.example/token",
+            "idp_token_refresh_threshold": 300,
         }
 
     def tearDown(self):
@@ -174,12 +219,116 @@ class AuthTest(unittest.TestCase):
         with open(self._cred_path, "w", encoding="utf-8") as f:
             json.dump(data, f)
 
+    @patch("rift.auth.requests.post")
+    def test_ensure_idp_token_fresh_near_expiry_without_refresh_skips(self, mock_post):
+        auth = Auth(self._minimal_config)
+        auth.state.idp_token_expiration = datetime.now() + timedelta(seconds=100)
+        auth._ensure_idp_token_fresh()
+        mock_post.assert_not_called()
+
+    @patch("rift.auth.requests.post")
+    def test_ensure_idp_token_fresh_above_threshold_skips_refresh(self, mock_post):
+        auth = Auth(self._minimal_config)
+        auth.state.idp_token_expiration = datetime.now() + timedelta(seconds=600)
+        auth.state.idp_refresh_token = "refresh"
+        auth._ensure_idp_token_fresh()
+        mock_post.assert_not_called()
+
+    @patch("rift.auth.requests.post")
+    def test_ensure_idp_token_fresh_unset_expiration_skips_refresh(self, mock_post):
+        auth = Auth(self._minimal_config)
+        auth.state.idp_refresh_token = "refresh"
+        auth._ensure_idp_token_fresh()
+        mock_post.assert_not_called()
+
+    @patch("rift.auth.requests.post")
+    def test_ensure_idp_token_fresh_disabled_when_threshold_zero(self, mock_post):
+        self._minimal_config["idp_token_refresh_threshold"] = 0
+        auth = Auth(self._minimal_config)
+        auth.state.idp_token_expiration = datetime.now() + timedelta(seconds=100)
+        auth.state.idp_refresh_token = "refresh"
+        auth._ensure_idp_token_fresh()
+        mock_post.assert_not_called()
+
+    @patch("rift.auth.requests.post")
+    def test_get_idp_token_password_persists_refresh_token(self, mock_post):
+        mock_post.return_value = MagicMock()
+        mock_post.return_value.json.return_value = {
+            "access_token": "access-1",
+            "expires_in": 3600,
+            "refresh_token": "refresh-1",
+        }
+        auth = Auth(self._minimal_config)
+        with patch.dict(
+            os.environ,
+            {"RIFT_AUTH_USER": "user", "RIFT_AUTH_PASSWORD": "pass"},
+        ):
+            self.assertTrue(auth.get_idp_token())
+
+        self.assertEqual(auth.state.idp_token, "access-1")
+        self.assertEqual(auth.state.idp_refresh_token, "refresh-1")
+        self.assertIsInstance(auth.state.idp_token_expiration, datetime)
+        with open(self._cred_path, encoding="utf-8") as f:
+            on_disk = json.load(f)
+        self.assertEqual(on_disk["idp_refresh_token"], "refresh-1")
+        mock_post.assert_called_once()
+        self.assertEqual(mock_post.call_args[1]["data"]["grant_type"], "password")
+
+    @patch("rift.auth.requests.post")
+    def test_get_idp_token_refreshes_when_below_threshold(self, mock_post):
+        mock_post.return_value = MagicMock()
+        mock_post.return_value.json.return_value = {
+            "access_token": "access-2",
+            "expires_in": 3600,
+            "refresh_token": "refresh-2",
+        }
+        auth = Auth(self._minimal_config)
+        auth.state.idp_token = "access-old"
+        auth.state.idp_refresh_token = "refresh-old"
+        auth.state.idp_token_expiration = datetime.now() + timedelta(seconds=60)
+
+        with self.assertLogs(level="INFO") as logs:
+            self.assertTrue(auth.get_idp_token())
+        self.assertIn(
+            "retrieved existing idp_token from auth file",
+            "\n".join(logs.output),
+        )
+
+        self.assertEqual(auth.state.idp_token, "access-2")
+        self.assertEqual(auth.state.idp_refresh_token, "refresh-2")
+        mock_post.assert_called_once()
+        self.assertEqual(mock_post.call_args[1]["data"]["grant_type"], "refresh_token")
+        self.assertEqual(mock_post.call_args[1]["data"]["refresh_token"], "refresh-old")
+
+    @patch("rift.auth.requests.post")
+    def test_get_idp_token_skips_refresh_above_threshold(self, mock_post):
+        auth = Auth(self._minimal_config)
+        auth.state.idp_token = "access-ok"
+        auth.state.idp_refresh_token = "refresh-ok"
+        auth.state.idp_token_expiration = datetime.now() + timedelta(seconds=600)
+
+        with self.assertLogs(level="INFO") as logs:
+            self.assertTrue(auth.get_idp_token())
+        self.assertIn(
+            "retrieved existing idp_token from auth file",
+            "\n".join(logs.output),
+        )
+
+        self.assertEqual(auth.state.idp_token, "access-ok")
+        mock_post.assert_not_called()
+
     def test_get_idp_token_noninteractive_env_token(self):
         self._write_state({})
         auth = Auth(self._minimal_config)
-        with patch.dict(os.environ, {"RIFT_AUTH_IDP_TOKEN": "from-env"}):
+
+        # Generate JWT token with 1 hour expiration.
+        exp = int((datetime.now() + timedelta(hours=1)).timestamp())
+        jwt_token = _make_jwt({"exp": exp})
+
+        with patch.dict(os.environ, {"RIFT_AUTH_IDP_TOKEN": jwt_token}, clear=False):
+            os.environ.pop("RIFT_AUTH_IDP_REFRESH_TOKEN", None)
             with self.assertLogs(level="DEBUG") as logs:
-                self.assertEqual(auth.get_idp_token_noninteractive(), "from-env")
+                self.assertEqual(auth.get_idp_token_noninteractive(), jwt_token)
         self.assertIn("fetched idp token from environment", "\n".join(logs.output))
 
     def test_get_idp_token_noninteractive_missing_credentials_file(self):
@@ -235,3 +384,113 @@ class AuthTest(unittest.TestCase):
             ),
         ):
             auth.get_idp_token_noninteractive()
+
+    @patch("rift.auth.requests.post")
+    def test_get_idp_token_noninteractive_refreshes_from_env_jwt(self, mock_post):
+        mock_post.return_value = MagicMock()
+        mock_post.return_value.json.return_value = {
+            "access_token": "access-refreshed",
+            "expires_in": 3600,
+            "refresh_token": "refresh-new",
+        }
+        auth = Auth(self._minimal_config)
+
+        # Generate near-expiry JWT token.
+        exp = int((datetime.now() + timedelta(seconds=60)).timestamp())
+        jwt_token = _make_jwt({"exp": exp})
+
+        with patch.dict(
+            os.environ,
+            {
+                "RIFT_AUTH_IDP_TOKEN": jwt_token,
+                "RIFT_AUTH_IDP_REFRESH_TOKEN": "refresh-env",
+            },
+        ):
+            token = auth.get_idp_token_noninteractive()
+
+        self.assertEqual(token, "access-refreshed")
+        mock_post.assert_called_once()
+        self.assertEqual(mock_post.call_args[1]["data"]["grant_type"], "refresh_token")
+        self.assertEqual(mock_post.call_args[1]["data"]["refresh_token"], "refresh-env")
+
+    @patch("rift.auth.requests.post")
+    def test_get_idp_token_noninteractive_successive_calls_reuse_refreshed_env_token(
+        self, mock_post
+    ):
+        mock_post.return_value = MagicMock()
+        mock_post.return_value.json.return_value = {
+            "access_token": "access-refreshed",
+            "expires_in": 3600,
+            "refresh_token": "refresh-new",
+        }
+        auth = Auth(self._minimal_config)
+
+        # Generate near-expiry JWT token.
+        exp = int((datetime.now() + timedelta(seconds=60)).timestamp())
+        jwt_token = _make_jwt({"exp": exp})
+
+        with patch.dict(
+            os.environ,
+            {
+                "RIFT_AUTH_IDP_TOKEN": jwt_token,
+                "RIFT_AUTH_IDP_REFRESH_TOKEN": "refresh-env",
+            },
+        ):
+            self.assertEqual(auth.get_idp_token_noninteractive(), "access-refreshed")
+            self.assertEqual(auth.get_idp_token_noninteractive(), "access-refreshed")
+
+        # Check the refreshed token has been requested only once.
+        mock_post.assert_called_once()
+
+    @patch("rift.auth.requests.post")
+    def test_get_idp_token_noninteractive_non_jwt_env_skips_refresh(self, mock_post):
+        auth = Auth(self._minimal_config)
+        with patch.dict(
+            os.environ,
+            {
+                "RIFT_AUTH_IDP_TOKEN": "opaque-token",
+                "RIFT_AUTH_IDP_REFRESH_TOKEN": "refresh-env",
+            },
+        ):
+            with self.assertLogs(level="WARNING") as logs:
+                # Check opaque token from environment is returned.
+                self.assertEqual(auth.get_idp_token_noninteractive(), "opaque-token")
+
+        # Check warning is emitted because unable to extract expiration from non-JWT.
+        self.assertIn(
+            "unable to extract expiration from RIFT_AUTH_IDP_TOKEN",
+            "\n".join(logs.output),
+        )
+
+        # Check the token has been returned without refreshing.
+        mock_post.assert_not_called()
+
+    @patch("rift.auth.requests.post")
+    def test_get_idp_token_noninteractive_refreshes_from_state_file(self, mock_post):
+        mock_post.return_value = MagicMock()
+        mock_post.return_value.json.return_value = {
+            "access_token": "access-new",
+            "expires_in": 3600,
+        }
+        # Generate near-expiry token expiration.
+        exp = (datetime.now() + timedelta(seconds=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self._write_state(
+            {
+                "idp_token": "access-old",
+                "idp_token_expiration": exp,
+                "idp_refresh_token": "refresh-file",
+            }
+        )
+        auth = Auth(self._minimal_config)
+        with patch.dict(os.environ, {}, clear=False):
+            # Ensure environment variables are not defined
+            os.environ.pop("RIFT_AUTH_IDP_TOKEN", None)
+            os.environ.pop("RIFT_AUTH_IDP_REFRESH_TOKEN", None)
+            # Check the refreshed token is returned
+            self.assertEqual(auth.get_idp_token_noninteractive(), "access-new")
+
+        # Check new token has been requested with refresh token from state file.
+        mock_post.assert_called_once()
+        self.assertEqual(
+            mock_post.call_args[1]["data"]["refresh_token"], "refresh-file"
+        )

@@ -34,6 +34,7 @@ Auth:
     This package manage rift s3 authentication
 """
 
+import base64
 import datetime
 import getpass
 import json
@@ -70,6 +71,33 @@ def _format_expiration(value):
     return value
 
 
+def jwt_expiration_dt(token):
+    """
+    Return expiration datetime from a JWT access token payload exp claim.
+
+    Decodes the payload without verifying the signature. Returns None if the
+    token is not a JWT or has no usable exp claim.
+    """
+    if not token or not isinstance(token, str):
+        return None
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    payload = parts[1]
+    try:
+        padding = "=" * (-len(payload) % 4)
+        data = json.loads(base64.urlsafe_b64decode(payload + padding))
+    except (ValueError, json.JSONDecodeError, TypeError):
+        return None
+    exp = data.get("exp")
+    if exp is None:
+        return None
+    try:
+        return datetime.datetime.fromtimestamp(int(exp))
+    except (TypeError, ValueError, OSError, OverflowError):
+        return None
+
+
 class AuthState:
     """
     Persisted authentication credentials (credentials file payload).
@@ -79,6 +107,7 @@ class AuthState:
         self,
         idp_token=None,
         idp_token_expiration=None,
+        idp_refresh_token=None,
         access_key_id=None,
         secret_access_key=None,
         session_token=None,
@@ -87,6 +116,7 @@ class AuthState:
         # IDP token and expiration
         self.idp_token = idp_token
         self.idp_token_expiration = idp_token_expiration
+        self.idp_refresh_token = idp_refresh_token
         # S3 credentials
         self.access_key_id = access_key_id
         self.secret_access_key = secret_access_key
@@ -101,6 +131,7 @@ class AuthState:
         return cls(
             idp_token=data.get("idp_token"),
             idp_token_expiration=_parse_expiration(data.get("idp_token_expiration")),
+            idp_refresh_token=data.get("idp_refresh_token"),
             access_key_id=data.get("access_key_id"),
             secret_access_key=data.get("secret_access_key"),
             session_token=data.get("session_token"),
@@ -112,6 +143,7 @@ class AuthState:
         data = {
             "idp_token": self.idp_token,
             "idp_token_expiration": _format_expiration(self.idp_token_expiration),
+            "idp_refresh_token": self.idp_refresh_token,
             "access_key_id": self.access_key_id,
             "secret_access_key": self.secret_access_key,
             "session_token": self.session_token,
@@ -147,6 +179,7 @@ class AuthState:
                 logging.info("found existing, expired idp access token")
                 self.idp_token = None
                 self.idp_token_expiration = None
+                self.idp_refresh_token = None
                 updated = True
 
         return updated
@@ -207,6 +240,14 @@ class AuthState:
             return ""
         return self.expiration.strftime("%a %b %d %H:%M:%S %Y")
 
+    def idp_seconds_remaining(self):
+        """
+        Return seconds until IDP access token expiry, or None if expiration unset.
+        """
+        if self.idp_token_expiration is None:
+            return None
+        return (self.idp_token_expiration - datetime.datetime.now()).total_seconds()
+
 
 class Auth:
     """
@@ -222,8 +263,72 @@ class Auth:
         self.idp_auth_endpoint = config.get("idp_auth_endpoint")
         self.s3_auth_endpoint = config.get("s3_auth_endpoint")
         self.credentials_file = os.path.expanduser(config.get("s3_credential_file"))
+        self.idp_token_refresh_threshold = config.get("idp_token_refresh_threshold")
 
         self.state = AuthState()
+
+    def _request_idp_token(self, data):
+        """
+        Request an IDP token with the given grant form data, update AuthState,
+        and persist.
+        """
+        res = requests.post(
+            self.idp_auth_endpoint,
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=60,
+        )
+        js = res.json()
+
+        token = js.get("access_token")
+        if not token:
+            msg = "received unexpected response while fetching idp access token:"
+            msg += " missing field 'access_token'"
+            raise RiftError(msg)
+
+        expires_in_sec = js.get("expires_in")
+        if not expires_in_sec:
+            msg = "received unexpected response while fetching idp access token:"
+            msg += " missing field 'expires_in'"
+            logging.info(msg)
+        else:
+            self.state.idp_token_expiration = (
+                datetime.datetime.now() + datetime.timedelta(seconds=expires_in_sec)
+            )
+
+        self.state.idp_token = token
+        refresh_token = js.get("refresh_token")
+        if refresh_token:
+            self.state.idp_refresh_token = refresh_token
+
+        self.state.save(self.credentials_file)
+
+    def _ensure_idp_token_fresh(self):
+        """
+        Refresh the IDP access token when remaining validity is below threshold
+        and a refresh token is available.
+        """
+        if not self.idp_token_refresh_threshold:
+            return
+        remaining = self.state.idp_seconds_remaining()
+        if remaining is None or remaining >= self.idp_token_refresh_threshold:
+            return
+        if not self.idp_auth_endpoint:
+            logging.error("missing required config parameter: idp_auth_endpoint")
+            return
+        if not self.state.idp_refresh_token:
+            logging.debug("idp access token near expiry but no refresh token available")
+            return
+
+        logging.debug("refreshing idp access token")
+        self._request_idp_token(
+            {
+                "client_id": "minio",
+                "grant_type": "refresh_token",
+                "refresh_token": self.state.idp_refresh_token,
+                "client_secret": self.idp_app_token,
+            }
+        )
 
     # Step 1: Get OpenID token
     def get_idp_token(self):
@@ -231,6 +336,7 @@ class Auth:
         Get OpenID Token
         """
         if self.state.idp_token:
+            self._ensure_idp_token_fresh()
             logging.info("retrieved existing idp_token from auth file")
             return True
 
@@ -249,53 +355,60 @@ class Auth:
         if not password:
             password = getpass.getpass("Password: ")
 
-        data = {
-            "client_id": "minio",
-            "grant_type": "password",
-            "username": user,
-            "password": password,
-            "client_secret": client_secret,
-        }
-
-        res = requests.post(
-            self.idp_auth_endpoint,
-            data=data,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            timeout=60,
+        self._request_idp_token(
+            {
+                "client_id": "minio",
+                "grant_type": "password",
+                "username": user,
+                "password": password,
+                "client_secret": client_secret,
+            }
         )
-
-        js = res.json()
-
-        token = js.get("access_token")
-        if not token:
-            msg = "received unexpected response while fetching idp access token:"
-            msg += " missing field 'access_token'"
-            raise RiftError(msg)
-
-        expires_in_sec = js.get("expires_in")
-        if not expires_in_sec:
-            msg = "received unexpected response while fetching idp access token:"
-            msg += " missing field 'expires_in'"
-            logging.info(msg)
-
-        self.state.idp_token_expiration = (
-            datetime.datetime.now() + datetime.timedelta(seconds=expires_in_sec)
-        )
-        self.state.idp_token = token
-        self.state.save(self.credentials_file)
-
         return True
 
     def get_idp_token_noninteractive(self):
         """
-        Return cached OpenID token from environment or state file without
-        prompting user. Raise RiftError if token is missing or expired.
+        Return an IDP access token without prompting the user.
+
+        Prefer a token already loaded in state (so successive calls keep a
+        previously refreshed token), otherwise load from RIFT_AUTH_IDP_TOKEN
+        (and optional RIFT_AUTH_IDP_REFRESH_TOKEN / JWT exp), otherwise restore
+        from the credentials file. Refresh when remaining validity is below
+        threshold. Raise RiftError if no token is available.
         """
+
+        # Prefer tokens already loaded into state (e.g. after a prior refresh)
+        # so successive calls do not overwrite them with a stale env value.
+        if self.state.idp_token:
+            self._ensure_idp_token_fresh()
+            return self.state.idp_token
 
         token = os.environ.get("RIFT_AUTH_IDP_TOKEN")
         if token:
             logging.debug("fetched idp token from environment")
-            return token
+            # Set the IDP access token in the state.
+            self.state.idp_token = token
+
+            # Check if the IDP refresh token is set in the environment. If so,
+            # set it in the state.
+            refresh = os.environ.get("RIFT_AUTH_IDP_REFRESH_TOKEN")
+            if refresh:
+                self.state.idp_refresh_token = refresh
+
+            # Get the expiration date of the token based on the exp claim in JWT
+            # payload and set it in the state.
+            exp_dt = jwt_expiration_dt(token)
+            if exp_dt is None:
+                logging.warning(
+                    "unable to extract expiration from RIFT_AUTH_IDP_TOKEN "
+                    "(not a JWT or missing exp claim); token refresh disabled"
+                )
+            else:
+                self.state.idp_token_expiration = exp_dt
+
+            # Refresh the token if it is near expiry.
+            self._ensure_idp_token_fresh()
+            return self.state.idp_token
 
         if not os.path.isfile(self.credentials_file):
             raise RiftError(
@@ -310,7 +423,8 @@ class Auth:
                 f"{self.credentials_file}. "
                 "Run 'rift auth' first."
             )
-        return token
+        self._ensure_idp_token_fresh()
+        return self.state.idp_token
 
     # Step 2: Get S3 credentials using token from (1)
     def get_s3_credentials(self):

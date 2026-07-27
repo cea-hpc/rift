@@ -98,6 +98,7 @@ _DEFAULT_VARIANT = "main"
 _DEFAULT_REPOS_VARIANTS = [_DEFAULT_VARIANT]
 _DEFAULT_DEPENDENCY_TRACKING = False
 _DEFAULT_S3_CREDENTIAL_FILE = "~/.rift/auth.json"
+_DEFAULT_IDP_TOKEN_REFRESH_THRESHOLD = 300
 
 
 class Config:
@@ -134,6 +135,11 @@ class Config:
         },
         "idp_auth_endpoint": {"required": False},
         "idp_app_token": {"required": False},
+        "idp_token_refresh_threshold": {
+            "required": False,
+            "check": "digit",
+            "default": _DEFAULT_IDP_TOKEN_REFRESH_THRESHOLD,
+        },
         "annex_restore_cache": {
             "required": False,
         },
