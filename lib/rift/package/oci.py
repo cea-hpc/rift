@@ -41,10 +41,10 @@ import time
 
 from rift import RiftError
 from rift.annex import Annex
-from rift.Config import _DEFAULT_VARIANT
+from rift.config import _DEFAULT_VARIANT
 from rift.container import ContainerArchive, ContainerFile, ContainerRuntime
 from rift.package._base import ActionableArchPackage, Package
-from rift.TestResults import TestCase, TestResults
+from rift.test_results import TestCase, TestResults
 from rift.utils import banner, message
 
 

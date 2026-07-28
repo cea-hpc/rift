@@ -48,11 +48,11 @@ from textwrap import dedent
 from jinja2 import Template
 
 from rift import RiftError
-from rift.Config import _DEFAULT_VARIANT
+from rift.config import _DEFAULT_VARIANT
 from rift.proxy import AuthenticatedRepositoryProxyRuntime
-from rift.RPM import RPM
+from rift.rpm import RPM
 from rift.run import run_command
-from rift.TempDir import TempDir
+from rift.temp_dir import TempDir
 
 # Global dictionary of re-entrant locks for each mock name.
 _mock_chroot_locks = {}

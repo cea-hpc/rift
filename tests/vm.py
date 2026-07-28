@@ -9,7 +9,7 @@ import urllib
 from unittest.mock import Mock, PropertyMock, patch
 
 from rift import RiftError
-from rift.Config import (
+from rift.config import (
     _DEFAULT_VARIANT,
     _DEFAULT_VIRTIOFSD,
     _DEFAULT_VM_ADDRESS,
@@ -20,9 +20,9 @@ from rift.Config import (
 )
 from rift.package import Test
 from rift.repository.rpm import ConsumableRepository
-from rift.VM import ARCH_EFI_BIOS, VM, gen_virtiofs_args
+from rift.vm import ARCH_EFI_BIOS, VM, gen_virtiofs_args
 
-from .TestUtils import RiftProjectTestCase, RiftTestCase, make_temp_dir, make_temp_file
+from .test_utils import RiftProjectTestCase, RiftTestCase, make_temp_dir, make_temp_file
 
 # For optimization purpose, create a global cache directory that is removed
 # only when all tests are finished. If this cache directory would have been
@@ -461,8 +461,8 @@ class VMTest(RiftTestCase):
         ]
         self.assertEqual(args, expected_args_aarch64)
 
-    @patch("rift.VM.download_file")
-    @patch("rift.VM.message")
+    @patch("rift.vm.download_file")
+    @patch("rift.vm.message")
     def test_download(self, mock_message, mock_download_file):
         """Test VM download"""
         url = "http://localhost/path/to/my_image.qcow2"
@@ -473,7 +473,7 @@ class VMTest(RiftTestCase):
             },
         )
         with patch(
-            "rift.VM.VM.image_local", new_callable=PropertyMock
+            "rift.vm.VM.image_local", new_callable=PropertyMock
         ) as mock_image_local:
             vm = VM(self.config, platform.machine())
             tmpfile = make_temp_file("")
@@ -486,9 +486,9 @@ class VMTest(RiftTestCase):
                 url, vm.image_local, bearer_token=None
             )
 
-    @patch("rift.VM.Auth")
-    @patch("rift.VM.download_file")
-    @patch("rift.VM.message")
+    @patch("rift.vm.Auth")
+    @patch("rift.vm.download_file")
+    @patch("rift.vm.message")
     def test_download_idp_token_bearer(
         self, mock_message, mock_download_file, mock_auth_cls
     ):
@@ -505,7 +505,7 @@ class VMTest(RiftTestCase):
             },
         )
         with patch(
-            "rift.VM.VM.image_local", new_callable=PropertyMock
+            "rift.vm.VM.image_local", new_callable=PropertyMock
         ) as mock_image_local:
             vm = VM(self.config, platform.machine())
             tmpfile = make_temp_file("")
@@ -518,8 +518,8 @@ class VMTest(RiftTestCase):
                 url, vm.image_local, bearer_token="test-idp-token"
             )
 
-    @patch("rift.VM.download_file")
-    @patch("rift.VM.message")
+    @patch("rift.vm.download_file")
+    @patch("rift.vm.message")
     def test_download_force(self, mock_message, mock_download_file):
         """Test VM download force remove local image when present"""
         url = "http://localhost/path/to/my_image.qcow2"
@@ -530,7 +530,7 @@ class VMTest(RiftTestCase):
             },
         )
         with patch(
-            "rift.VM.VM.image_local", new_callable=PropertyMock
+            "rift.vm.VM.image_local", new_callable=PropertyMock
         ) as mock_image_local:
             vm = VM(self.config, platform.machine())
             tmpfile = make_temp_file("")
@@ -548,9 +548,9 @@ class VMTest(RiftTestCase):
             cm.output,
         )
 
-    @patch("rift.VM.last_modified")
-    @patch("rift.VM.download_file")
-    @patch("rift.VM.message")
+    @patch("rift.vm.last_modified")
+    @patch("rift.vm.download_file")
+    @patch("rift.vm.message")
     def test_download_exists_last_modified_older(
         self, mock_message, mock_download_file, mock_last_modified
     ):
@@ -564,7 +564,7 @@ class VMTest(RiftTestCase):
         )
         mock_last_modified.return_value = 0.0
         with patch(
-            "rift.VM.VM.image_local", new_callable=PropertyMock
+            "rift.vm.VM.image_local", new_callable=PropertyMock
         ) as mock_image_local:
             vm = VM(self.config, platform.machine())
             tmpfile = make_temp_file("")
@@ -583,9 +583,9 @@ class VMTest(RiftTestCase):
                 cm.output,
             )
 
-    @patch("rift.VM.last_modified")
-    @patch("rift.VM.download_file")
-    @patch("rift.VM.message")
+    @patch("rift.vm.last_modified")
+    @patch("rift.vm.download_file")
+    @patch("rift.vm.message")
     def test_download_exists_last_modified_newer(
         self, mock_message, mock_download_file, mock_last_modified
     ):
@@ -599,7 +599,7 @@ class VMTest(RiftTestCase):
         )
         mock_last_modified.return_value = float(2**32)
         with patch(
-            "rift.VM.VM.image_local", new_callable=PropertyMock
+            "rift.vm.VM.image_local", new_callable=PropertyMock
         ) as mock_image_local:
             vm = VM(self.config, platform.machine())
             tmpfile = make_temp_file("")
@@ -616,9 +616,9 @@ class VMTest(RiftTestCase):
             "INFO:root:Remote VM image has been updated, removing local copy", cm.output
         )
 
-    @patch("rift.VM.last_modified")
-    @patch("rift.VM.Auth")
-    @patch("rift.VM.download_file")
+    @patch("rift.vm.last_modified")
+    @patch("rift.vm.Auth")
+    @patch("rift.vm.download_file")
     def test_download_last_modified_bearer(
         self, mock_download_file, mock_auth_cls, mock_last_modified
     ):
@@ -636,7 +636,7 @@ class VMTest(RiftTestCase):
             },
         )
         with patch(
-            "rift.VM.VM.image_local", new_callable=PropertyMock
+            "rift.vm.VM.image_local", new_callable=PropertyMock
         ) as mock_image_local:
             vm = VM(self.config, platform.machine())
             tmpfile = make_temp_file("")
@@ -646,9 +646,9 @@ class VMTest(RiftTestCase):
             mock_last_modified.assert_called_once_with(url, bearer_token="tok-head")
             mock_download_file.assert_not_called()
 
-    @patch("rift.VM.last_modified")
-    @patch("rift.VM.download_file")
-    @patch("rift.VM.message")
+    @patch("rift.vm.last_modified")
+    @patch("rift.vm.download_file")
+    @patch("rift.vm.message")
     def test_download_exists_last_modified_error(
         self, mock_message, mock_download_file, mock_last_modified
     ):
@@ -662,7 +662,7 @@ class VMTest(RiftTestCase):
         )
         mock_last_modified.side_effect = RiftError("last-modified failure")
         with patch(
-            "rift.VM.VM.image_local", new_callable=PropertyMock
+            "rift.vm.VM.image_local", new_callable=PropertyMock
         ) as mock_image_local:
             vm = VM(self.config, platform.machine())
             tmpfile = make_temp_file("")
@@ -680,8 +680,8 @@ class VMTest(RiftTestCase):
             cm.output,
         )
 
-    @patch("rift.VM.download_file")
-    @patch("rift.VM.message")
+    @patch("rift.vm.download_file")
+    @patch("rift.vm.message")
     def test_download_skip_local(self, mock_message, mock_download_file):
         """Test VM download is no-op with local images"""
         url = "/path/to/my_image.qcow2"
@@ -696,7 +696,7 @@ class VMTest(RiftTestCase):
         mock_message.assert_not_called()
         mock_download_file.assert_not_called()
 
-    @patch("rift.VM.message")
+    @patch("rift.vm.message")
     def test_start(self, mock_message):
         """Test VM start not running"""
         vm = VM(self.config, platform.machine())
@@ -712,7 +712,7 @@ class VMTest(RiftTestCase):
         vm.ready.assert_called_once()
         vm.prepare.assert_called_once()
 
-    @patch("rift.VM.message")
+    @patch("rift.vm.message")
     def test_start_force(self, mock_message):
         """Test VM force start not running"""
         vm = VM(self.config, platform.machine())
@@ -724,7 +724,7 @@ class VMTest(RiftTestCase):
         self.assertTrue(vm.start(force=True))
         vm._download.assert_called_once_with(True)
 
-    @patch("rift.VM.message")
+    @patch("rift.vm.message")
     def test_start_running(self, mock_message):
         """Test VM start already running"""
         vm = VM(self.config, platform.machine())
@@ -744,7 +744,7 @@ class VMTest(RiftTestCase):
         self.assertIsInstance(funcs, dict)
         self.assertCountEqual(funcs.keys(), ["vm_cmd", "vm_wait", "vm_reboot"])
 
-    @patch("rift.VM.run_command")
+    @patch("rift.vm.run_command")
     def test_run_test(self, mock_run_command):
         vm = VM(self.config, platform.machine())
         test = Test("test.sh")
@@ -756,7 +756,7 @@ class VMTest(RiftTestCase):
             f"export RIFT_VARIANT={_DEFAULT_VARIANT}; cd /rift.project; test.sh",
         )
 
-    @patch("rift.VM.run_command")
+    @patch("rift.vm.run_command")
     def test_run_test_variant(self, mock_run_command):
         vm = VM(self.config, platform.machine())
         test = Test("test.sh")
@@ -846,7 +846,7 @@ class VMBuildTest(RiftProjectTestCase):
         vm.build(self.valid_url, False, False, vm.image_local)
         self.assertEqual(os.path.exists(vm.image_local), True)
 
-    @patch("rift.VM.input")
+    @patch("rift.vm.input")
     def test_build_overwrite(self, mock_input):
         """Test VM build overwrite"""
         self._check_qemuimg()

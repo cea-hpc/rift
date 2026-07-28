@@ -8,9 +8,9 @@ import urllib
 from unittest.mock import patch
 
 from rift import RiftError
-from rift.Config import Config
+from rift.config import Config
 from rift.repository.rpm import LocalRepository
-from rift.RPM import RPM
+from rift.rpm import RPM
 from rift.sync import (
     RepoSyncBase,
     RepoSyncDnf,
@@ -19,7 +19,7 @@ from rift.sync import (
     RepoSyncLftp,
 )
 
-from .TestUtils import RiftTestCase, make_temp_dir
+from .test_utils import RiftTestCase, make_temp_dir
 
 
 class RepoSyncFactoryTest(RiftTestCase):

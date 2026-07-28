@@ -44,7 +44,7 @@ from abc import ABC, abstractmethod
 import yaml
 
 from rift import RiftError
-from rift.Config import OrderedLoader
+from rift.config import OrderedLoader
 from rift.repository import ProjectArchRepositories
 from rift.run import run_command
 from rift.utils import message

@@ -23,8 +23,8 @@ from contextlib import contextmanager
 import jinja2
 import yaml
 
-from rift.Config import Config, Modules, Staff
-from rift.Mock import Mock, rpmlint_chroot_script, rpmlint_env
+from rift.config import Config, Modules, Staff
+from rift.mock import Mock, rpmlint_chroot_script, rpmlint_env
 from rift.run import run_command
 
 MOCK_CONF = '''\

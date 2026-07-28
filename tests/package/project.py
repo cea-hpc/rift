@@ -4,13 +4,13 @@
 
 import os
 
-from rift.Config import Config
+from rift.config import Config
 from rift.package import ProjectPackages
 from rift.package._virtual import PackageVirtual
 from rift.package.oci import PackageOCI
 from rift.package.rpm import PackageRPM
 
-from ..TestUtils import RiftProjectTestCase
+from ..test_utils import RiftProjectTestCase
 
 
 class ProjectPackagesTest(RiftProjectTestCase):

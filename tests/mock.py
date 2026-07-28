@@ -9,15 +9,15 @@ from textwrap import dedent
 from unittest.mock import ANY, MagicMock, patch
 
 from rift import RiftError
-from rift.Config import _DEFAULT_VARIANT
-from rift.Mock import Mock, rpmlint_chroot_script, rpmlint_env
+from rift.config import _DEFAULT_VARIANT
+from rift.mock import Mock, rpmlint_chroot_script, rpmlint_env
 from rift.repository import ProjectArchRepositories
 from rift.repository.rpm import ConsumableRepository
-from rift.RPM import RPM
+from rift.rpm import RPM
 from rift.run import RunResult
-from rift.TempDir import TempDir
+from rift.temp_dir import TempDir
 
-from .TestUtils import RiftProjectTestCase
+from .test_utils import RiftProjectTestCase
 
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -58,7 +58,7 @@ class MockTest(RiftProjectTestCase):
         self.assertEqual(repos_ctx["excludepkgs"], "somepkg")
         self.assertEqual(repos_ctx["proxy"], "myproxy")
 
-    @patch("rift.Mock.run_command")
+    @patch("rift.mock.run_command")
     def test_init(self, mock_run_command):
         """Test Mock init creates all files required by mock"""
         # Emulate successful mock execution
@@ -72,7 +72,7 @@ class MockTest(RiftProjectTestCase):
             self.assertTrue(os.path.exists(os.path.join(mock._tmpdir.path, filename)))
         mock.clean()
 
-    @patch("rift.Mock.run_command")
+    @patch("rift.mock.run_command")
     def test_init_mock_failure(self, mock_run_command):
         """Test Mock init raise error on mock command failure"""
         # Emulate mock execution failure
@@ -131,7 +131,7 @@ class MockTest(RiftProjectTestCase):
         )
         self.assertEqual(open(macro_file).readlines(), ["%my_version 1\n"])
 
-    @patch("rift.Mock.run_command")
+    @patch("rift.mock.run_command")
     def test_build_rpms(self, mock_run_command):
         """Test Mock build_rpms() mock build command line"""
         # Emulate successful mock execution
@@ -161,7 +161,7 @@ class MockTest(RiftProjectTestCase):
             cwd="/",
         )
 
-    @patch("rift.Mock.run_command")
+    @patch("rift.mock.run_command")
     def test_build_rpms_variant(self, mock_run_command):
         """Test Mock build_rpms() mock build command line with variant"""
         # Emulate successful mock execution
@@ -202,7 +202,7 @@ class MockTest(RiftProjectTestCase):
             cwd="/",
         )
 
-    @patch("rift.Mock.run_command")
+    @patch("rift.mock.run_command")
     def test_read_spec(self, mock_run_command):
         mock_run_command.return_value = RunResult(
             0, "standard output", "standard error"
@@ -231,7 +231,7 @@ class MockTest(RiftProjectTestCase):
         mock.clean()
         self.assertEqual(result, "standard output")
 
-    @patch("rift.Mock.run_command")
+    @patch("rift.mock.run_command")
     def test_read_spec_exec_error(self, mock_run_command):
         mock = Mock(config=self.config, arch="x86_64", proj_vers=1.0)
         # First run_command call for init OK
@@ -247,7 +247,7 @@ class MockTest(RiftProjectTestCase):
             mock.read_spec("/dev/package.spec")
         mock.clean()
 
-    @patch("rift.Mock.run_command")
+    @patch("rift.mock.run_command")
     def test_read_spec_filter_output(self, mock_run_command):
         output = "error: foo\nwarning: bar\nstandard output\nsh: baz\nrpm: qux\n"
         mock_run_command.return_value = RunResult(0, output, "standard error")
@@ -319,7 +319,7 @@ class MockTest(RiftProjectTestCase):
             script,
         )
 
-    @patch("rift.Mock.run_command")
+    @patch("rift.mock.run_command")
     def test_rpmlint(self, mock_run_command):
         """Test Mock.rpmlint() installs, runs, cleans, and returns result."""
         spec_path = "/dev/package.spec"
@@ -389,7 +389,7 @@ class MockTest(RiftProjectTestCase):
         )
         mock.clean()
 
-    @patch("rift.Mock.run_command")
+    @patch("rift.mock.run_command")
     def test_rpmlint_install_failure_no_chroot_or_clean(self, mock_run_command):
         """Test Mock.rpmlint() install failure no chroot or clean."""
         mock = Mock(config=self.config, arch="x86_64", proj_vers=1.0)

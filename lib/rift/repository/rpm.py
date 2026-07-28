@@ -43,11 +43,11 @@ import threading
 from subprocess import PIPE, STDOUT, CalledProcessError, Popen, run
 
 from rift import RiftError
-from rift.Config import _DEFAULT_REPO_CMD, _DEFAULT_REPOS_VARIANTS
-from rift.Mock import Mock
+from rift.config import _DEFAULT_REPO_CMD, _DEFAULT_REPOS_VARIANTS
+from rift.mock import Mock
 from rift.repository._base import ArchRepositoriesBase, StagingRepositoryBase
-from rift.RPM import RPM, Spec
-from rift.TempDir import TempDir
+from rift.rpm import RPM, Spec
+from rift.temp_dir import TempDir
 
 repo_lock = threading.Lock()
 

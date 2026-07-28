@@ -15,11 +15,11 @@ from rift.annex.utils import (
     get_info_from_digest,
     hashfile,
 )
-from rift.Config import Config, Modules, Staff
+from rift.config import Config, Modules, Staff
 from rift.package import ProjectPackages
 from rift.package.rpm import PackageRPM
 
-from ..TestUtils import (
+from ..test_utils import (
     RiftTestCase,
     gen_rpm_spec,
     make_temp_file,

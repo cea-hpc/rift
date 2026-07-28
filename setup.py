@@ -59,7 +59,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "rift = rift.Controller:main",
+            "rift = rift.controller:main",
         ],
     },
 )

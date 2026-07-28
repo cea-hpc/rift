@@ -6,13 +6,13 @@ import textwrap
 from unittest.mock import Mock, patch
 
 from rift import RiftError
-from rift.Gerrit import Review
+from rift.gerrit import Review
 from rift.package.oci import ActionableArchPackageOCI, PackageOCI
 from rift.repository.oci import ArchRepositoriesOCI
 from rift.run import RunResult
-from rift.TestResults import TestResults
+from rift.test_results import TestResults
 
-from ..TestUtils import (
+from ..test_utils import (
     PackageTestDef,
     RiftProjectTestCase,
     gen_containerfile,

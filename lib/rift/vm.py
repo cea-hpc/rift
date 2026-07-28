@@ -60,11 +60,11 @@ from jinja2 import Template
 
 from rift import RiftError
 from rift.auth import Auth
-from rift.Config import _DEFAULT_VARIANT, _DEFAULT_VIRTIOFSD
+from rift.config import _DEFAULT_VARIANT, _DEFAULT_VIRTIOFSD
 from rift.proxy import AuthenticatedRepositoryProxyRuntime
 from rift.repository import ProjectArchRepositories
 from rift.run import run_command
-from rift.TempDir import TempDir
+from rift.temp_dir import TempDir
 from rift.utils import download_file, last_modified, message, setup_dl_opener
 
 __all__ = ["VM"]

@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from rift.run import RunResult, run_command
 
-from .TestUtils import RiftTestCase
+from .test_utils import RiftTestCase
 
 
 class RunTest(RiftTestCase):

@@ -7,7 +7,7 @@ from unittest.mock import Mock, call, patch
 
 from rift.annex.server import ServerAnnex
 
-from ..TestUtils import RiftTestCase, make_temp_filename
+from ..test_utils import RiftTestCase, make_temp_filename
 
 
 class ServerAnnexTest(RiftTestCase):

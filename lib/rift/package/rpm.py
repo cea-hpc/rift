@@ -42,13 +42,13 @@ import time
 
 from rift import RiftError
 from rift.annex import Annex
-from rift.Config import _DEFAULT_VARIANT
-from rift.Mock import Mock
+from rift.config import _DEFAULT_VARIANT
+from rift.mock import Mock
 from rift.package._base import ActionableArchPackage, Package, Test
-from rift.RPM import Spec
-from rift.TestResults import TestCase, TestResults
+from rift.rpm import Spec
+from rift.test_results import TestCase, TestResults
 from rift.utils import banner, message
-from rift.VM import VM
+from rift.vm import VM
 
 
 class PackageRPM(Package):

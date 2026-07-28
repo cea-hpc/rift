@@ -6,7 +6,7 @@ import textwrap
 from unittest.mock import patch
 
 from rift import RiftError
-from rift.Gerrit import Review
+from rift.gerrit import Review
 from rift.package import Package
 from rift.package._base import (
     _META_FILE,
@@ -16,7 +16,7 @@ from rift.package._base import (
     Test,
 )
 
-from ..TestUtils import PackageTestDef, RiftProjectTestCase, make_temp_file
+from ..test_utils import PackageTestDef, RiftProjectTestCase, make_temp_file
 
 
 class PackageTestingConcrete(Package):

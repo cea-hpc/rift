@@ -7,12 +7,12 @@ import shutil
 from unittest.mock import Mock
 
 from rift import RiftError
-from rift.Config import Config
+from rift.config import Config
 from rift.repository._base import ArchRepositoriesBase
 from rift.repository._project import ProjectArchRepositories, StagingRepository
 from rift.repository.rpm import ArchRepositoriesRPM, StagingRepositoryRPM
 
-from ..TestUtils import RiftTestCase, make_temp_dir
+from ..test_utils import RiftTestCase, make_temp_dir
 
 
 class ProjectArchRepositoriesTest(RiftTestCase):

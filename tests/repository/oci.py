@@ -7,7 +7,7 @@ import shutil
 
 from rift.repository.oci import ArchRepositoriesOCI
 
-from ..TestUtils import RiftProjectTestCase, make_temp_dir
+from ..test_utils import RiftProjectTestCase, make_temp_dir
 
 
 class ArchRepositoriesOCITest(RiftProjectTestCase):

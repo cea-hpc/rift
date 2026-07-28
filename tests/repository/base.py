@@ -4,7 +4,7 @@
 
 from rift.repository._base import ArchRepositoriesBase, StagingRepositoryBase
 
-from ..TestUtils import RiftProjectTestCase
+from ..test_utils import RiftProjectTestCase
 
 
 class ArchRepositoriesTestingConcrete(ArchRepositoriesBase):
