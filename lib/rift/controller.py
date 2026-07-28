@@ -47,21 +47,21 @@ from rpm import error as RpmError  # pylint: disable=no-name-in-module
 from rift import RiftError, __version__
 from rift.annex import Annex, is_binary, is_pointer
 from rift.auth import Auth
-from rift.Config import _DEFAULT_VARIANT, Config, Modules, Staff
+from rift.config import _DEFAULT_VARIANT, Config, Modules, Staff
 from rift.container import ContainerArchive, ContainerFile
-from rift.Gerrit import Review
+from rift.gerrit import Review
 from rift.graph import PackagesDependencyGraph
-from rift.Mock import Mock
+from rift.mock import Mock
 from rift.package import RIFT_SUPPORTED_FORMATS, ProjectPackages
 from rift.patches import get_packages_from_patch
 from rift.repository import ProjectArchRepositories, StagingRepository
-from rift.RPM import RPM, Spec
+from rift.rpm import RPM, Spec
 from rift.sync import RepoSyncFactory
-from rift.TestResults import TestCase, TestResults
-from rift.TextTable import TextTable
+from rift.test_results import TestCase, TestResults
+from rift.text_table import TextTable
 from rift.threads import RiftThread
 from rift.utils import banner, message
-from rift.VM import VM
+from rift.vm import VM
 from unidiff import parse_unidiff
 
 

@@ -34,8 +34,8 @@ import collections
 import re
 import xml.etree.cElementTree as ET
 
-from rift.Config import _DEFAULT_VARIANT
-from rift.TextTable import TextTable
+from rift.config import _DEFAULT_VARIANT
+from rift.text_table import TextTable
 
 
 def str_xml_escape(arg):

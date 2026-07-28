@@ -3,7 +3,7 @@
 
 from unidiff import parse_unidiff
 
-from .TestUtils import RiftTestCase, make_temp_file
+from .test_utils import RiftTestCase, make_temp_file
 
 
 class UnidiffTest(RiftTestCase):

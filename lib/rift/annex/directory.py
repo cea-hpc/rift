@@ -50,7 +50,7 @@ from rift.annex.utils import (
     get_info_from_digest,
     print_annex_tar_progress,
 )
-from rift.Config import OrderedLoader
+from rift.config import OrderedLoader
 
 
 class DirectoryAnnex(GenericAnnex):

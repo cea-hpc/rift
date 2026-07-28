@@ -49,7 +49,7 @@ from datetime import datetime
 import dnf
 
 from rift import RiftError
-from rift.TempDir import TempDir
+from rift.temp_dir import TempDir
 from rift.utils import download_file, setup_dl_opener
 
 SyncPatterns = collections.namedtuple("SyncPatterns", ["include", "exclude"])

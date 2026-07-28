@@ -7,16 +7,16 @@ import shutil
 from unittest.mock import Mock, call, patch
 
 from rift import RiftError
-from rift.Config import _DEFAULT_REPO_CMD, _DEFAULT_REPOS_VARIANTS, Config
+from rift.config import _DEFAULT_REPO_CMD, _DEFAULT_REPOS_VARIANTS, Config
 from rift.repository.rpm import (
     ArchRepositoriesRPM,
     ConsumableRepository,
     LocalRepository,
     StagingRepositoryRPM,
 )
-from rift.RPM import RPM
+from rift.rpm import RPM
 
-from ..TestUtils import RiftTestCase, make_temp_dir, read_file
+from ..test_utils import RiftTestCase, make_temp_dir, read_file
 
 
 class LocalRepositoryTest(RiftTestCase):

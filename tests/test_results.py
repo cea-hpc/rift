@@ -5,10 +5,10 @@ import textwrap
 import xml.etree.ElementTree as ET
 from io import BytesIO
 
-from rift.Config import _DEFAULT_VARIANT
-from rift.TestResults import TestCase, TestResults
+from rift.config import _DEFAULT_VARIANT
+from rift.test_results import TestCase, TestResults
 
-from .TestUtils import RiftTestCase
+from .test_utils import RiftTestCase
 
 
 class TestResultsTest(RiftTestCase):

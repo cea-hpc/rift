@@ -8,7 +8,7 @@ from unittest.mock import patch
 from rift import RiftError
 from rift.auth import Auth
 
-from .TestUtils import make_temp_file
+from .test_utils import make_temp_file
 
 
 class AuthTest(unittest.TestCase):

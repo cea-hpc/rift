@@ -14,8 +14,8 @@ from io import StringIO
 from unittest.mock import Mock, call, patch
 
 from rift import DeclError, RiftError
-from rift.Config import _DEFAULT_VARIANT
-from rift.Controller import (
+from rift.config import _DEFAULT_VARIANT
+from rift.controller import (
     get_packages_in_graph,
     get_packages_to_build,
     main,
@@ -25,10 +25,10 @@ from rift.Controller import (
 from rift.package._virtual import PackageVirtual
 from rift.package.oci import ActionableArchPackageOCI, PackageOCI
 from rift.package.rpm import ActionableArchPackageRPM, PackageRPM
-from rift.RPM import RPM
-from rift.TestResults import TestCase, TestResults
+from rift.rpm import RPM
+from rift.test_results import TestCase, TestResults
 
-from .TestUtils import (
+from .test_utils import (
     RiftProjectTestCase,
     RiftTestCase,
     SubPackage,
@@ -39,7 +39,7 @@ from .TestUtils import (
     make_temp_tar,
     read_file,
 )
-from .VM import GLOBAL_CACHE, PROXY, VALID_IMAGE_URL
+from .vm import GLOBAL_CACHE, PROXY, VALID_IMAGE_URL
 
 VALID_REPOS = {
     "os": {
@@ -428,7 +428,7 @@ class ControllerProjectActionCheckTest(RiftProjectTestCase):
             exit_code = main(["check", "spec"])
             self.assertEqual(exit_code, 1)
 
-    @patch("rift.Controller.Mock")
+    @patch("rift.controller.Mock")
     def test_check_spec(self, mock_mock):
         """simple check spec"""
         self.make_pkg()
@@ -473,9 +473,9 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
     """
 
     @patch("sys.stdout", new_callable=StringIO)
-    @patch("rift.Controller.remove_packages")
-    @patch("rift.Controller.validate_pkgs")
-    @patch("rift.Controller.get_packages_from_patch")
+    @patch("rift.controller.remove_packages")
+    @patch("rift.controller.validate_pkgs")
+    @patch("rift.controller.get_packages_from_patch")
     def test_action_validdiff(
         self,
         mock_get_packages_from_patch,
@@ -503,9 +503,9 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
         self.assertIn("** Validate thread validate-x86_64 output: **", out)
 
     @patch("sys.stdout", new_callable=StringIO)
-    @patch("rift.Controller.validate_pkgs")
-    @patch("rift.Controller.remove_packages")
-    @patch("rift.Controller.get_packages_from_patch")
+    @patch("rift.controller.validate_pkgs")
+    @patch("rift.controller.remove_packages")
+    @patch("rift.controller.get_packages_from_patch")
     def test_action_validdiff_quiet_success(
         self,
         mock_get_packages_from_patch,
@@ -528,9 +528,9 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
         self.assertNotIn("Validate thread", out)
 
     @patch("sys.stdout", new_callable=StringIO)
-    @patch("rift.Controller.get_packages_from_patch")
-    @patch("rift.Controller.remove_packages")
-    @patch("rift.Controller.validate_pkgs")
+    @patch("rift.controller.get_packages_from_patch")
+    @patch("rift.controller.remove_packages")
+    @patch("rift.controller.validate_pkgs")
     def test_action_validdiff_quiet_failure(
         self,
         mock_validate_pkgs,
@@ -563,10 +563,10 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
             mock_stdout.getvalue(),
         )
 
-    @patch("rift.Controller.remove_packages")
-    @patch("rift.Controller.StagingRepository")
+    @patch("rift.controller.remove_packages")
+    @patch("rift.controller.StagingRepository")
     @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
-    @patch("rift.Controller.get_packages_from_patch")
+    @patch("rift.controller.get_packages_from_patch")
     def test_action_validdiff_formats(
         self,
         mock_get_packages_from_patch,
@@ -633,7 +633,7 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
             [call(noquit=False), call(noquit=False)]
         )
 
-    @patch("rift.Controller.ProjectArchRepositories")
+    @patch("rift.controller.ProjectArchRepositories")
     def test_remove_packages(self, mock_parepository_class):
         """remove_packages() search, delete and update repository."""
         mock_parepository_objects = mock_parepository_class.return_value
@@ -658,7 +658,7 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
             pkgs_to_remove[0].name
         )
 
-    @patch("rift.Controller.ProjectArchRepositories.delete_matching")
+    @patch("rift.controller.ProjectArchRepositories.delete_matching")
     def test_remove_packages_noop(self, mock_delete_matching):
         """remove_packages() is noop if no publish arg or no working_repo"""
 
@@ -1078,7 +1078,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
 
     @patch("sys.stdout", new_callable=StringIO)
     @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
-    @patch("rift.Controller.build_architecture")
+    @patch("rift.controller.build_architecture")
     def test_action_build_quiet_failure(
         self,
         mock_build_architecture,
@@ -1392,7 +1392,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         mock_act_arch_pkg_oci.test.assert_has_calls([call(noauto=False, noquit=False)])
 
     @patch("sys.stdout", new_callable=StringIO)
-    @patch("rift.Controller.StagingRepository")
+    @patch("rift.controller.StagingRepository")
     @patch("rift.package._project.PackageOCI", autospec=PackageOCI)
     @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
     def test_action_validate(
@@ -1494,7 +1494,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         )
 
     @patch("sys.stdout", new_callable=StringIO)
-    @patch("rift.Controller.StagingRepository")
+    @patch("rift.controller.StagingRepository")
     @patch("rift.package._project.PackageOCI", autospec=PackageOCI)
     @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
     def test_action_validate_quiet_success(
@@ -1532,7 +1532,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
     @patch("sys.stdout", new_callable=StringIO)
     @patch("rift.package._project.PackageOCI", autospec=PackageOCI)
     @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
-    @patch("rift.Controller.validate_pkgs")
+    @patch("rift.controller.validate_pkgs")
     def test_action_validate_quiet_failure(
         self, mock_validate_pkgs, mock_pkg_rpm, mock_pkg_oci, mock_stdout
     ):
@@ -1566,7 +1566,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
             mock_stdout.getvalue(),
         )
 
-    @patch("rift.Controller.PackagesDependencyGraph")
+    @patch("rift.controller.PackagesDependencyGraph")
     def test_build_graph(self, mock_graph_class):
         """Test build builds dependency graph when tracking is enabled."""
         # Enable dependency tracking in configuration
@@ -1575,8 +1575,8 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         main(["build", "pkg"])
         mock_graph_class.from_project.assert_called_once()
 
-    @patch("rift.Controller.ProjectPackages")
-    @patch("rift.Controller.PackagesDependencyGraph")
+    @patch("rift.controller.ProjectPackages")
+    @patch("rift.controller.PackagesDependencyGraph")
     def test_build_graph_tracking_disabled(
         self, mock_graph_class, mock_project_packages_class
     ):
@@ -1588,8 +1588,8 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         main(["build", "pkg"])
         mock_graph_class.from_project.assert_not_called()
 
-    @patch("rift.Controller.ProjectPackages")
-    @patch("rift.Controller.PackagesDependencyGraph")
+    @patch("rift.controller.ProjectPackages")
+    @patch("rift.controller.PackagesDependencyGraph")
     def test_build_graph_skip_deps(self, mock_graph_class, mock_project_packages_class):
         """Test build --skip-deps does not build graph of packages dependencies."""
         # Return empty list of packages with Package.list() to avoid actual
@@ -1601,7 +1601,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         main(["build", "--skip-deps", "pkg"])
         mock_graph_class.from_project.assert_not_called()
 
-    @patch("rift.Controller.PackagesDependencyGraph")
+    @patch("rift.controller.PackagesDependencyGraph")
     def test_validate_graph(self, mock_graph_class):
         """Test validate builds dependency graph when tracking is enabled."""
         # Enable dependency tracking in configuration
@@ -1610,8 +1610,8 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         main(["validate", "pkg"])
         mock_graph_class.from_project.assert_called_once()
 
-    @patch("rift.Controller.ProjectPackages")
-    @patch("rift.Controller.PackagesDependencyGraph")
+    @patch("rift.controller.ProjectPackages")
+    @patch("rift.controller.PackagesDependencyGraph")
     def test_validate_graph_tracking_disabled(
         self, mock_graph_class, mock_project_packages_class
     ):
@@ -1623,8 +1623,8 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         main(["validate", "pkg"])
         mock_graph_class.from_project.assert_not_called()
 
-    @patch("rift.Controller.ProjectPackages")
-    @patch("rift.Controller.PackagesDependencyGraph")
+    @patch("rift.controller.ProjectPackages")
+    @patch("rift.controller.PackagesDependencyGraph")
     def test_validate_graph_skip_deps(
         self, mock_graph_class, mock_project_packages_class
     ):
@@ -1804,7 +1804,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
             cm.output,
         )
 
-    @patch("rift.Controller.StagingRepository")
+    @patch("rift.controller.StagingRepository")
     @patch("rift.package._project.PackageOCI", autospec=PackageOCI)
     @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
     def test_action_validate_formats(
@@ -2014,7 +2014,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         mock_act_arch_pkg_rpm.clean.assert_not_called()
         mock_act_arch_pkg_oci.clean.assert_not_called()
 
-    @patch("rift.Controller.StagingRepository")
+    @patch("rift.controller.StagingRepository")
     @patch("rift.package._project.PackageOCI", autospec=PackageOCI)
     @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
     def test_action_validate_build_failure(
@@ -2098,7 +2098,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         mock_act_arch_pkg_rpm.clean.assert_not_called()
         mock_act_arch_pkg_oci.clean.assert_not_called()
 
-    @patch("rift.Controller.StagingRepository")
+    @patch("rift.controller.StagingRepository")
     @patch("rift.package._project.PackageOCI", autospec=PackageOCI)
     @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
     def test_action_validate_test_failure(
@@ -2202,7 +2202,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
             [call(noquit=False), call(noquit=False)]
         )
 
-    @patch("rift.Controller.StagingRepository")
+    @patch("rift.controller.StagingRepository")
     @patch("rift.package._project.PackageOCI", autospec=PackageOCI)
     @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
     def test_action_validate_skip_unsupported_arch(
@@ -2291,7 +2291,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         mock_act_arch_pkg_rpm.clean.assert_has_calls([call(noquit=False)])
         mock_act_arch_pkg_oci.clean.assert_has_calls([call(noquit=False)])
 
-    @patch("rift.Controller.StagingRepository")
+    @patch("rift.controller.StagingRepository")
     @patch("rift.package._project.PackageOCI", autospec=PackageOCI)
     @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
     def test_action_validate_publish(
@@ -2365,7 +2365,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         shutil.rmtree(working_repo)
         atexit.unregister(shutil.rmtree)
 
-    @patch("rift.Controller.StagingRepository")
+    @patch("rift.controller.StagingRepository")
     @patch("rift.package._project.PackageOCI", autospec=PackageOCI)
     @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
     def test_action_validate_publish_test_failure(
@@ -2440,7 +2440,7 @@ class ControllerProjectActionVMTest(RiftProjectTestCase):
     Tests class for Controller action vm
     """
 
-    @patch("rift.Controller.VM")
+    @patch("rift.controller.VM")
     def test_vm_arch_option(self, mock_vm_class):
         """Test vm --arch option required with multiple supported archs."""
         # With only one supported architecture in project, --arch argument must
@@ -2470,7 +2470,7 @@ class ControllerProjectActionVMTest(RiftProjectTestCase):
         # Remove mock build environment
         self.clean_mock_environments()
 
-    @patch("rift.Controller.VM")
+    @patch("rift.controller.VM")
     def test_action_vm_build(self, mock_vm_class):
         """simple 'rift vm build' is ok"""
 
@@ -2739,7 +2739,7 @@ class ControllerProjectActionSyncTest(RiftProjectTestCase):
         # Clean synchronization output parent
         shutil.rmtree(sync_parent)
 
-    @patch("rift.Controller.RepoSyncFactory")
+    @patch("rift.controller.RepoSyncFactory")
     def test_action_sync(self, mock_reposync):
         """Test rift runs sync action with or without sync conf."""
         # First run sync without sync conf nor -o, --output argument.
@@ -3045,7 +3045,7 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
 
     @patch("rift.container.ContainerFile.analyze")
     @patch("rift.package.rpm.Mock")
-    @patch("rift.Controller.Review")
+    @patch("rift.controller.Review")
     def test_gerrit_multiformats(
         self, mock_review, mock_mock, mock_containerfile_analyze
     ):
@@ -3093,7 +3093,7 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
 
     @patch("rift.container.ContainerFile.analyze")
     @patch("rift.package.rpm.Mock")
-    @patch("rift.Controller.Review")
+    @patch("rift.controller.Review")
     def test_gerrit_rpm(self, mock_review, mock_mock, mock_containerfile_analyze):
         """simple gerrit on rpm package"""
         self.make_pkg(formats=["rpm"])
@@ -3129,7 +3129,7 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
 
     @patch("rift.container.ContainerFile.analyze")
     @patch("rift.package.rpm.Mock")
-    @patch("rift.Controller.Review")
+    @patch("rift.controller.Review")
     def test_gerrit_oci(self, mock_review, mock_mock, mock_containerfile_analyze):
         """simple gerrit on oci package"""
         self.make_pkg(formats=["oci"])
@@ -3161,7 +3161,7 @@ class ControllerProjectActionGerritTest(RiftProjectTestCase):
 
     @patch("rift.container.ContainerFile.analyze")
     @patch("rift.package.rpm.Mock")
-    @patch("rift.Controller.Review")
+    @patch("rift.controller.Review")
     def test_gerrit_review_invalidated(
         self, mock_review, mock_mock, mock_containerfile_analyze
     ):

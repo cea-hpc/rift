@@ -46,7 +46,7 @@ from rift.annex.directory import DirectoryAnnex
 from rift.annex.s3 import S3Annex
 from rift.annex.server import ServerAnnex
 from rift.annex.utils import get_digest_from_path, hashfile, is_pointer
-from rift.TempDir import TempDir
+from rift.temp_dir import TempDir
 
 
 class Annex:

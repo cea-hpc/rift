@@ -7,14 +7,14 @@ import textwrap
 from unittest.mock import ANY, Mock, patch
 
 from rift import RiftError
-from rift.Config import _DEFAULT_VARIANT
-from rift.Gerrit import Review
+from rift.config import _DEFAULT_VARIANT
+from rift.gerrit import Review
 from rift.package.rpm import ActionableArchPackageRPM, PackageRPM
 from rift.repository import StagingRepository
 from rift.run import RunResult
-from rift.TestResults import TestResults
+from rift.test_results import TestResults
 
-from ..TestUtils import (
+from ..test_utils import (
     PackageTestDef,
     RiftProjectTestCase,
     gen_rpm_spec,

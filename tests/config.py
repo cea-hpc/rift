@@ -7,7 +7,7 @@ import os.path
 import textwrap
 
 from rift import DeclError
-from rift.Config import (
+from rift.config import (
     _DEFAULT_DEPENDENCY_TRACKING,
     _DEFAULT_MODULES_FILE,
     _DEFAULT_PKG_DIR,
@@ -29,7 +29,7 @@ from rift.Config import (
     Staff,
 )
 
-from .TestUtils import RiftTestCase, make_temp_dir, make_temp_file
+from .test_utils import RiftTestCase, make_temp_dir, make_temp_file
 
 
 class ConfigTest(RiftTestCase):

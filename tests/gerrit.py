@@ -4,10 +4,10 @@
 from unittest import mock
 
 from rift import RiftError
-from rift.Config import Config
-from rift.Gerrit import Review
+from rift.config import Config
+from rift.gerrit import Review
 
-from .TestUtils import RiftTestCase
+from .test_utils import RiftTestCase
 
 
 class GerritTest(RiftTestCase):
@@ -31,7 +31,7 @@ class GerritTest(RiftTestCase):
         self.review.invalidate()
         self.assertEqual(self.review.validated, False)
 
-    @mock.patch("rift.Gerrit.urllib.urlopen")
+    @mock.patch("rift.gerrit.urllib.urlopen")
     def test_push(self, mock_urlopen):
         """Test Review push"""
         self.review.push(self.config, 4242, 42)

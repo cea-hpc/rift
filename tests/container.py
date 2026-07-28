@@ -8,11 +8,11 @@ from unittest.mock import Mock, patch
 
 from rift import RiftError
 from rift.container import ContainerArchive, ContainerFile, ContainerRuntime
-from rift.Gerrit import Review
+from rift.gerrit import Review
 from rift.package.oci import PackageOCI
 from rift.run import RunResult
 
-from .TestUtils import (
+from .test_utils import (
     EXPECTED_HADOLINT_EXEC,
     RiftProjectTestCase,
     command_available,

@@ -50,7 +50,7 @@ import rpm
 import rift.utils
 from rift import RiftError
 from rift.annex import Annex, is_binary
-from rift.Config import _DEFAULT_VARIANT
+from rift.config import _DEFAULT_VARIANT
 
 
 def _header_values(values):

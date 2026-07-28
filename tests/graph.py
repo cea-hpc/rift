@@ -10,7 +10,7 @@ from rift.graph import PackagesDependencyGraph
 from rift.package.oci import PackageOCI
 from rift.package.rpm import PackageRPM
 
-from .TestUtils import RiftProjectTestCase, SubPackage, read_file
+from .test_utils import RiftProjectTestCase, SubPackage, read_file
 
 
 class GraphTest(RiftProjectTestCase):

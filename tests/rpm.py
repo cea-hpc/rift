@@ -10,10 +10,10 @@ from unittest.mock import MagicMock, patch
 import rpm
 
 from rift import RiftError
-from rift.Mock import RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2, Mock
-from rift.RPM import RPM, Spec, Variable
+from rift.mock import RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2, Mock
+from rift.rpm import RPM, Spec, Variable
 
-from .TestUtils import (
+from .test_utils import (
     RiftProjectTestCase,
     RiftTestCase,
     gen_rpm_spec,

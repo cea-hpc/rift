@@ -37,7 +37,7 @@ import logging
 from rift import RiftError
 from rift.repository.oci import ArchRepositoriesOCI
 from rift.repository.rpm import ArchRepositoriesRPM, StagingRepositoryRPM
-from rift.TempDir import TempDir
+from rift.temp_dir import TempDir
 
 
 class ProjectArchRepositories:

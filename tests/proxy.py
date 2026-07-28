@@ -10,7 +10,7 @@ from rift.proxy import (
     _TokenAuthRepositoryProxyHandler,
 )
 
-from .TestUtils import RiftTestCase
+from .test_utils import RiftTestCase
 
 
 class _DummyRepo:

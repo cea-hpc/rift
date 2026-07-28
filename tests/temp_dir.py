@@ -4,9 +4,9 @@
 
 import os
 
-from rift.TempDir import TempDir
+from rift.temp_dir import TempDir
 
-from .TestUtils import RiftTestCase
+from .test_utils import RiftTestCase
 
 
 class TempDirTest(RiftTestCase):

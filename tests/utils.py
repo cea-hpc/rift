@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, Mock, call, patch
 from rift import RiftError
 from rift.utils import banner, download_file, last_modified, message
 
-from .TestUtils import RiftTestCase
+from .test_utils import RiftTestCase
 
 
 class UtilsTest(RiftTestCase):

@@ -38,7 +38,7 @@ import sys
 import threading
 import traceback
 
-from rift.TestResults import TestResults
+from rift.test_results import TestResults
 
 # Python provides standards context managers contextlib.redirect_{stdout,stderr}
 # but they are not thread-safe unfortunately. For redirecting threads

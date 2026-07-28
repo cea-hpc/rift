@@ -39,7 +39,7 @@ import textwrap
 from rift import RiftError
 from rift.patches import get_packages_from_patch
 
-from .TestUtils import RiftProjectTestCase, make_temp_file
+from .test_utils import RiftProjectTestCase, make_temp_file
 
 
 class PatchTest(RiftProjectTestCase):

@@ -12,7 +12,7 @@ from rift.annex.utils import (
     is_pointer,
 )
 
-from ..TestUtils import RiftTestCase, make_temp_file
+from ..test_utils import RiftTestCase, make_temp_file
 
 
 class AnnexUtilsTest(RiftTestCase):
