@@ -41,6 +41,7 @@ import json
 import logging
 import os
 import sys
+import threading
 
 import requests
 import urllib3
@@ -266,12 +267,16 @@ class Auth:
         self.idp_token_refresh_threshold = config.get("idp_token_refresh_threshold")
 
         self.state = AuthState()
+        # Serialize IDP refresh across threads (e.g. repos proxy) so only one
+        # identical refresh_token grant is sent when many callers race near expiry.
+        self._idp_refresh_lock = threading.Lock()
 
     def _request_idp_token(self, data):
         """
         Request an IDP token with the given grant form data, update AuthState,
         and persist.
         """
+        logging.debug("requesting new idp token on %s", self.idp_auth_endpoint)
         res = requests.post(
             self.idp_auth_endpoint,
             data=data,
@@ -307,6 +312,9 @@ class Auth:
         """
         Refresh the IDP access token when remaining validity is below threshold
         and a refresh token is available.
+
+        Uses double-checked locking so concurrent callers (e.g. repos proxy
+        request threads) trigger at most one refresh request.
         """
         if not self.idp_token_refresh_threshold:
             return
@@ -320,15 +328,24 @@ class Auth:
             logging.debug("idp access token near expiry but no refresh token available")
             return
 
-        logging.debug("refreshing idp access token")
-        self._request_idp_token(
-            {
-                "client_id": "minio",
-                "grant_type": "refresh_token",
-                "refresh_token": self.state.idp_refresh_token,
-                "client_secret": self.idp_app_token,
-            }
-        )
+        with self._idp_refresh_lock:
+            # Another thread may have refreshed while we waited for the lock.
+            remaining = self.state.idp_seconds_remaining()
+            if remaining is None or remaining >= self.idp_token_refresh_threshold:
+                return
+
+            logging.debug(
+                "refreshing idp access token (remaining: %.0f seconds)", remaining
+            )
+
+            self._request_idp_token(
+                {
+                    "client_id": "minio",
+                    "grant_type": "refresh_token",
+                    "refresh_token": self.state.idp_refresh_token,
+                    "client_secret": self.idp_app_token,
+                }
+            )
 
     # Step 1: Get OpenID token
     def get_idp_token(self):
