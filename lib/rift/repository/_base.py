@@ -40,6 +40,7 @@ class ArchRepositoriesBase(ABC):
     Abstract base class to manipulate repositories defined in a project for a
     particular architecture and format.
     """
+
     def __init__(self, working_dir, arch):
         self.working_dir = working_dir
         self.arch = arch
@@ -57,6 +58,7 @@ class StagingRepositoryBase(ABC):
     """
     Abstract base class to manipulate staging repository for a specific format.
     """
+
     @abstractmethod
     def __init__(self, repo):
         self.repo = repo

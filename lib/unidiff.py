@@ -1,4 +1,3 @@
-
 # The MIT License (MIT)
 # Copyright (c) 2012 Matias Bordese
 #
@@ -23,44 +22,46 @@
 
 """Unified diff parser module."""
 
-import re
 import difflib
+import re
 
-LINE_TYPE_ADD = '+'
-LINE_TYPE_DELETE = '-'
-LINE_TYPE_CONTEXT = ' '
+LINE_TYPE_ADD = "+"
+LINE_TYPE_DELETE = "-"
+LINE_TYPE_CONTEXT = " "
 
-RE_DIFF_PATCH = re.compile(r'^diff --git (?P<source>[^\t]+) (?P<target>[^\t]+)')
+RE_DIFF_PATCH = re.compile(r"^diff --git (?P<source>[^\t]+) (?P<target>[^\t]+)")
 
 # @@ (source offset, length) (target offset, length) @@ (section header)
-RE_HUNK_HEADER = re.compile(
-    r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))?\ @@[ ]?(.*)")
+RE_HUNK_HEADER = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))?\ @@[ ]?(.*)")
 
 # Binary pattern
-RE_BINARY_FILE = re.compile(r'^(GIT )?[Bb]inary (files .*differ|patch)$')
+RE_BINARY_FILE = re.compile(r"^(GIT )?[Bb]inary (files .*differ|patch)$")
 
 # Deleted patterne
-RE_DELETED_BINARY_FILE = re.compile(r'^(GIT )?[Bb]inary (files .* /dev/null differ)$')
+RE_DELETED_BINARY_FILE = re.compile(r"^(GIT )?[Bb]inary (files .* /dev/null differ)$")
 
 # renamed pattern
-RE_RENAMED_FILE = re.compile(r'^rename from .*$')
+RE_RENAMED_FILE = re.compile(r"^rename from .*$")
 
 #   kept line (context)
 # + added line
 # - deleted line
 # \ No newline case (ignore)
-RE_HUNK_BODY_LINE = re.compile(r'^([- \+\\])')
+RE_HUNK_BODY_LINE = re.compile(r"^([- \+\\])")
 
 
 class UnidiffParseException(Exception):
     """Exception when parsing the diff data."""
+
     pass
+
 
 class Hunk(object):
     """Each of the modified blocks of a file."""
 
-    def __init__(self, src_start=0, src_len=0, tgt_start=0, tgt_len=0,
-                 section_header=''):
+    def __init__(
+        self, src_start=0, src_len=0, tgt_start=0, tgt_len=0, section_header=""
+    ):
         if src_len is None:
             src_len = 1
         if tgt_len is None:
@@ -80,31 +81,40 @@ class Hunk(object):
         self._unidiff_generator = None
 
     def __repr__(self):
-        return "<@@ %d,%d %d,%d @@ %s>" % (self.source_start,
-                                           self.source_length,
-                                           self.target_start,
-                                           self.target_length,
-                                           self.section_header)
+        return "<@@ %d,%d %d,%d @@ %s>" % (
+            self.source_start,
+            self.source_length,
+            self.target_start,
+            self.target_length,
+            self.section_header,
+        )
 
     def as_unified_diff(self):
         """Output hunk data in unified diff format."""
         if self._unidiff_generator is None:
-            self._unidiff_generator = difflib.unified_diff(self.source_lines,
-                                                           self.target_lines)
+            self._unidiff_generator = difflib.unified_diff(
+                self.source_lines, self.target_lines
+            )
             # throw the header information
             for i in range(3):
                 next(self._unidiff_generator)
 
-        head = "@@ -%d,%d +%d,%d @@\n" % (self.source_start, self.source_length,
-                                          self.target_start, self.target_length)
+        head = "@@ -%d,%d +%d,%d @@\n" % (
+            self.source_start,
+            self.source_length,
+            self.target_start,
+            self.target_length,
+        )
         yield head
         while True:
             yield next(self._unidiff_generator)
 
     def is_valid(self):
         """Check hunk header data matches entered lines info."""
-        return (len(self.source_lines) == self.source_length and
-                len(self.target_lines) == self.target_length)
+        return (
+            len(self.source_lines) == self.source_length
+            and len(self.target_lines) == self.target_length
+        )
 
     def append_context_line(self, line):
         """Add a new context line to the hunk."""
@@ -135,7 +145,7 @@ class Hunk(object):
 class PatchedFile(list):
     """Data of a patched file, each element is a Hunk."""
 
-    def __init__(self, source='', target=''):
+    def __init__(self, source="", target=""):
         super(PatchedFile, self).__init__()
         self.source_file = source
         self.target_file = target
@@ -144,8 +154,7 @@ class PatchedFile(list):
         self._deleted = False
 
     def __repr__(self):
-        return "%s: %s" % (self.target_file,
-                           super(PatchedFile, self).__repr__())
+        return "%s: %s" % (self.target_file, super(PatchedFile, self).__repr__())
 
     def __str__(self):
         s = self.path + "\n"
@@ -173,11 +182,11 @@ class PatchedFile(list):
         # TODO: improve git/hg detection
         if self.renamed:
             filepath = self.target_file
-        elif self.source_file == '/dev/null':
+        elif self.source_file == "/dev/null":
             filepath = self.target_file
         else:
             filepath = self.source_file
-        if filepath.startswith('a/') or filepath.startswith('b/'):
+        if filepath.startswith("a/") or filepath.startswith("b/"):
             filepath = filepath[2:]
         return filepath.strip()
 
@@ -199,14 +208,16 @@ class PatchedFile(list):
     @property
     def is_added_file(self):
         """Return True if this patch adds a file."""
-        return (len(self) == 1 and self[0].source_start == 0 and
-                self[0].source_length == 0)
+        return (
+            len(self) == 1 and self[0].source_start == 0 and self[0].source_length == 0
+        )
 
     @property
     def is_deleted_file(self):
         """Return True if this patch deletes a file."""
-        return self._deleted or (len(self) == 1 and self[0].target_start == 0 and
-                                self[0].target_length == 0)
+        return self._deleted or (
+            len(self) == 1 and self[0].target_start == 0 and self[0].target_length == 0
+        )
 
     @property
     def is_modified_file(self):
@@ -229,20 +240,20 @@ class PatchSet(list):
                 yield line
 
     def __str__(self):
-        return ''.join([str(e) for e in self])
+        return "".join([str(e) for e in self])
 
 
-def _parse_hunk(diff, source_start, source_len, target_start, target_len,
-                section_header):
+def _parse_hunk(
+    diff, source_start, source_len, target_start, target_len, section_header
+):
     """Parse a diff hunk details."""
-    hunk = Hunk(source_start, source_len, target_start, target_len,
-                section_header)
+    hunk = Hunk(source_start, source_len, target_start, target_len, section_header)
     modified = 0
     deleting = 0
     for line in diff:
         valid_line = RE_HUNK_BODY_LINE.match(line)
         if not valid_line:
-            raise UnidiffParseException('Hunk diff data expected')
+            raise UnidiffParseException("Hunk diff data expected")
 
         action = valid_line.group(0)
         original_line = line[1:]
@@ -280,8 +291,8 @@ def parse_unidiff(diff):
         ## check for source file header
         check_source = RE_DIFF_PATCH.match(line)
         if check_source:
-            source_file = check_source.group('source')
-            target_file = check_source.group('target')
+            source_file = check_source.group("source")
+            target_file = check_source.group("target")
             current_patch = PatchedFile(source_file, target_file)
             ret.append(current_patch)
             continue

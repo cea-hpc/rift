@@ -33,14 +33,15 @@
 patches.py:
     Package to parse patches files in unified diff format
 """
-import os
-import logging
 
-from unidiff import parse_unidiff
+import logging
+import os
+
 from rift import RiftError
-from rift.package import ProjectPackages
+from rift.Config import Modules, Staff
 from rift.Mock import RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2
-from rift.Config import Staff, Modules
+from rift.package import ProjectPackages
+from unidiff import parse_unidiff
 
 
 def get_packages_from_patch(patch, config, modules, staff):
@@ -56,30 +57,21 @@ def get_packages_from_patch(patch, config, modules, staff):
 
     for patchedfile in patchedfiles:
         modifies_packages = _validate_patched_file(
-            patchedfile,
-            config=config,
-            modules=modules,
-            staff=staff
+            patchedfile, config=config, modules=modules, staff=staff
         )
         if not modifies_packages:
             continue
         for pkg in _patched_file_updated_packages(
-                patchedfile,
-                config=config,
-                modules=modules,
-                staff=staff
-            ):
+            patchedfile, config=config, modules=modules, staff=staff
+        ):
             if pkg not in updated:
-                logging.info('Patch updates package %s[%s]', pkg.name, pkg.format)
+                logging.info("Patch updates package %s[%s]", pkg.name, pkg.format)
                 updated.append(pkg)
         for pkg in _patched_file_removed_packages(
-                patchedfile,
-                config=config,
-                modules=modules,
-                staff=staff
-            ):
+            patchedfile, config=config, modules=modules, staff=staff
+        ):
             if pkg not in removed:
-                logging.info('Patch deletes package %s[%s]', pkg.name, pkg.format)
+                logging.info("Patch deletes package %s[%s]", pkg.name, pkg.format)
                 removed.append(pkg)
 
     return updated, removed
@@ -95,36 +87,36 @@ def _validate_patched_file(patched_file, config, modules, staff):
     filepath = patched_file.path
     names = filepath.split(os.path.sep)
 
-    if filepath == config.get('staff_file'):
+    if filepath == config.get("staff_file"):
         staff = Staff(config)
         staff.load(filepath)
-        logging.info('Staff file is OK.')
+        logging.info("Staff file is OK.")
         return False
 
-    if filepath == config.get('modules_file'):
+    if filepath == config.get("modules_file"):
         modules = Modules(config, staff)
         modules.load(filepath)
-        logging.info('Modules file is OK.')
+        logging.info("Modules file is OK.")
         return False
 
-    if filepath == 'mock.tpl':
-        logging.debug('Ignoring mock template file: %s', filepath)
+    if filepath == "mock.tpl":
+        logging.debug("Ignoring mock template file: %s", filepath)
         return False
 
-    if filepath == '.gitignore':
-        logging.debug('Ignoring git file: %s', filepath)
+    if filepath == ".gitignore":
+        logging.debug("Ignoring git file: %s", filepath)
         return False
 
-    if filepath == 'project.conf':
-        logging.debug('Ignoring project config file: %s', filepath)
+    if filepath == "project.conf":
+        logging.debug("Ignoring project config file: %s", filepath)
         return False
 
-    if filepath == '.gitlab-ci.yml':
-        logging.debug('Ignoring gitlab ci file: %s', filepath)
+    if filepath == ".gitlab-ci.yml":
+        logging.debug("Ignoring gitlab ci file: %s", filepath)
         return False
 
-    if filepath == 'CODEOWNERS':
-        logging.debug('Ignoring gitlab ci file: %s', filepath)
+    if filepath == "CODEOWNERS":
+        logging.debug("Ignoring gitlab ci file: %s", filepath)
         return False
 
     if names[0] == "gitlab-ci":
@@ -134,7 +126,7 @@ def _validate_patched_file(patched_file, config, modules, staff):
     if patched_file.binary:
         raise RiftError(f"Binary file detected: {filepath}")
 
-    if names[0] != config.get('packages_dir'):
+    if names[0] != config.get("packages_dir"):
         raise RiftError(f"Unknown file pattern: {filepath}")
 
     return True
@@ -159,7 +151,7 @@ def _patched_file_updated_packages(patched_file, config, modules, staff):
     pkg = None
 
     if patched_file.is_deleted_file:
-        logging.debug('Ignoring removed file: %s', filepath)
+        logging.debug("Ignoring removed file: %s", filepath)
         return []
 
     # Drop config.get('packages_dir') from list
@@ -173,54 +165,52 @@ def _patched_file_updated_packages(patched_file, config, modules, staff):
     known_file = False
 
     for pkg in pkgs:
-
         # info.yaml
         if fullpath == pkg.metafile:
-            logging.info('Ignoring meta file')
+            logging.info("Ignoring meta file")
             known_file = True
             continue
 
         # README file
         if fullpath in pkg.docfiles:
-            logging.debug('Ignoring documentation file: %s', fullpath)
+            logging.debug("Ignoring documentation file: %s", fullpath)
             known_file = True
             continue
 
         # backup buildfile
         if fullpath == f"{pkg.buildfile}.orig":
-            logging.debug('Ignoring backup buildfile')
+            logging.debug("Ignoring backup buildfile")
             known_file = True
             continue
 
         # buildfile
         if fullpath == pkg.buildfile:
-            logging.info('Detected buildfile file')
+            logging.info("Detected buildfile file")
             known_file = True
 
         # rpmlint config file
         elif names in [RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2]:
-            logging.debug('Detecting rpmlint config file')
+            logging.debug("Detecting rpmlint config file")
             known_file = True
 
         # sources/
         elif fullpath.startswith(pkg.sourcesdir) and len(names) == 2:
-            logging.debug('Detecting source file: %s', names[1])
+            logging.debug("Detecting source file: %s", names[1])
             known_file = True
 
         # tests/
         elif fullpath.startswith(pkg.testsdir):
-            logging.debug('Detecting test script: %s', filepath)
+            logging.debug("Detecting test script: %s", filepath)
             known_file = True
         else:
-            logging.debug("Unknown file pattern %s for package format %s",
-                          filepath, pkg.format)
+            logging.debug(
+                "Unknown file pattern %s for package format %s", filepath, pkg.format
+            )
             continue
         result.append(pkg)
 
     if not known_file:
-        raise RiftError(
-            f"Unknown file pattern in '{pkg.name}' directory: {filepath}"
-        )
+        raise RiftError(f"Unknown file pattern in '{pkg.name}' directory: {filepath}")
 
     return result
 
@@ -235,7 +225,7 @@ def _patched_file_removed_packages(patched_file, config, modules, staff):
     fullpath = config.project_path(filepath)
 
     if not patched_file.is_deleted_file:
-        logging.debug('Ignoring not removed file: %s', filepath)
+        logging.debug("Ignoring not removed file: %s", filepath)
         return []
 
     pkgs = ProjectPackages.get(names[1], config, staff, modules)

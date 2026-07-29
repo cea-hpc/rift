@@ -33,34 +33,36 @@
 Controler.py:
     Core package to manage rift actions
 """
-import os
+
 import argparse
 import logging
-from operator import attrgetter
-import time
+import os
 import platform
+import time
+from operator import attrgetter
+
 # Since pylint can not found rpm.error, disable this check
-from rpm import error as RpmError # pylint: disable=no-name-in-module
-from unidiff import parse_unidiff
+from rpm import error as RpmError  # pylint: disable=no-name-in-module
 
 from rift import RiftError, __version__
 from rift.annex import Annex, is_binary, is_pointer
-from rift.Config import Config, Staff, Modules, _DEFAULT_VARIANT
-from rift.Gerrit import Review
 from rift.auth import Auth
-from rift.package import RIFT_SUPPORTED_FORMATS, ProjectPackages
-from rift.repository import ProjectArchRepositories, StagingRepository
+from rift.Config import _DEFAULT_VARIANT, Config, Modules, Staff
+from rift.container import ContainerArchive, ContainerFile
+from rift.Gerrit import Review
 from rift.graph import PackagesDependencyGraph
-from rift.RPM import RPM, Spec
 from rift.Mock import Mock
-from rift.container import ContainerFile, ContainerArchive
+from rift.package import RIFT_SUPPORTED_FORMATS, ProjectPackages
+from rift.patches import get_packages_from_patch
+from rift.repository import ProjectArchRepositories, StagingRepository
+from rift.RPM import RPM, Spec
+from rift.sync import RepoSyncFactory
 from rift.TestResults import TestCase, TestResults
 from rift.TextTable import TextTable
-from rift.VM import VM
-from rift.sync import RepoSyncFactory
-from rift.patches import get_packages_from_patch
 from rift.threads import RiftThread
-from rift.utils import message, banner
+from rift.utils import banner, message
+from rift.VM import VM
+from unidiff import parse_unidiff
 
 
 def make_parser():
@@ -68,366 +70,537 @@ def make_parser():
 
     parser = argparse.ArgumentParser()
     # Generic options
-    parser.add_argument('-v', '--verbose', action='count', default=0,
-                        help="increase output verbosity (twice for debug)")
-    parser.add_argument('--version', action='version',
-                        version=f"Rift {__version__}")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=0,
+        help="increase output verbosity (twice for debug)",
+    )
+    parser.add_argument("--version", action="version", version=f"Rift {__version__}")
 
-    subparsers = parser.add_subparsers(dest='command', metavar='COMMAND')
+    subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
 
     # Create options
-    subprs = subparsers.add_parser('create', help='create a new package')
-    subprs.add_argument('name', metavar='PKGNAME',
-                        help='package name to be created')
-    subprs.add_argument('-m', '--module', dest='module', required=True,
-                        help='module name this package will belong to')
-    subprs.add_argument('-r', '--reason', dest='reason', required=True,
-                        help='reason this package is added to project')
-    subprs.add_argument('-o', '--origin', dest='origin',
-                        help='source of original package')
-    subprs.add_argument('-t', '--maintainer', dest='maintainer',
-                        help='maintainer name from staff.yaml')
+    subprs = subparsers.add_parser("create", help="create a new package")
+    subprs.add_argument("name", metavar="PKGNAME", help="package name to be created")
+    subprs.add_argument(
+        "-m",
+        "--module",
+        dest="module",
+        required=True,
+        help="module name this package will belong to",
+    )
+    subprs.add_argument(
+        "-r",
+        "--reason",
+        dest="reason",
+        required=True,
+        help="reason this package is added to project",
+    )
+    subprs.add_argument(
+        "-o", "--origin", dest="origin", help="source of original package"
+    )
+    subprs.add_argument(
+        "-t", "--maintainer", dest="maintainer", help="maintainer name from staff.yaml"
+    )
 
     # Import options
-    subprs = subparsers.add_parser('import',
-                                   help='import a SRPM and create a package')
-    subprs.add_argument('file', metavar='FILE', help='source RPM to import')
-    subprs.add_argument('-m', '--module', dest='module', required=True,
-                        help='module name this package will belong to')
-    subprs.add_argument('-r', '--reason', dest='reason', required=True,
-                        help='reason this package is added to project')
-    subprs.add_argument('-o', '--origin', dest='origin',
-                        help='source of original package')
-    subprs.add_argument('-t', '--maintainer', dest='maintainer',
-                        help='maintainer name from staff.yaml')
+    subprs = subparsers.add_parser("import", help="import a SRPM and create a package")
+    subprs.add_argument("file", metavar="FILE", help="source RPM to import")
+    subprs.add_argument(
+        "-m",
+        "--module",
+        dest="module",
+        required=True,
+        help="module name this package will belong to",
+    )
+    subprs.add_argument(
+        "-r",
+        "--reason",
+        dest="reason",
+        required=True,
+        help="reason this package is added to project",
+    )
+    subprs.add_argument(
+        "-o", "--origin", dest="origin", help="source of original package"
+    )
+    subprs.add_argument(
+        "-t", "--maintainer", dest="maintainer", help="maintainer name from staff.yaml"
+    )
 
     # Reimport options
-    subprs = subparsers.add_parser('reimport',
-                                   help='update an existing package with a SRPM')
-    subprs.add_argument('file', metavar='FILE', help='source RPM to import')
-    subprs.add_argument('-m', '--module', dest='module',
-                        help='module name this package will belong to')
-    subprs.add_argument('-r', '--reason', dest='reason',
-                        help='reason this package is added to project')
-    subprs.add_argument('-o', '--origin', dest='origin',
-                        help='source of original package')
-    subprs.add_argument('-t', '--maintainer', dest='maintainer',
-                        help='maintainer name from staff.yaml')
+    subprs = subparsers.add_parser(
+        "reimport", help="update an existing package with a SRPM"
+    )
+    subprs.add_argument("file", metavar="FILE", help="source RPM to import")
+    subprs.add_argument(
+        "-m", "--module", dest="module", help="module name this package will belong to"
+    )
+    subprs.add_argument(
+        "-r", "--reason", dest="reason", help="reason this package is added to project"
+    )
+    subprs.add_argument(
+        "-o", "--origin", dest="origin", help="source of original package"
+    )
+    subprs.add_argument(
+        "-t", "--maintainer", dest="maintainer", help="maintainer name from staff.yaml"
+    )
 
     # Check options
-    subprs = subparsers.add_parser('check',
-                                   help='verify various config file syntaxes')
-    subprs.add_argument('type', choices=['staff', 'modules', 'info',
-                                         'spec', 'containerfile'],
-                        metavar='CHKTYPE', help='type of check')
-    subprs.add_argument('-f', '--file', metavar='FILE',
-                        help='path of file to check')
+    subprs = subparsers.add_parser("check", help="verify various config file syntaxes")
+    subprs.add_argument(
+        "type",
+        choices=["staff", "modules", "info", "spec", "containerfile"],
+        metavar="CHKTYPE",
+        help="type of check",
+    )
+    subprs.add_argument("-f", "--file", metavar="FILE", help="path of file to check")
 
     # Build options
-    subprs = subparsers.add_parser('build', help='build package')
-    subprs.add_argument('packages', metavar='PACKAGE', nargs='*',
-                        help='package name to build')
-    subprs.add_argument('-p', '--publish', action='store_true',
-                        help='publish package to repository')
-    subprs.add_argument('-s', '--sign', action='store_true',
-                        help='sign built packages with GPG key '
-                             '(implies -p, --publish)')
-    subprs.add_argument('-S', '--skip-deps', action='store_true',
-                        help='Skip automatic rebuild of reverse dependencies')
-    subprs.add_argument('--junit', metavar='FILENAME',
-                        help='write junit result file')
-    subprs.add_argument('--dont-update-repo', dest='updaterepo', action='store_false',
-                        help='do not update repository metadata when publishing a package')
-    subprs.add_argument('-F', '--formats', nargs='+',
-                        choices=RIFT_SUPPORTED_FORMATS,
-                        help='restrict build to specific package formats')
-    subprs.add_argument('-q', '--quiet', action='store_true',
-                        help='omit build output when it succeeds')
-    subprs.add_argument('--seq', action='store_true',
-                        help='run one architecture at a time with live output '
-                             '(no parallel threads)')
+    subprs = subparsers.add_parser("build", help="build package")
+    subprs.add_argument(
+        "packages", metavar="PACKAGE", nargs="*", help="package name to build"
+    )
+    subprs.add_argument(
+        "-p", "--publish", action="store_true", help="publish package to repository"
+    )
+    subprs.add_argument(
+        "-s",
+        "--sign",
+        action="store_true",
+        help="sign built packages with GPG key (implies -p, --publish)",
+    )
+    subprs.add_argument(
+        "-S",
+        "--skip-deps",
+        action="store_true",
+        help="Skip automatic rebuild of reverse dependencies",
+    )
+    subprs.add_argument("--junit", metavar="FILENAME", help="write junit result file")
+    subprs.add_argument(
+        "--dont-update-repo",
+        dest="updaterepo",
+        action="store_false",
+        help="do not update repository metadata when publishing a package",
+    )
+    subprs.add_argument(
+        "-F",
+        "--formats",
+        nargs="+",
+        choices=RIFT_SUPPORTED_FORMATS,
+        help="restrict build to specific package formats",
+    )
+    subprs.add_argument(
+        "-q", "--quiet", action="store_true", help="omit build output when it succeeds"
+    )
+    subprs.add_argument(
+        "--seq",
+        action="store_true",
+        help="run one architecture at a time with live output (no parallel threads)",
+    )
 
     # Sign options
-    subprs = subparsers.add_parser('sign', help='Sign RPM package with GPG key.')
-    subprs.add_argument('packages', metavar='PACKAGE', nargs='*',
-                        help='package to sign.')
+    subprs = subparsers.add_parser("sign", help="Sign RPM package with GPG key.")
+    subprs.add_argument(
+        "packages", metavar="PACKAGE", nargs="*", help="package to sign."
+    )
 
     # Test options
-    subprs = subparsers.add_parser('test', help='execute package tests')
-    subprs.add_argument('packages', metavar='PACKAGE', nargs='*',
-                        help='package name to test')
-    subprs.add_argument('--noquit', action='store_true',
-                        help='do not stop VM at the end')
-    subprs.add_argument('--noauto', action='store_true',
-                        help='do not run auto tests')
-    subprs.add_argument('--junit', metavar='FILENAME',
-                        help='write junit result file')
-    subprs.add_argument('-F', '--formats', nargs='+',
-                        choices=RIFT_SUPPORTED_FORMATS,
-                        help='restrict tests to specific package formats')
+    subprs = subparsers.add_parser("test", help="execute package tests")
+    subprs.add_argument(
+        "packages", metavar="PACKAGE", nargs="*", help="package name to test"
+    )
+    subprs.add_argument(
+        "--noquit", action="store_true", help="do not stop VM at the end"
+    )
+    subprs.add_argument("--noauto", action="store_true", help="do not run auto tests")
+    subprs.add_argument("--junit", metavar="FILENAME", help="write junit result file")
+    subprs.add_argument(
+        "-F",
+        "--formats",
+        nargs="+",
+        choices=RIFT_SUPPORTED_FORMATS,
+        help="restrict tests to specific package formats",
+    )
 
     # Validate options
-    subprs = subparsers.add_parser('validate', help='Fully validate package')
-    subprs.add_argument('packages', metavar='PACKAGE', nargs='*',
-                        help='package name to validate')
-    subprs.add_argument('-s', '--sign', action='store_true',
-                        help='sign built packages with GPG key '
-                             '(implies -p, --publish)')
-    subprs.add_argument('--noquit', action='store_true',
-                        help='do not stop VM at the end')
-    subprs.add_argument('--noauto', action='store_true',
-                        help='do not run auto tests')
-    subprs.add_argument('--notest', dest='test', action='store_false', default=True,
-                        help='do not run ANY tests')
-    subprs.add_argument('--junit', metavar='FILENAME',
-                        help='write junit result file')
-    subprs.add_argument('-p', '--publish', action='store_true',
-                        help='publish built package to repository')
-    subprs.add_argument('-S', '--skip-deps', action='store_true',
-                        help='Skip automatic validation of reverse dependencies')
-    subprs.add_argument('-F', '--formats', nargs='+',
-                        choices=RIFT_SUPPORTED_FORMATS,
-                        help='restrict validation to specific package formats')
-    subprs.add_argument('-q', '--quiet', action='store_true',
-                        help='omit validate output when it succeeds')
-    subprs.add_argument('--seq', action='store_true',
-                        help='run one architecture at a time with live output '
-                             '(no parallel threads)')
+    subprs = subparsers.add_parser("validate", help="Fully validate package")
+    subprs.add_argument(
+        "packages", metavar="PACKAGE", nargs="*", help="package name to validate"
+    )
+    subprs.add_argument(
+        "-s",
+        "--sign",
+        action="store_true",
+        help="sign built packages with GPG key (implies -p, --publish)",
+    )
+    subprs.add_argument(
+        "--noquit", action="store_true", help="do not stop VM at the end"
+    )
+    subprs.add_argument("--noauto", action="store_true", help="do not run auto tests")
+    subprs.add_argument(
+        "--notest",
+        dest="test",
+        action="store_false",
+        default=True,
+        help="do not run ANY tests",
+    )
+    subprs.add_argument("--junit", metavar="FILENAME", help="write junit result file")
+    subprs.add_argument(
+        "-p",
+        "--publish",
+        action="store_true",
+        help="publish built package to repository",
+    )
+    subprs.add_argument(
+        "-S",
+        "--skip-deps",
+        action="store_true",
+        help="Skip automatic validation of reverse dependencies",
+    )
+    subprs.add_argument(
+        "-F",
+        "--formats",
+        nargs="+",
+        choices=RIFT_SUPPORTED_FORMATS,
+        help="restrict validation to specific package formats",
+    )
+    subprs.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="omit validate output when it succeeds",
+    )
+    subprs.add_argument(
+        "--seq",
+        action="store_true",
+        help="run one architecture at a time with live output (no parallel threads)",
+    )
 
     # Validate diff
-    subprs = subparsers.add_parser('validdiff')
-    subprs.add_argument('patch', metavar='PATCH', type=argparse.FileType('r'))
-    subprs.add_argument('-s', '--sign', action='store_true',
-                        help='sign built packages with GPG key '
-                             '(implies -p, --publish)')
-    subprs.add_argument('--noquit', action='store_true',
-                        help='do not stop VM at the end')
-    subprs.add_argument('--noauto', action='store_true',
-                        help='do not run auto tests')
-    subprs.add_argument('--notest', dest='test', action='store_false', default=True,
-                        help='do not run ANY tests')
-    subprs.add_argument('--junit', metavar='FILENAME',
-                        help='write junit result file')
-    subprs.add_argument('-p', '--publish', action='store_true',
-                        help='publish built packages to repository')
-    subprs.add_argument('-F', '--formats', nargs='+',
-                        choices=RIFT_SUPPORTED_FORMATS,
-                        help='restrict validdiff to specific package formats')
-    subprs.add_argument('-q', '--quiet', action='store_true',
-                        help='omit validate diff output when it succeeds')
-    subprs.add_argument('--seq', action='store_true',
-                        help='run one architecture at a time with live output '
-                             '(no parallel threads)')
+    subprs = subparsers.add_parser("validdiff")
+    subprs.add_argument("patch", metavar="PATCH", type=argparse.FileType("r"))
+    subprs.add_argument(
+        "-s",
+        "--sign",
+        action="store_true",
+        help="sign built packages with GPG key (implies -p, --publish)",
+    )
+    subprs.add_argument(
+        "--noquit", action="store_true", help="do not stop VM at the end"
+    )
+    subprs.add_argument("--noauto", action="store_true", help="do not run auto tests")
+    subprs.add_argument(
+        "--notest",
+        dest="test",
+        action="store_false",
+        default=True,
+        help="do not run ANY tests",
+    )
+    subprs.add_argument("--junit", metavar="FILENAME", help="write junit result file")
+    subprs.add_argument(
+        "-p",
+        "--publish",
+        action="store_true",
+        help="publish built packages to repository",
+    )
+    subprs.add_argument(
+        "-F",
+        "--formats",
+        nargs="+",
+        choices=RIFT_SUPPORTED_FORMATS,
+        help="restrict validdiff to specific package formats",
+    )
+    subprs.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="omit validate diff output when it succeeds",
+    )
+    subprs.add_argument(
+        "--seq",
+        action="store_true",
+        help="run one architecture at a time with live output (no parallel threads)",
+    )
 
     # Annex options
-    subprs = subparsers.add_parser('annex', help='Manipulate annex cache')
+    subprs = subparsers.add_parser("annex", help="Manipulate annex cache")
 
-    subprs_annex = subprs.add_subparsers(dest='annex_cmd',
-                                         title='possible commands')
+    subprs_annex = subprs.add_subparsers(dest="annex_cmd", title="possible commands")
     subsubprs_annex_backup = subprs_annex.add_parser(
-        'backup', help='backup the annex to a tar.gz archive'
+        "backup", help="backup the annex to a tar.gz archive"
     )
     subsubprs_annex_backup.add_argument(
-        '--output-file', metavar='PATH', required=False,
-        help='annex backup output file'
+        "--output-file", metavar="PATH", required=False, help="annex backup output file"
     )
 
-    subprs_annex.add_parser('list', help='list cache content')
-    subsubprs = subprs_annex.add_parser('push', help='move a file into cache')
-    subsubprs.add_argument('files', metavar='FILENAME', nargs='+',
-                           help='file path to be move')
-    subsubprs = subprs_annex.add_parser('restore',
-                                        help='restore file content previously pushed to annex')
-    subsubprs.add_argument('files', metavar='FILENAME', nargs='+',
-                           help='file path to be restored')
-    subsubprs = subprs_annex.add_parser('delete',
-                                        help='remove a file from cache')
-    subsubprs.add_argument('id', metavar='ID', help='digest ID to delete')
-    subsubprs = subprs_annex.add_parser('get', help='Copy a file from cache')
-    subsubprs.add_argument('--id', metavar='DIGEST', required=True,
-                           help='digest ID to read')
-    subsubprs.add_argument('--dest', metavar='PATH', required=True,
-                           help='destination path')
+    subprs_annex.add_parser("list", help="list cache content")
+    subsubprs = subprs_annex.add_parser("push", help="move a file into cache")
+    subsubprs.add_argument(
+        "files", metavar="FILENAME", nargs="+", help="file path to be move"
+    )
+    subsubprs = subprs_annex.add_parser(
+        "restore", help="restore file content previously pushed to annex"
+    )
+    subsubprs.add_argument(
+        "files", metavar="FILENAME", nargs="+", help="file path to be restored"
+    )
+    subsubprs = subprs_annex.add_parser("delete", help="remove a file from cache")
+    subsubprs.add_argument("id", metavar="ID", help="digest ID to delete")
+    subsubprs = subprs_annex.add_parser("get", help="Copy a file from cache")
+    subsubprs.add_argument(
+        "--id", metavar="DIGEST", required=True, help="digest ID to read"
+    )
+    subsubprs.add_argument(
+        "--dest", metavar="PATH", required=True, help="destination path"
+    )
 
     # Auth options
-    subprs = subparsers.add_parser('auth', help='Authenticate to an IDP for privileged actions')
+    subprs = subparsers.add_parser(
+        "auth", help="Authenticate to an IDP for privileged actions"
+    )
 
     # VM options
-    subprs = subparsers.add_parser('vm', help='Manipulate VM process')
-    subprs.add_argument('-a', '--arch', help='CPU architecture of the VM')
-    subprs_vm = subprs.add_subparsers(dest='vm_cmd', title='possible commands')
-    subprs_vm.add_parser('connect', help='connect to running VM')
-    subsubprs = subprs_vm.add_parser('start', help='launch a new VM')
-    subsubprs.add_argument('--force', action='store_true',
-                           help='ignore local copy and force download of remote image')
-    subsubprs.add_argument('--notemp', action='store_false', dest='tmpimg',
-                           default=True, help='modify the real VM image')
-    subprs_vm.add_parser('stop', help='stop the running VM')
-    subprs_vm.add_parser('console', help='console of the running VM')
-    subsubprs = subprs_vm.add_parser('cmd', help='run a command inside the VM')
-    subsubprs.add_argument('commandline', help='command line arguments',
-                           nargs=argparse.REMAINDER)
-    subsubprs = subprs_vm.add_parser('copy', help='copy files with VM')
-    subsubprs.add_argument('source', help='source files')
-    subsubprs.add_argument('dest', help='destination files')
-    subsubprs = subprs_vm.add_parser('build', help='build image of test VM')
-    subsubprs.add_argument('--url', help='URL of base cloud image')
-    subsubprs.add_argument('--force', action='store_true',
-                           help='ignore cache and force download of cloud image')
-    subsubprs.add_argument('-o', '--output',
-                           help='path of generated virtual machine image')
-    subsubprs.add_argument('--deploy', action='store_true',
-                           help='deploy project image defined in configuration')
-    subsubprs.add_argument('--keep', action='store_true',
-                           help='keep virtual machine alive in case of boot failure')
+    subprs = subparsers.add_parser("vm", help="Manipulate VM process")
+    subprs.add_argument("-a", "--arch", help="CPU architecture of the VM")
+    subprs_vm = subprs.add_subparsers(dest="vm_cmd", title="possible commands")
+    subprs_vm.add_parser("connect", help="connect to running VM")
+    subsubprs = subprs_vm.add_parser("start", help="launch a new VM")
+    subsubprs.add_argument(
+        "--force",
+        action="store_true",
+        help="ignore local copy and force download of remote image",
+    )
+    subsubprs.add_argument(
+        "--notemp",
+        action="store_false",
+        dest="tmpimg",
+        default=True,
+        help="modify the real VM image",
+    )
+    subprs_vm.add_parser("stop", help="stop the running VM")
+    subprs_vm.add_parser("console", help="console of the running VM")
+    subsubprs = subprs_vm.add_parser("cmd", help="run a command inside the VM")
+    subsubprs.add_argument(
+        "commandline", help="command line arguments", nargs=argparse.REMAINDER
+    )
+    subsubprs = subprs_vm.add_parser("copy", help="copy files with VM")
+    subsubprs.add_argument("source", help="source files")
+    subsubprs.add_argument("dest", help="destination files")
+    subsubprs = subprs_vm.add_parser("build", help="build image of test VM")
+    subsubprs.add_argument("--url", help="URL of base cloud image")
+    subsubprs.add_argument(
+        "--force",
+        action="store_true",
+        help="ignore cache and force download of cloud image",
+    )
+    subsubprs.add_argument(
+        "-o", "--output", help="path of generated virtual machine image"
+    )
+    subsubprs.add_argument(
+        "--deploy",
+        action="store_true",
+        help="deploy project image defined in configuration",
+    )
+    subsubprs.add_argument(
+        "--keep",
+        action="store_true",
+        help="keep virtual machine alive in case of boot failure",
+    )
 
     # query
-    subprs = subparsers.add_parser('query', help='Show packages metadata')
-    subprs.add_argument('packages', metavar='PACKAGE', nargs='*',
-                        help='package name to validate')
-    subprs.add_argument('--format', dest='fmt', help='Display format')
-    subprs.add_argument('--nospec', dest='spec',
-                        action='store_false', help="Don't load specfile info")
-    subprs.add_argument('-H', '--no-header', dest='headers',
-                        action='store_false', help='Hide table headers')
-    subprs.add_argument('-F', '--formats', nargs='+',
-                        choices=RIFT_SUPPORTED_FORMATS,
-                        help='Restrict query to specific package formats')
+    subprs = subparsers.add_parser("query", help="Show packages metadata")
+    subprs.add_argument(
+        "packages", metavar="PACKAGE", nargs="*", help="package name to validate"
+    )
+    subprs.add_argument("--format", dest="fmt", help="Display format")
+    subprs.add_argument(
+        "--nospec", dest="spec", action="store_false", help="Don't load specfile info"
+    )
+    subprs.add_argument(
+        "-H",
+        "--no-header",
+        dest="headers",
+        action="store_false",
+        help="Hide table headers",
+    )
+    subprs.add_argument(
+        "-F",
+        "--formats",
+        nargs="+",
+        choices=RIFT_SUPPORTED_FORMATS,
+        help="Restrict query to specific package formats",
+    )
 
     # Add changelog entry
-    subprs = subparsers.add_parser('changelog',
-                                   help='Add a new changelog entry')
-    subprs.add_argument('package', metavar='PACKAGE',
-                        help='package name to add changelog entry to')
-    subprs.add_argument('-c', '--comment', metavar='COMMENT', required=True,
-                        help='Changelog comment')
-    subprs.add_argument('-t', '--maintainer', dest='maintainer',
-                        help='maintainer name from staff.yaml')
-    subprs.add_argument('--bump', dest='bump', action='store_true',
-                        help='also bump the release number')
-    subprs.add_argument('-F', '--formats', nargs='+',
-                        choices=RIFT_SUPPORTED_FORMATS,
-                        help='restrict command to specific package formats')
+    subprs = subparsers.add_parser("changelog", help="Add a new changelog entry")
+    subprs.add_argument(
+        "package", metavar="PACKAGE", help="package name to add changelog entry to"
+    )
+    subprs.add_argument(
+        "-c", "--comment", metavar="COMMENT", required=True, help="Changelog comment"
+    )
+    subprs.add_argument(
+        "-t", "--maintainer", dest="maintainer", help="maintainer name from staff.yaml"
+    )
+    subprs.add_argument(
+        "--bump", dest="bump", action="store_true", help="also bump the release number"
+    )
+    subprs.add_argument(
+        "-F",
+        "--formats",
+        nargs="+",
+        choices=RIFT_SUPPORTED_FORMATS,
+        help="restrict command to specific package formats",
+    )
 
     # GitLab review
-    subprs = subparsers.add_parser('gitlab', add_help=False,
-                                   help='Check specfiles for GitLab')
-    subprs.add_argument('patch', metavar='PATCH', type=argparse.FileType('r'))
+    subprs = subparsers.add_parser(
+        "gitlab", add_help=False, help="Check specfiles for GitLab"
+    )
+    subprs.add_argument("patch", metavar="PATCH", type=argparse.FileType("r"))
 
     # Gerrit review
-    subprs = subparsers.add_parser('gerrit', add_help=False,
-                                   help='Make Gerrit automatic review')
-    subprs.add_argument('--change', help="Gerrit Change-Id", required=True)
-    subprs.add_argument('--patchset', help="Gerrit patchset ID", required=True)
-    subprs.add_argument('-F', '--formats', nargs='+',
-                        choices=RIFT_SUPPORTED_FORMATS,
-                        help='restrict command to specific package formats')
-    subprs.add_argument('patch', metavar='PATCH', type=argparse.FileType('r'))
+    subprs = subparsers.add_parser(
+        "gerrit", add_help=False, help="Make Gerrit automatic review"
+    )
+    subprs.add_argument("--change", help="Gerrit Change-Id", required=True)
+    subprs.add_argument("--patchset", help="Gerrit patchset ID", required=True)
+    subprs.add_argument(
+        "-F",
+        "--formats",
+        nargs="+",
+        choices=RIFT_SUPPORTED_FORMATS,
+        help="restrict command to specific package formats",
+    )
+    subprs.add_argument("patch", metavar="PATCH", type=argparse.FileType("r"))
 
     # sync
-    subprs = subparsers.add_parser('sync', help='Synchronize remote repositories')
-    subprs.add_argument('-o', '--output', help='Synchronization output directory')
-    subprs.add_argument('-m', '--max-size', type=int,
-                        help='Max size authorized for the download of each file, in bytes')
-    subprs.add_argument('-r', '--retries', type=int, default=0,
-                        help='Allowed retries when a package download failed')
-    subprs.add_argument('-l', '--log-file', action='store_true',
-                        help='Log the sync process to a log file in the current directory')
-    subprs.add_argument('repositories', metavar='REPOSITORY', nargs='*',
-                        help='repositories to synchronize (default: all)')
+    subprs = subparsers.add_parser("sync", help="Synchronize remote repositories")
+    subprs.add_argument("-o", "--output", help="Synchronization output directory")
+    subprs.add_argument(
+        "-m",
+        "--max-size",
+        type=int,
+        help="Max size authorized for the download of each file, in bytes",
+    )
+    subprs.add_argument(
+        "-r",
+        "--retries",
+        type=int,
+        default=0,
+        help="Allowed retries when a package download failed",
+    )
+    subprs.add_argument(
+        "-l",
+        "--log-file",
+        action="store_true",
+        help="Log the sync process to a log file in the current directory",
+    )
+    subprs.add_argument(
+        "repositories",
+        metavar="REPOSITORY",
+        nargs="*",
+        help="repositories to synchronize (default: all)",
+    )
 
     # graph
-    subprs = subparsers.add_parser('graph',
-                                   help='Draw graph of packages dependencies')
-    subprs.add_argument('--with-external', action='store_true',
-                        help="add project external dependencies in the graph")
-    subprs.add_argument('--module',
-                        help="represent packages from this module in the graph")
-    subprs.add_argument('-F', '--formats', nargs='+',
-                        choices=RIFT_SUPPORTED_FORMATS,
-                        help='restrict command to specific package formats')
-    subprs.add_argument('packages', metavar='PACKAGE', nargs='*',
-                        help='packages to represent in the graph')
+    subprs = subparsers.add_parser("graph", help="Draw graph of packages dependencies")
+    subprs.add_argument(
+        "--with-external",
+        action="store_true",
+        help="add project external dependencies in the graph",
+    )
+    subprs.add_argument(
+        "--module", help="represent packages from this module in the graph"
+    )
+    subprs.add_argument(
+        "-F",
+        "--formats",
+        nargs="+",
+        choices=RIFT_SUPPORTED_FORMATS,
+        help="restrict command to specific package formats",
+    )
+    subprs.add_argument(
+        "packages",
+        metavar="PACKAGE",
+        nargs="*",
+        help="packages to represent in the graph",
+    )
 
     # Parse options
     return parser
 
+
 def action_check(args, config):
     """Action for 'check' sub-commands."""
 
-    if args.type == 'staff':
-
+    if args.type == "staff":
         staff = Staff(config)
-        staff.load(args.file or config.get('staff_file'))
-        logging.info('Staff file is OK.')
+        staff.load(args.file or config.get("staff_file"))
+        logging.info("Staff file is OK.")
 
-    elif args.type == 'modules':
-
+    elif args.type == "modules":
         staff = Staff(config)
-        staff.load(config.get('staff_file'))
+        staff.load(config.get("staff_file"))
         modules = Modules(config, staff)
-        modules.load(args.file or config.get('modules_file'))
-        logging.info('Modules file is OK.')
+        modules.load(args.file or config.get("modules_file"))
+        logging.info("Modules file is OK.")
 
-    elif args.type == 'info':
-
+    elif args.type == "info":
         staff = Staff(config)
-        staff.load(config.get('staff_file'))
+        staff.load(config.get("staff_file"))
         modules = Modules(config, staff)
-        modules.load(config.get('modules_file'))
+        modules.load(config.get("modules_file"))
 
         if args.file is None:
             raise RiftError("You must specify a file path (-f)")
 
         # If the package supports multiple format, check only the first as
         # the info file is the name for all formats.
-        pkg = ProjectPackages.get('dummy', config, staff, modules)[0]
-        pkg.sourcesdir = '/'
+        pkg = ProjectPackages.get("dummy", config, staff, modules)[0]
+        pkg.sourcesdir = "/"
         pkg.load_info(args.file)
-        logging.info('Info file is OK.')
+        logging.info("Info file is OK.")
 
-    elif args.type == 'spec':
-
+    elif args.type == "spec":
         if args.file is None:
             raise RiftError("You must specify a file path (-f)")
 
         mock = Mock(config, platform.machine())
-        repos = ProjectArchRepositories(config, platform.machine()).for_format('rpm')
+        repos = ProjectArchRepositories(config, platform.machine()).for_format("rpm")
         spec = Spec(args.file, mock, repos.all, config=config)
         spec.check()
-        logging.info('Spec file is OK.')
+        logging.info("Spec file is OK.")
 
-    elif args.type == 'containerfile':
-
+    elif args.type == "containerfile":
         if args.file is None:
             raise RiftError("You must specify a file path (-f)")
 
         container_file = ContainerFile(config, args.file)
         container_file.check()
-        logging.info('Containerfile is OK.')
+        logging.info("Containerfile is OK.")
 
 
 def action_annex(args, config, staff, modules):
     """Action for 'annex' sub-commands."""
     annex = Annex(config)
 
-    assert args.annex_cmd in (
-        'backup', 'list', 'get',
-        'push', 'delete', 'restore'
-    )
-    if args.annex_cmd == 'list':
+    assert args.annex_cmd in ("backup", "list", "get", "push", "delete", "restore")
+    if args.annex_cmd == "list":
         fmt = "%-32s %10s  %-18s %s"
-        print(fmt % ('ID', 'SIZE', 'DATE', 'FILENAMES'))
-        print(fmt % ('--', '----', '----', '---------'))
+        print(fmt % ("ID", "SIZE", "DATE", "FILENAMES"))
+        print(fmt % ("--", "----", "----", "---------"))
         for filename, size, mtime, names in annex.list():
             try:
-                timestr = time.strftime('%x %X', time.localtime(mtime))
-                print(fmt % (filename, size, timestr, ','.join(names)))
+                timestr = time.strftime("%x %X", time.localtime(mtime))
+                print(fmt % (filename, size, timestr, ",".join(names)))
 
             except TypeError:
-                print(fmt % (filename, size, mtime, ','.join(names)))
+                print(fmt % (filename, size, mtime, ",".join(names)))
 
-    elif args.annex_cmd == 'push':
+    elif args.annex_cmd == "push":
         for srcfile in args.files:
             if is_pointer(srcfile):
                 message(f"{srcfile}: already pointing to annex")
@@ -437,7 +610,7 @@ def action_annex(args, config, staff, modules):
             else:
                 message(f"{srcfile}: not binary, ignoring")
 
-    elif args.annex_cmd == 'restore':
+    elif args.annex_cmd == "restore":
         for srcfile in args.files:
             if is_pointer(srcfile):
                 annex.get_by_path(srcfile, srcfile)
@@ -445,21 +618,22 @@ def action_annex(args, config, staff, modules):
             else:
                 message(f"{srcfile}: not an annex pointer, ignoring")
 
-    elif args.annex_cmd == 'delete':
+    elif args.annex_cmd == "delete":
         if annex.delete(args.id):
             message(f"{args.id} has been deleted")
 
-    elif args.annex_cmd == 'get':
+    elif args.annex_cmd == "get":
         annex.get(args.id, args.dest)
         message(f"{args.dest} has been created")
 
-    elif args.annex_cmd == 'backup':
+    elif args.annex_cmd == "backup":
         message("Annex backup in progress...")
         output_file = annex.backup(
             ProjectPackages.list(config, staff, modules), args.output_file
         )
 
         message(f"Annex backup is available here: {output_file}")
+
 
 def action_auth(config):
     """Action for 'auth' sub-commands."""
@@ -504,12 +678,13 @@ def validate_pkgs(config, args, pkgs, arch):
             logging.info(
                 "Skipping validation of %s package %s due to restriction on "
                 "package formats",
-                pkg.format, pkg.name
+                pkg.format,
+                pkg.name,
             )
             continue
 
         # Load package and report possible failure
-        case = TestCase('build', pkg.name, _DEFAULT_VARIANT, arch, pkg.format)
+        case = TestCase("build", pkg.name, _DEFAULT_VARIANT, arch, pkg.format)
         now = time.time()
         try:
             pkg.load()
@@ -520,23 +695,22 @@ def validate_pkgs(config, args, pkgs, arch):
 
         if not pkg.supports_arch(arch):
             logging.info(
-                "Skipping validation on architecture %s not supported by "
-                "%s package %s",
+                "Skipping validation on architecture %s not supported by %s package %s",
                 arch,
                 pkg.format,
-                pkg.name
+                pkg.name,
             )
             continue
 
-        banner(f"Checking {pkg.format} package '{pkg.name}' on architecture "
-            f"{arch}")
+        banner(f"Checking {pkg.format} package '{pkg.name}' on architecture {arch}")
 
         now = time.time()
         try:
             pkg.check()
         except RiftError as ex:
-            logging.error("Static analysis of %s package failed: %s",
-                pkg.format, str(ex))
+            logging.error(
+                "Static analysis of %s package failed: %s", pkg.format, str(ex)
+            )
             results.add_failure(case, time.time() - now, err=str(ex))
             continue  # skip current package
 
@@ -545,7 +719,7 @@ def validate_pkgs(config, args, pkgs, arch):
 
         try:
             now = time.time()
-            case = TestCase('build', pkg.name, _DEFAULT_VARIANT, arch, pkg.format)
+            case = TestCase("build", pkg.name, _DEFAULT_VARIANT, arch, pkg.format)
             pkg_arch.build(sign=args.sign, staging=staging)
         except RiftError as ex:
             logging.error("%s build failure: %s", pkg.format, str(ex))
@@ -561,9 +735,8 @@ def validate_pkgs(config, args, pkgs, arch):
         # Check tests
         if args.test:
             pkg_results = pkg_arch.test(
-                noauto=args.noauto,
-                staging=staging,
-                noquit=args.noquit)
+                noauto=args.noauto, staging=staging, noquit=args.noquit
+            )
             results.extend(pkg_results)
 
         # Also publish on working repo if requested
@@ -581,16 +754,13 @@ def validate_pkgs(config, args, pkgs, arch):
 
     return results
 
+
 def vm_build(config, vm, args):
     """Build VM image."""
     if not args.deploy and args.output is None:
-        raise RiftError(
-            "Either --deploy or -o,--output option must be used"
-        )
+        raise RiftError("Either --deploy or -o,--output option must be used")
     if args.deploy and args.output is not None:
-        raise RiftError(
-            "Both --deploy and -o,--output options cannot be used together"
-        )
+        raise RiftError("Both --deploy and -o,--output options cannot be used together")
     if args.deploy:
         if vm.image_is_remote():
             raise RiftError(
@@ -601,12 +771,12 @@ def vm_build(config, vm, args):
     else:
         output = args.output
 
-    vm_source_url = ''
+    vm_source_url = ""
     if args.url is not None:
         vm_source_url = args.url
 
-    elif "image_source" in config.get(args.arch)['vm']:
-        vm_source_url = config.get(args.arch)['vm']['image_source']
+    elif "image_source" in config.get(args.arch)["vm"]:
+        vm_source_url = config.get(args.arch)["vm"]["image_source"]
 
     else:
         raise RiftError(
@@ -620,6 +790,7 @@ def vm_build(config, vm, args):
     vm.build(vm_source_url, args.force, args.keep, output)
     banner(f"New vm image {output} is ready")
     return 0
+
 
 def remove_packages(config, args, pkgs_to_remove, arch):
     """
@@ -640,8 +811,16 @@ def action_vm(args, config):
 
     ret = 1
 
-    assert args.vm_cmd in ('connect', 'console', 'start', 'stop', 'cmd', 'copy', 'build')
-    supported_archs = config.get('arch')
+    assert args.vm_cmd in (
+        "connect",
+        "console",
+        "start",
+        "stop",
+        "cmd",
+        "copy",
+        "build",
+    )
+    supported_archs = config.get("arch")
     if args.arch is None:
         # If --arch argument is not set and there is more than one supported
         # architecture, raise error to ask user to set the argument. If only one
@@ -652,27 +831,28 @@ def action_vm(args, config):
                 f"(possible values: {', '.join(supported_archs)})"
             )
         args.arch = supported_archs[0]
-    if args.arch not in config.get('arch'):
+    if args.arch not in config.get("arch"):
         raise RiftError(f"Project does not support architecture '{args.arch}'")
     vm = VM(config, args.arch)
-    if args.vm_cmd == 'connect':
+    if args.vm_cmd == "connect":
         ret = vm.cmd(options=None, manage_output=False).returncode
-    elif args.vm_cmd == 'console':
+    elif args.vm_cmd == "console":
         ret = vm.console()
-    elif args.vm_cmd == 'cmd':
-        ret = vm.cmd(' '.join(args.commandline), options=None).returncode
-    elif args.vm_cmd == 'copy':
+    elif args.vm_cmd == "cmd":
+        ret = vm.cmd(" ".join(args.commandline), options=None).returncode
+    elif args.vm_cmd == "copy":
         ret = vm.copy(args.source, args.dest)
-    elif args.vm_cmd == 'start':
+    elif args.vm_cmd == "start":
         vm.tmpmode = args.tmpimg
         if vm.start(args.force):
             message("VM started. Use: rift vm connect")
             ret = 0
-    elif args.vm_cmd == 'stop':
-        ret = vm.cmd('poweroff').returncode
-    elif args.vm_cmd == 'build':
+    elif args.vm_cmd == "stop":
+        ret = vm.cmd("poweroff").returncode
+    elif args.vm_cmd == "build":
         ret = vm_build(config, vm, args)
     return ret
+
 
 def build_pkgs(args, pkgs, arch, staging):
     """
@@ -681,35 +861,32 @@ def build_pkgs(args, pkgs, arch, staging):
     results = TestResults()
 
     for pkg in pkgs:
-
         # Skip package if format is not selected by user
         if args.formats and pkg.format not in args.formats:
             logging.info(
-                "Skipping build of %s package %s due to restriction on package "
-                "formats",
-                pkg.format, pkg.name
+                "Skipping build of %s package %s due to restriction on package formats",
+                pkg.format,
+                pkg.name,
             )
             continue
 
         # Load package and report possible failure
-        case = TestCase('build', pkg.name, _DEFAULT_VARIANT, arch, pkg.format)
+        case = TestCase("build", pkg.name, _DEFAULT_VARIANT, arch, pkg.format)
         now = time.time()
         try:
             pkg.load()
         except RiftError as ex:
-            logging.error("Unable to load %s package: %s",
-                pkg.format, str(ex))
+            logging.error("Unable to load %s package: %s", pkg.format, str(ex))
             results.add_failure(case, time.time() - now, err=str(ex))
             continue  # skip current package
 
         # Check architecture is supported or skip package
         if not pkg.supports_arch(arch):
             logging.info(
-                "Skipping build on architecture %s not supported by %s package "
-                "%s",
+                "Skipping build on architecture %s not supported by %s package %s",
                 arch,
                 pkg.format,
-                pkg.name
+                pkg.name,
             )
             continue
 
@@ -743,6 +920,7 @@ def build_pkgs(args, pkgs, arch, staging):
 
     return results
 
+
 def build_architecture(config, args, pkgs, arch):
     """Build pkgs for a specific architecture and return results."""
 
@@ -752,7 +930,7 @@ def build_architecture(config, args, pkgs, arch):
     # dependency tracking is disabled in project configuration or user set
     # --skip-deps argument.
     staging = None
-    if config.get('dependency_tracking') and not args.skip_deps:
+    if config.get("dependency_tracking") and not args.skip_deps:
         staging = StagingRepository(config)
 
     results.extend(build_pkgs(args, pkgs, arch, staging))
@@ -774,20 +952,19 @@ def action_build(args, config):
 
     # Check working repo is properly defined if publish arg is used or raise
     # RiftError
-    if args.publish and config.get('working_repo') is None:
+    if args.publish and config.get("working_repo") is None:
         raise RiftError("Cannot publish if 'working_repo' is undefined")
 
-    results = TestResults('build')
+    results = TestResults("build")
 
     staff, modules = staff_modules(config)
     pkgs = get_packages_to_build(config, staff, modules, args)
     logging.info(
-        "Ordered list of packages to build: %s",
-        str([pkg.name for pkg in pkgs])
+        "Ordered list of packages to build: %s", str([pkg.name for pkg in pkgs])
     )
 
     if args.seq:
-        for arch in config.get('arch'):
+        for arch in config.get("arch"):
             message(f"Starting build on architecture {arch}")
             results.extend(build_architecture(config, args, pkgs, arch))
     else:
@@ -796,7 +973,7 @@ def action_build(args, config):
 
         # Create parallel threads to build all packages for all project supported
         # architectures.
-        for arch in config.get('arch'):
+        for arch in config.get("arch"):
             threads.append(
                 RiftThread(
                     build_architecture, f"build-{arch}", args=(config, args, pkgs, arch)
@@ -814,49 +991,51 @@ def action_build(args, config):
             results.extend(thread.results)
             if not args.quiet or not thread.results.global_result:
                 banner(f"Build thread {thread.name} output:")
-                print(thread.output.getvalue(), end='')
+                print(thread.output.getvalue(), end="")
 
-    banner('All architectures processed')
+    banner("All architectures processed")
 
     if len(results) > 1:
         print(results.summary())
 
-    if getattr(args, 'junit', False):
-        logging.info('Writing test results in %s', args.junit)
+    if getattr(args, "junit", False):
+        logging.info("Writing test results in %s", args.junit)
         results.junit(args.junit)
 
     if not results.global_result:
         return 2
     return 0
 
+
 def action_sign(args, config):
     """Action for 'sign' command."""
     for package in args.packages:
-        if package.endswith('.rpm'):
+        if package.endswith(".rpm"):
             banner(f"Signing RPM package {package} with GPG key")
             rpm = RPM(package, config)
             rpm.sign()
-        elif package.endswith('.tar'):
+        elif package.endswith(".tar"):
             banner(f"Signing OCI archive {package} with GPG key")
             container_archive = ContainerArchive(config, package)
             container_archive.sign()
     return 0
 
+
 def action_test(args, config):
     """Action for 'test' command."""
     staff, modules = staff_modules(config)
-    results = TestResults('test')
+    results = TestResults("test")
     # Test package on all project supported architectures
 
-    for arch in config.get('arch'):
+    for arch in config.get("arch"):
         for pkg in ProjectPackages.list(config, staff, modules, args.packages):
-
             # Skip package if format is not selected by user
             if args.formats and pkg.format not in args.formats:
                 logging.info(
                     "Skipping tests %s package %s due to restriction on "
                     "package formats",
-                    pkg.format, pkg.name
+                    pkg.format,
+                    pkg.name,
                 )
                 continue
 
@@ -869,18 +1048,16 @@ def action_test(args, config):
                 # specifically. When parsing succeeds, this test case is not
                 # reported in test results.
                 case = TestCase("load", pkg.name, _DEFAULT_VARIANT, arch, pkg.format)
-                logging.error("Unable to load %s package: %s",
-                    pkg.format, str(ex))
+                logging.error("Unable to load %s package: %s", pkg.format, str(ex))
                 results.add_failure(case, time.time() - now, err=str(ex))
                 continue  # skip current package
 
             if not pkg.supports_arch(arch):
                 logging.info(
-                    "Skipping test on architecture %s not supported by "
-                    "%s package %s",
+                    "Skipping test on architecture %s not supported by %s package %s",
                     arch,
                     pkg.format,
-                    pkg.name
+                    pkg.name,
                 )
                 continue
 
@@ -890,8 +1067,8 @@ def action_test(args, config):
             pkg_results = pkg_arch.test(noauto=args.noauto, noquit=args.noquit)
             results.extend(pkg_results)
 
-    if getattr(args, 'junit', False):
-        logging.info('Writing test results in %s', args.junit)
+    if getattr(args, "junit", False):
+        logging.info("Writing test results in %s", args.junit)
         results.junit(args.junit)
 
     if len(results) > 1:
@@ -903,15 +1080,16 @@ def action_test(args, config):
     banner("Test suite FAILED!")
     return 2
 
+
 def _validate_packages_on_arch(config, args, pkgs):
     """
     Run package validation on all configured architectures, either sequentially
     or in parallel threads.
     """
-    results = TestResults('validate')
+    results = TestResults("validate")
 
     if args.seq:
-        for arch in config.get('arch'):
+        for arch in config.get("arch"):
             message(f"Starting validate on architecture {arch}")
             results.extend(validate_pkgs(config, args, pkgs, arch))
         return results
@@ -921,7 +1099,7 @@ def _validate_packages_on_arch(config, args, pkgs):
 
     # Create parallel threads to validate packages on all project supported
     # architectures.
-    for arch in config.get('arch'):
+    for arch in config.get("arch"):
         threads.append(
             RiftThread(
                 validate_pkgs, f"validate-{arch}", args=(config, args, pkgs, arch)
@@ -939,7 +1117,7 @@ def _validate_packages_on_arch(config, args, pkgs):
         results.extend(thread.results)
         if not args.quiet or not thread.results.global_result:
             banner(f"Validate thread {thread.name} output:")
-            print(thread.output.getvalue(), end='')
+            print(thread.output.getvalue(), end="")
     return results
 
 
@@ -953,16 +1131,15 @@ def action_validate(args, config):
     staff, modules = staff_modules(config)
     pkgs = get_packages_to_build(config, staff, modules, args)
     logging.info(
-        "Ordered list of packages to validate: %s",
-        str([pkg.name for pkg in pkgs])
+        "Ordered list of packages to validate: %s", str([pkg.name for pkg in pkgs])
     )
 
     results = _validate_packages_on_arch(config, args, pkgs)
 
-    banner('All packages checked on all architectures')
+    banner("All packages checked on all architectures")
 
-    if getattr(args, 'junit', False):
-        logging.info('Writing test results in %s', args.junit)
+    if getattr(args, "junit", False):
+        logging.info("Writing test results in %s", args.junit)
         results.junit(args.junit)
 
     if len(results) > 1:
@@ -973,6 +1150,7 @@ def action_validate(args, config):
         return 0
     banner("Test suite FAILED!")
     return 2
+
 
 def action_validdiff(args, config):
     """Action for 'validdiff' command."""
@@ -989,8 +1167,8 @@ def action_validdiff(args, config):
 
     results = _validate_packages_on_arch(config, args, updated)
 
-    if getattr(args, 'junit', False):
-        logging.info('Writing test results in %s', args.junit)
+    if getattr(args, "junit", False):
+        logging.info("Writing test results in %s", args.junit)
         results.junit(args.junit)
 
     if len(results) > 1:
@@ -1005,10 +1183,11 @@ def action_validdiff(args, config):
 
     # Remove from working repository packages detected as removed in patch for
     # all architectures supported by the project.
-    for arch in config.get('arch'):
+    for arch in config.get("arch"):
         remove_packages(config, args, removed, arch)
 
     return rc
+
 
 def action_gitlab(args, config, staff, modules):
     """Review a patchset for GitLab (specfiles)"""
@@ -1017,12 +1196,13 @@ def action_gitlab(args, config, staff, modules):
     for f in parse_unidiff(args.patch):
         path = f.path
         names = path.split(os.path.sep)
-        if names[0] == config.get('packages_dir'):
+        if names[0] == config.get("packages_dir"):
             pkgs = ProjectPackages.get(names[1], config, staff, modules)
             for pkg in pkgs:
                 if os.path.abspath(path) == pkg.buildfile and not f.is_deleted_file:
                     pkg.load()
                     pkg.check()
+
 
 def action_gerrit(args, config, staff, modules):
     """Review a patchset for Gerrit (specfiles)"""
@@ -1033,7 +1213,7 @@ def action_gerrit(args, config, staff, modules):
     for patchedfile in parse_unidiff(args.patch):
         filepath = patchedfile.path
         names = filepath.split(os.path.sep)
-        if names[0] == config.get('packages_dir'):
+        if names[0] == config.get("packages_dir"):
             pkgs = ProjectPackages.get(names[1], config, staff, modules)
             for pkg in pkgs:
                 # Skip package if format is not selected by user
@@ -1041,27 +1221,34 @@ def action_gerrit(args, config, staff, modules):
                     logging.info(
                         "Skipping gerrit review on %s package %s due to "
                         "restriction on package formats",
-                        pkg.format, pkg.name
+                        pkg.format,
+                        pkg.name,
                     )
                     continue
-                if (filepath == os.path.relpath(pkg.buildfile) and
-                    not patchedfile.is_deleted_file):
+                if (
+                    filepath == os.path.relpath(pkg.buildfile)
+                    and not patchedfile.is_deleted_file
+                ):
                     pkg.load()
                     try:
                         pkg.analyze(review, pkg.dir)
                     except NotImplementedError:
-                        logging.info("Skipping package format %s which does "
-                                     "not support static analysis", pkg.format)
+                        logging.info(
+                            "Skipping package format %s which does "
+                            "not support static analysis",
+                            pkg.format,
+                        )
 
     # Push review
-    review.msg_header = 'rift static analysis'
+    review.msg_header = "rift static analysis"
     review.push(config, args.change, args.patchset)
+
 
 def action_sync(args, config):
     """Action for 'sync' command."""
     synchronized_sources = []
 
-    # If output is set in command line arguments, use it or use sync_output
+    # If output is set in command line arguments, use it or use sync_output
     # configuration parameter as default value.
     if args.output:
         output = args.output
@@ -1069,7 +1256,7 @@ def action_sync(args, config):
         retries = args.retries
         enable_log_file = args.log_file
     else:
-        output = config.get('sync_output')
+        output = config.get("sync_output")
         max_size = None
         retries = 0
         enable_log_file = False
@@ -1090,36 +1277,37 @@ def action_sync(args, config):
                 f"{output}, parent directory {os.path.dirname(output)} does "
                 "not exist."
             ) from exc
-    for arch in config.get('arch'):
-        for name, repo in config.get('repos', default={}, arch=arch).items():
+    for arch in config.get("arch"):
+        for name, repo in config.get("repos", default={}, arch=arch).items():
             if args.repositories and name not in args.repositories:
                 logging.info(
                     "%s: Skipping repository %s not selected by user",
-                    arch, name,
+                    arch,
+                    name,
                 )
                 continue
-            sync = repo.get('sync')
+            sync = repo.get("sync")
             if sync is None:
                 logging.warning(
-                        "%s: Skipping repository %s: no synchronization "
-                        "parameters found", arch, name
+                    "%s: Skipping repository %s: no synchronization parameters found",
+                    arch,
+                    name,
                 )
                 continue
             # Use repo URL as fallback source when source is not defined in
             # sync config.
-            if sync.get('source') is None:
+            if sync.get("source") is None:
                 logging.debug(
-                    "Using repository URL %s as synchronization source",
-                    repo.get('url')
+                    "Using repository URL %s as synchronization source", repo.get("url")
                 )
-                sync['source'] = repo.get('url')
-            synchronizer = RepoSyncFactory.get(config, name, output, sync,
-                max_size, retries, enable_log_file, arch
+                sync["source"] = repo.get("url")
+            synchronizer = RepoSyncFactory.get(
+                config, name, output, sync, max_size, retries, enable_log_file, arch
             )
             if synchronizer.source in synchronized_sources:
                 logging.debug(
                     "Skipping already synchronized source %s",
-                    synchronizer.source.geturl()
+                    synchronizer.source.geturl(),
                 )
                 continue
             synchronized_sources.append(synchronizer.source)
@@ -1128,6 +1316,7 @@ def action_sync(args, config):
                 f"{synchronizer.source.geturl()}"
             )
             synchronizer.run()
+
 
 def action_changelog(args, config):
     """Action for 'changelog' command."""
@@ -1138,13 +1327,13 @@ def action_changelog(args, config):
     pkgs = ProjectPackages.get(args.package, config, staff, modules)
     package_found = False
     for pkg in pkgs:
-
         # Skip package if format is not selected by user
         if args.formats and pkg.format not in args.formats:
             logging.info(
                 "Skipping changelog update on %s package %s due to restriction "
                 "on package formats",
-                pkg.format, pkg.name
+                pkg.format,
+                pkg.name,
             )
             continue
 
@@ -1155,15 +1344,17 @@ def action_changelog(args, config):
         except NotImplementedError:
             logging.info(
                 "Skipping package format %s which does not support changelog",
-                pkg.format
+                pkg.format,
             )
 
     if not package_found:
-        logging.error("Unable to find package %s with changelog to update",
-                      args.package)
+        logging.error(
+            "Unable to find package %s with changelog to update", args.package
+        )
         return 1
 
     return 0
+
 
 def action_graph(args, config, staff, modules):
     """Action for 'graph' command."""
@@ -1173,6 +1364,7 @@ def action_graph(args, config, staff, modules):
         args.with_external, get_packages_in_graph(args, config, staff, modules)
     )
     return 0
+
 
 def get_packages_in_graph(args, config, staff, modules):
     """
@@ -1195,18 +1387,18 @@ def get_packages_in_graph(args, config, staff, modules):
     # all packages are selected eventually).
     return args.packages
 
+
 def action_create_import(args, config):
     """Action for 'create', 'import' and 'reimport' commands."""
-    if args.command == 'create':
+    if args.command == "create":
         pkgname = args.name
-    elif args.command in ('import', 'reimport'):
+    elif args.command in ("import", "reimport"):
         rpm = RPM(args.file, config)
         if not rpm.is_source:
             raise RiftError(f"{args.file} is not a source RPM")
         pkgname = rpm.name
     else:
-        raise RiftError(
-            f"Unsupported command {args.command} for action_create_import")
+        raise RiftError(f"Unsupported command {args.command} for action_create_import")
 
     if args.maintainer is None:
         raise RiftError("You must specify a maintainer")
@@ -1214,7 +1406,7 @@ def action_create_import(args, config):
     pkgs = ProjectPackages.get(pkgname, config, *staff_modules(config))
 
     for pkg in pkgs:
-        if args.command == 'reimport':
+        if args.command == "reimport":
             pkg.load()
 
         if args.module:
@@ -1228,52 +1420,72 @@ def action_create_import(args, config):
 
         pkg.check_info()
 
-        if args.command in ('create', 'import'):
+        if args.command in ("create", "import"):
             # Write package metadata file only with create and import commands.
             # Do not overwrite the file with reimport because it may discard
             # metadata for other formats.
             pkg.write()
             message(f"Package '{pkg.name}' has been created")
 
-        if args.command in ('import', 'reimport'):
+        if args.command in ("import", "reimport"):
             rpm.extract_srpm(pkg.dir, pkg.sourcesdir)
             message(f"Package '{pkg.name}' has been {args.command}ed")
 
     return 0
 
+
 def action_query(args, config):
     """Action for 'query' command."""
     staff, modules = staff_modules(config)
-    pkglist = sorted(ProjectPackages.list(config, staff, modules, args.packages),
-                        key=attrgetter('name'))
+    pkglist = sorted(
+        ProjectPackages.list(config, staff, modules, args.packages),
+        key=attrgetter("name"),
+    )
 
     tbl = TextTable()
-    tbl.fmt = args.fmt or '%name %module %maintainers %format %version '\
-                            '%release %modulemanager'
+    tbl.fmt = (
+        args.fmt
+        or "%name %module %maintainers %format %version %release %modulemanager"
+    )
     tbl.show_header = args.headers
     tbl.color = True
 
-    supported_keys = set(('name', 'module', 'origin', 'reason', 'format',
-                            'tests', 'version', 'arch', 'release',
-                            'changelogname', 'changelogtime', 'maintainers',
-                            'modulemanager', 'buildrequires'))
+    supported_keys = set(
+        (
+            "name",
+            "module",
+            "origin",
+            "reason",
+            "format",
+            "tests",
+            "version",
+            "arch",
+            "release",
+            "changelogname",
+            "changelogtime",
+            "maintainers",
+            "modulemanager",
+            "buildrequires",
+        )
+    )
     diff_keys = set(tbl.pattern_fields()) - supported_keys
     if diff_keys:
-        raise RiftError(f"Unknown placeholder(s): {', '.join(diff_keys)} "
-                        f"(supported keys are: {', '.join(supported_keys)})")
+        raise RiftError(
+            f"Unknown placeholder(s): {', '.join(diff_keys)} "
+            f"(supported keys are: {', '.join(supported_keys)})"
+        )
 
     for pkg in pkglist:
-
         # Skip package if format is not selected by user
         if args.formats and pkg.format not in args.formats:
             logging.info(
-                "Skipping query %s package %s due to restriction on "
-                "package formats",
-                pkg.format, pkg.name
+                "Skipping query %s package %s due to restriction on package formats",
+                pkg.format,
+                pkg.name,
             )
             continue
 
-        logging.debug('Loading package %s', pkg.name)
+        logging.debug("Loading package %s", pkg.name)
         try:
             pkg.load()
         except RiftError as exp:
@@ -1285,24 +1497,29 @@ def action_query(args, config):
             date = str(time.strftime("%Y-%m-%d", time.localtime(pkg.changelog_time)))
         else:
             date = None
-        modulemanager = staff.get(modules.get(pkg.module).get('manager')[0])
-        tbl.append({'name': pkg.name,
-                    'module': pkg.module,
-                    'origin': pkg.origin,
-                    'reason': pkg.reason,
-                    'format': pkg.format,
-                    'tests': str(len(list(pkg.tests()))),
-                    'version': pkg.version,
-                    'arch': pkg.arch,
-                    'release': pkg.release,
-                    'changelogname': pkg.changelog_name,
-                    'changelogtime': date,
-                    'buildrequires': pkg.buildrequires,
-                    'modulemanager': modulemanager['email'],
-                    'maintainers': ', '.join(pkg.maintainers)})
+        modulemanager = staff.get(modules.get(pkg.module).get("manager")[0])
+        tbl.append(
+            {
+                "name": pkg.name,
+                "module": pkg.module,
+                "origin": pkg.origin,
+                "reason": pkg.reason,
+                "format": pkg.format,
+                "tests": str(len(list(pkg.tests()))),
+                "version": pkg.version,
+                "arch": pkg.arch,
+                "release": pkg.release,
+                "changelogname": pkg.changelog_name,
+                "changelogtime": date,
+                "buildrequires": pkg.buildrequires,
+                "modulemanager": modulemanager["email"],
+                "maintainers": ", ".join(pkg.maintainers),
+            }
+        )
     print(tbl)
 
     return 0
+
 
 def get_packages_to_build(config, staff, modules, args):
     """
@@ -1312,7 +1529,7 @@ def get_packages_to_build(config, staff, modules, args):
     graph of all packages in the project to determine the list of packages that
     reverse depends on the list of packages in arguments, recursively.
     """
-    if not config.get('dependency_tracking') or args.skip_deps:
+    if not config.get("dependency_tracking") or args.skip_deps:
         return list(ProjectPackages.list(config, staff, modules, args.packages))
 
     # Build dependency graph with all projects packages.
@@ -1338,7 +1555,7 @@ def get_packages_to_build(config, staff, modules, args):
                 continue
             # Search the position in result before all its own reverse
             # dependencies.
-            position = result_position(required_builds[index+1:])
+            position = result_position(required_builds[index + 1 :])
             logging.info(
                 "Package %s:%s must be built: %s",
                 required_build.package.format,
@@ -1353,91 +1570,93 @@ def get_packages_to_build(config, staff, modules, args):
                 result.insert(position, required_build.package)
     return result
 
+
 def staff_modules(config):
     """
     Return tuple with staff and modules objects.
     """
     staff = Staff(config)
-    staff.load(config.get('staff_file'))
+    staff.load(config.get("staff_file"))
 
     modules = Modules(config, staff)
-    modules.load(config.get('modules_file'))
+    modules.load(config.get("modules_file"))
 
     return staff, modules
+
 
 def action(config, args):
     """
     Manage rift actions on annex, vm, packages or repositories
     """
 
-    if getattr(args, 'file', None) is not None:
+    if getattr(args, "file", None) is not None:
         args.file = os.path.abspath(args.file)
 
     # CHECK
-    if args.command == 'check':
+    if args.command == "check":
         action_check(args, config)
         return 0
 
     # ANNEX
-    if args.command == 'annex':
+    if args.command == "annex":
         action_annex(args, config, *staff_modules(config))
         return 0
 
     # AUTH
-    if args.command == 'auth':
+    if args.command == "auth":
         action_auth(config)
         return 0
 
     # VM
-    if args.command == 'vm':
+    if args.command == "vm":
         return action_vm(args, config)
 
     # CREATE/IMPORT/REIMPORT
-    if args.command in ['create', 'import', 'reimport']:
+    if args.command in ["create", "import", "reimport"]:
         return action_create_import(args, config)
 
     # BUILD
-    if args.command == 'build':
+    if args.command == "build":
         return action_build(args, config)
 
     # SIGN
-    if args.command == 'sign':
+    if args.command == "sign":
         return action_sign(args, config)
 
     # TEST
-    if args.command == 'test':
+    if args.command == "test":
         return action_test(args, config)
 
     # VALIDATE
-    if args.command == 'validate':
+    if args.command == "validate":
         return action_validate(args, config)
 
     # VALIDDIFF
-    if args.command == 'validdiff':
+    if args.command == "validdiff":
         return action_validdiff(args, config)
 
     # QUERY
-    if args.command == 'query':
+    if args.command == "query":
         return action_query(args, config)
 
     # CHANGELOG
-    if args.command == 'changelog':
+    if args.command == "changelog":
         return action_changelog(args, config)
 
     # GITLAB
-    if args.command == 'gitlab':
+    if args.command == "gitlab":
         return action_gitlab(args, config, *staff_modules(config))
 
     # GERRIT
-    if args.command == 'gerrit':
+    if args.command == "gerrit":
         return action_gerrit(args, config, *staff_modules(config))
 
     # SYNC
-    if args.command == 'sync':
+    if args.command == "sync":
         return action_sync(args, config)
 
     # GRAPH
-    if args.command == 'graph':
+    if args.command == "graph":
         return action_graph(args, config, *staff_modules(config))
 
     return 0
@@ -1449,15 +1668,16 @@ def main(args=None):
     # Parse options
     args = make_parser().parse_args(args)
 
-    logging.basicConfig(format="%(levelname)-8s %(message)s",
-                        level=logging.WARNING - args.verbose * 10)
+    logging.basicConfig(
+        format="%(levelname)-8s %(message)s", level=logging.WARNING - args.verbose * 10
+    )
 
     try:
         # Load configuration
         config = Config()
         config.load()
-        if hasattr(args, 'maintainer'):
-            args.maintainer = args.maintainer or config.get('maintainer')
+        if hasattr(args, "maintainer"):
+            args.maintainer = args.maintainer or config.get("maintainer")
 
         # Do the job
         return action(config, args)
@@ -1468,7 +1688,7 @@ def main(args=None):
         logging.error(str(exp))
         return 1
     except KeyboardInterrupt:
-        message('Keyboard interrupt. Exiting...')
+        message("Keyboard interrupt. Exiting...")
         return 1
 
     return 0

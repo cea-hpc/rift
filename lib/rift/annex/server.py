@@ -45,13 +45,13 @@ import tempfile
 import requests
 
 from rift import RiftError
-from rift.auth import Auth
 from rift.annex.generic_annex import GenericAnnex
 from rift.annex.utils import (
     get_digest_from_path,
     get_info_from_digest,
     print_annex_tar_progress,
 )
+from rift.auth import Auth
 
 
 class ServerAnnex(GenericAnnex):
@@ -64,16 +64,17 @@ class ServerAnnex(GenericAnnex):
 
     For now, files are stored in a flat namespace.
     """
+
     def __init__(self, config, annex_path, auth=None):
         self.annex_path = annex_path
-        self._auth = Auth(config) if auth == 'idp_token' else None
+        self._auth = Auth(config) if auth == "idp_token" else None
 
     def _request_headers(self):
-        """Return HTTP headers for annex requests, including Bearer token if configured."""
+        """Return HTTP headers for annex requests, with Bearer token if set."""
         if self._auth is None:
             return {}
         token = self._auth.get_idp_token_noninteractive()
-        return {'Authorization': f'Bearer {token}'}
+        return {"Authorization": f"Bearer {token}"}
 
     def get_cached_path(self, path):
         """
@@ -93,7 +94,7 @@ class ServerAnnex(GenericAnnex):
                 )
 
                 if res:
-                    with open(tmp_file, 'wb') as f:
+                    with open(tmp_file, "wb") as f:
                         # If the annex object to get is a gzip, reading it
                         # with the standard 'iter_content()' method will
                         # mistakenly gunzip it, which will cause errors
@@ -104,15 +105,16 @@ class ServerAnnex(GenericAnnex):
                             f.write(chunk)
                             chunk = res.raw.read(8192)
 
-                        logging.debug('Extracting %s to %s',
-                                      identifier, destpath)
+                        logging.debug("Extracting %s to %s", identifier, destpath)
                         shutil.move(tmp_file, destpath)
 
                         return True
                 elif res.status_code != 404:
                     res.raise_for_status()
             except requests.exceptions.RequestException as e:
-                raise RiftError(f"failed to fetch file from annex: {idpath}: {e}") from e
+                raise RiftError(
+                    f"failed to fetch file from annex: {idpath}: {e}"
+                ) from e
 
         return False
 
@@ -152,8 +154,9 @@ class ServerAnnex(GenericAnnex):
                 for _file in filelist:
                     digest = get_digest_from_path(_file)
                     annex_file = os.path.join(self.annex_path, digest)
-                    annex_file_info = os.path.join(self.annex_path,
-                                                   get_info_from_digest(digest))
+                    annex_file_info = os.path.join(
+                        self.annex_path, get_info_from_digest(digest)
+                    )
 
                     for f in (annex_file, annex_file_info):
                         basename = os.path.basename(f)
@@ -161,17 +164,22 @@ class ServerAnnex(GenericAnnex):
 
                         try:
                             res = requests.get(
-                                f, stream=True, timeout=15, headers=self._request_headers()
+                                f,
+                                stream=True,
+                                timeout=15,
+                                headers=self._request_headers(),
                             )
                             if res.status_code != 404:
                                 res.raise_for_status()
 
-                            with open(tmp, 'wb') as f:
+                            with open(tmp, "wb") as f:
                                 for chunk in res.iter_content(chunk_size=8192):
                                     f.write(chunk)
                                 tar.add(tmp, arcname=basename)
                         except requests.exceptions.RequestException as e:
-                            raise RiftError(f"failed to fetch file from annex: {f}: {e}") from e
+                            raise RiftError(
+                                f"failed to fetch file from annex: {f}: {e}"
+                            ) from e
 
                     print_annex_tar_progress(pkg_nb, total_packages)
                     pkg_nb += 1

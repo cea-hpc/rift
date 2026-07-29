@@ -34,64 +34,63 @@
 Class to start, stop and manipulate VM used mostly for testing.
 """
 
-import os
-import pwd
-import grp
-import sys
-import time
-import datetime
-import shlex
-import platform
-import logging
-import tempfile
-import textwrap
-import termios
-import select
-import struct
-import socket
-import uuid
-import urllib
-import shutil
 import atexit
+import datetime
+import grp
 import hashlib
-from subprocess import Popen, PIPE, STDOUT, check_output, run, CalledProcessError
+import logging
+import os
+import platform
+import pwd
+import select
+import shlex
+import shutil
+import socket
+import struct
+import sys
+import tempfile
+import termios
+import textwrap
+import time
+import urllib
+import uuid
+from subprocess import PIPE, STDOUT, CalledProcessError, Popen, check_output, run
 
 from jinja2 import Template
 
 from rift import RiftError
 from rift.auth import Auth
-from rift.Config import _DEFAULT_VIRTIOFSD, _DEFAULT_VARIANT
-from rift.repository import ProjectArchRepositories
-from rift.TempDir import TempDir
-from rift.utils import last_modified, download_file, setup_dl_opener, message
-from rift.run import run_command
+from rift.Config import _DEFAULT_VARIANT, _DEFAULT_VIRTIOFSD
 from rift.proxy import AuthenticatedRepositoryProxyRuntime
+from rift.repository import ProjectArchRepositories
+from rift.run import run_command
+from rift.TempDir import TempDir
+from rift.utils import download_file, last_modified, message, setup_dl_opener
 
-__all__ = ['VM']
+__all__ = ["VM"]
 
 ARCH_EFI_BIOS = "./usr/share/edk2/aarch64/QEMU_EFI.silent.fd"
-CLOUD_INIT_SEED_ISO = 'seed.iso'
+CLOUD_INIT_SEED_ISO = "seed.iso"
+
 
 def is_virtiofs_qemu(virtiofsd=_DEFAULT_VIRTIOFSD):
     """
     This function checks if virtiofsd is from qemu package or a standalone rust
     version
     """
-    output = b''
+    output = b""
     try:
-        output = check_output(f"{virtiofsd} --version",
-                              stderr=STDOUT,
-                              shell=True)
+        output = check_output(f"{virtiofsd} --version", stderr=STDOUT, shell=True)
     except CalledProcessError:
         try:
             # virtiofsd from qemu need to be lauched as 'root'...
-            output = check_output(f"sudo {virtiofsd} --version",
-                                  stderr=STDOUT,
-                                  shell=True)
+            output = check_output(
+                f"sudo {virtiofsd} --version", stderr=STDOUT, shell=True
+            )
         except CalledProcessError:
             logging.error("Cannot get %s version", virtiofsd)
 
-    if 'qemu' in output.decode() or 'FUSE' in output.decode():
+    if "qemu" in output.decode() or "FUSE" in output.decode():
         logging.debug("%s: Qemu version detected", virtiofsd)
         return True
 
@@ -106,35 +105,49 @@ def gen_virtiofs_args(socket_path, directory, qemu=False, virtiofsd=_DEFAULT_VIR
     the correct arguments for the two versions.
     """
     if qemu:
-        return ['sudo', virtiofsd,
-                f"--socket-path={socket_path}",
-                '-o', f"source={directory}",
-                '-o', 'cache=auto', '--syslog', '--daemonize']
-    return [virtiofsd,
-            '--socket-path', socket_path,
-            '--sandbox=none', '--shared-dir', directory,
-            '--cache', 'auto']
+        return [
+            "sudo",
+            virtiofsd,
+            f"--socket-path={socket_path}",
+            "-o",
+            f"source={directory}",
+            "-o",
+            "cache=auto",
+            "--syslog",
+            "--daemonize",
+        ]
+    return [
+        virtiofsd,
+        "--socket-path",
+        socket_path,
+        "--sandbox=none",
+        "--shared-dir",
+        directory,
+        "--cache",
+        "auto",
+    ]
 
-class VM():
+
+class VM:
     """Manipulate VM process and related temporary files."""
 
-    _PROJ_MOUNTPOINT = '/rift.project'
-    NAME = 'rift1.domain'
+    _PROJ_MOUNTPOINT = "/rift.project"
+    NAME = "rift1.domain"
     # Host IP address for QEMU user-mode networking available inside the guest.
     QEMU_USERNET_HOST = "10.0.2.2"
-    SUPPORTED_FS = ('9p', 'virtiofs')
+    SUPPORTED_FS = ("9p", "virtiofs")
 
     def __init__(self, config, arch, tmpmode=True, extra_repos=None):
-        self.version = config.get('version', '0')
+        self.version = config.get("version", "0")
         self.arch = arch
 
-        vm_config = config.get('vm', arch=arch)
-        image = vm_config.get('image')
+        vm_config = config.get("vm", arch=arch)
+        image = vm_config.get("image")
         if image:
             self._image_src = urllib.parse.urlparse(image)
         else:
             self._image_src = None
-        self._image_auth = vm_config.get('auth')
+        self._image_auth = vm_config.get("auth")
         if self._image_auth:
             self._auth = Auth(config)
         else:
@@ -145,57 +158,51 @@ class VM():
         if extra_repos is None:
             extra_repos = []
 
-        self._repos = ProjectArchRepositories(
-            config, arch
-        ).for_format('rpm').all + extra_repos
+        self._repos = (
+            ProjectArchRepositories(config, arch).for_format("rpm").all + extra_repos
+        )
         self._auth_proxy = AuthenticatedRepositoryProxyRuntime(config, self._repos)
 
-        self.address = vm_config.get('address')
-        self.port = self.default_port(vm_config.get('port_range'))
-        self.cpus = vm_config.get('cpus', 1)
-        self.memory = vm_config.get('memory')
-        self.qemu = config.get('qemu', arch=arch)
+        self.address = vm_config.get("address")
+        self.port = self.default_port(vm_config.get("port_range"))
+        self.cpus = vm_config.get("cpus", 1)
+        self.memory = vm_config.get("memory")
+        self.qemu = config.get("qemu", arch=arch)
 
-        self.enable_kvm = vm_config.get('enable_kvm')
+        self.enable_kvm = vm_config.get("enable_kvm")
 
         # default emulated cpu architecture
-        if self.arch == 'aarch64':
-            self.cpu_type = vm_config.get('cpu', 'cortex-a72')
-        elif self.enable_kvm == False:
-            self.cpu_type = vm_config.get('cpu', 'qemu64')
+        if self.arch == "aarch64":
+            self.cpu_type = vm_config.get("cpu", "cortex-a72")
+        elif not self.enable_kvm:
+            self.cpu_type = vm_config.get("cpu", "qemu64")
         else:
-            self.cpu_type = vm_config.get('cpu', 'host')
+            self.cpu_type = vm_config.get("cpu", "host")
 
         # Specific aarch64 options
-        self.arch_efi_bios = config.get('arch_efi_bios', ARCH_EFI_BIOS)
+        self.arch_efi_bios = config.get("arch_efi_bios", ARCH_EFI_BIOS)
         ##
 
         # Get guest shared fstype
-        self.virtiofsd = config.get('virtiofsd', _DEFAULT_VIRTIOFSD)
-        self.shared_fs_type = config.get('shared_fs_type', '9p')
+        self.virtiofsd = config.get("virtiofsd", _DEFAULT_VIRTIOFSD)
+        self.shared_fs_type = config.get("shared_fs_type", "9p")
         if self.shared_fs_type not in self.SUPPORTED_FS:
             raise RiftError(f"{self.shared_fs_type} not supported to share filesystems")
         ##
 
-
         self.tmpmode = tmpmode
-        self.copymode = vm_config.get('image_copy')
+        self.copymode = vm_config.get("image_copy")
         self._vm = None
         self._helpers = []
         self._tmpimg = None
         self.consolesock = f"/tmp/rift-vm-console-{self.vmid}.sock"
-        self.proxy = config.get('proxy')
-        self.no_proxy = config.get('no_proxy')
-        self.additional_rpms = vm_config.get('additional_rpms')
-        self.cloud_init_tpl = config.project_path(
-            vm_config.get('cloud_init_tpl')
-        )
-        self.build_post_script = config.project_path(
-            vm_config.get('build_post_script')
-        )
-        self.images_cache = vm_config.get('images_cache')
-        self.kernel = vm_config.get('kernel')
-
+        self.proxy = config.get("proxy")
+        self.no_proxy = config.get("no_proxy")
+        self.additional_rpms = vm_config.get("additional_rpms")
+        self.cloud_init_tpl = config.project_path(vm_config.get("cloud_init_tpl"))
+        self.build_post_script = config.project_path(vm_config.get("build_post_script"))
+        self.images_cache = vm_config.get("images_cache")
+        self.kernel = vm_config.get("kernel")
 
     @property
     def vmid(self):
@@ -218,7 +225,7 @@ class VM():
             return self._image_src.path
         return os.path.join(
             tempfile.gettempdir(),
-            f"rift-vm-local-image-{self.vmid}_{os.path.basename(self._image_src.path)}"
+            f"rift-vm-local-image-{self.vmid}_{os.path.basename(self._image_src.path)}",
         )
 
     def image_is_remote(self) -> bool:
@@ -226,9 +233,9 @@ class VM():
         Return True if VM image URL is an HTTP(S) URL, False if local file or raise
         RiftError is URL scheme is not supported.
         """
-        if self._image_src.scheme in ['', 'file']:
+        if self._image_src.scheme in ["", "file"]:
             return False
-        if self._image_src.scheme in ['http', 'https']:
+        if self._image_src.scheme in ["http", "https"]:
             return True
         raise RiftError(f"Unsupported VM image URL scheme {self._image_src.scheme}")
 
@@ -238,18 +245,18 @@ class VM():
         identifier and the given port range.
         """
         try:
-            assert port_range['max'] > port_range['min']
+            assert port_range["max"] > port_range["min"]
         except AssertionError as exc:
             raise RiftError(
                 "VM port range maximum must be greater than the minimum"
             ) from exc
         return (
-            int(self.vmid, 16) % (port_range['max'] - port_range['min'])
-        ) + port_range['min']
+            int(self.vmid, 16) % (port_range["max"] - port_range["min"])
+        ) + port_range["min"]
 
     def _vm_image_bearer_token(self):
         """Return bearer token for remote VM image HTTP(S) requests, or None."""
-        if self._image_auth != 'idp_token' or self._auth is None:
+        if self._image_auth != "idp_token" or self._auth is None:
             return None
         return self._auth.get_idp_token_noninteractive()
 
@@ -259,20 +266,20 @@ class VM():
         # Create a temporary file for VM image
         # XXX: Maybe a mkstemp() is better here to avoid removing file
         # when VM process is not stopped in purpose
-        self._tmpimg = tempfile.NamedTemporaryFile(prefix='rift-vm-img-')
+        self._tmpimg = tempfile.NamedTemporaryFile(prefix="rift-vm-img-")
 
         if self.copymode:
             # Copy qcow image for VM, based on temp file
-            cmd = ['dd', 'status=progress', 'conv=sparse', 'bs=1M']
+            cmd = ["dd", "status=progress", "conv=sparse", "bs=1M"]
             cmd += [f"if={os.path.realpath(image)}"]
             cmd += [f"of={self._tmpimg.name}"]
         else:
             # Create qcow image for VM, based on temp file
-            cmd = ['qemu-img', 'create', '-f', 'qcow2', '-F', 'qcow2']
-            cmd += ['-o', f"backing_file={os.path.realpath(image)}"]
+            cmd = ["qemu-img", "create", "-f", "qcow2", "-F", "qcow2"]
+            cmd += ["-o", f"backing_file={os.path.realpath(image)}"]
             cmd += [self._tmpimg.name]
 
-        logging.debug("Creating VM image file: %s", ' '.join(cmd))
+        logging.debug("Creating VM image file: %s", " ".join(cmd))
         with Popen(cmd, stdout=PIPE, stderr=STDOUT, universal_newlines=True) as popen:
             stdout = popen.communicate()[0]
             if popen.returncode != 0:
@@ -281,59 +288,70 @@ class VM():
     def _make_drive_cmd(self):
         cmd = []
         helper_cmd = []
-        if self.shared_fs_type == '9p':
-            cmd += ['-virtfs', f"local,id=project,path={self._project_dir},"
-                    'mount_tag=project,security_model=none']
+        if self.shared_fs_type == "9p":
+            cmd += [
+                "-virtfs",
+                f"local,id=project,path={self._project_dir},"
+                "mount_tag=project,security_model=none",
+            ]
             for repo in self._repos:
                 if repo.is_file():
                     if not repo.exists():
                         raise RiftError(
-                            f"Repository {repo.path} does not exist, unable to "
-                            "start VM"
+                            f"Repository {repo.path} does not exist, unable to start VM"
                         )
-                    cmd += ['-virtfs',
-                            f"local,id={repo.name},path={repo.path},"
-                            f"mount_tag={repo.name},security_model=none"]
-        elif self.shared_fs_type == 'virtiofs':
+                    cmd += [
+                        "-virtfs",
+                        f"local,id={repo.name},path={repo.path},"
+                        f"mount_tag={repo.name},security_model=none",
+                    ]
+        elif self.shared_fs_type == "virtiofs":
             # Add a shared memory object to allow virtiofsd shares
-            cmd += ['-object',
-                    f'memory-backend-file,id=mem,size={str(self.memory)}M,mem-path=/tmp,share=on']
+            cmd += [
+                "-object",
+                f"memory-backend-file,id=mem,size={str(self.memory)}M,mem-path=/tmp,share=on",
+            ]
             # Use platform.machine() instead of platform.proccessor to be container
             # compatible.
             if self.arch == platform.machine() and self.enable_kvm:
-                cmd += ['-machine', 'memory-backend=mem,accel=kvm']
+                cmd += ["-machine", "memory-backend=mem,accel=kvm"]
             else:
-                cmd += ['-machine', 'memory-backend=mem']
-            cmd += ['-chardev', 'socket,id=project,path=/tmp/.virtio_fs_project',
-                    '-device', 'vhost-user-fs-pci,queue-size=1024,chardev=project,tag=project']
+                cmd += ["-machine", "memory-backend=mem"]
+            cmd += [
+                "-chardev",
+                "socket,id=project,path=/tmp/.virtio_fs_project",
+                "-device",
+                "vhost-user-fs-pci,queue-size=1024,chardev=project,tag=project",
+            ]
 
             qemu_version = is_virtiofs_qemu(self.virtiofsd)
             helper_cmd.append(
                 gen_virtiofs_args(
-                    socket_path='/tmp/.virtio_fs_project',
+                    socket_path="/tmp/.virtio_fs_project",
                     directory=self._project_dir,
                     qemu=qemu_version,
-                    virtiofsd=self.virtiofsd
+                    virtiofsd=self.virtiofsd,
                 )
             )
             for repo in self._repos:
                 if repo.is_file():
                     if not repo.exists():
                         raise RiftError(
-                            f"Repository {repo.path} does not exist, unable to "
-                            "start VM"
+                            f"Repository {repo.path} does not exist, unable to start VM"
                         )
-                    cmd += ['-chardev',
-                            f"socket,id={repo.name},path=/tmp/.virtio_fs_{repo.name}",
-                            '-device',
-                            "vhost-user-fs-pci,queue-size=1024,"
-                            f"chardev={repo.name},tag={repo.name}"]
+                    cmd += [
+                        "-chardev",
+                        f"socket,id={repo.name},path=/tmp/.virtio_fs_{repo.name}",
+                        "-device",
+                        "vhost-user-fs-pci,queue-size=1024,"
+                        f"chardev={repo.name},tag={repo.name}",
+                    ]
                     helper_cmd.append(
                         gen_virtiofs_args(
                             socket_path=f"/tmp/.virtio_fs_{repo.name}",
                             directory=repo.path,
                             qemu=qemu_version,
-                            virtiofsd=self.virtiofsd
+                            virtiofsd=self.virtiofsd,
                         )
                     )
         return cmd, helper_cmd
@@ -343,16 +361,16 @@ class VM():
         Ugly hack to have root accessible sockets for virtiofsd...
         """
         sockets = []
-        if self.shared_fs_type == 'virtiofs':
-            sockets = ['/tmp/.virtio_fs_project']
+        if self.shared_fs_type == "virtiofs":
+            sockets = ["/tmp/.virtio_fs_project"]
             for repo in self._repos:
                 if repo.is_file():
                     sockets.append(f"/tmp/.virtio_fs_{repo.name}")
-            with Popen(['sudo', '/bin/chmod', '777'] + sockets) as popen:
+            with Popen(["sudo", "/bin/chmod", "777"] + sockets) as popen:
                 popen.wait()
 
     def _gen_qemu_args(self, image_file, seed):
-        """ Generate qemu command line arguments """
+        """Generate qemu command line arguments"""
         # Start VM process
         cmd = shlex.split(self.qemu)
 
@@ -361,46 +379,48 @@ class VM():
         # Use platform.machine() instead of platform.proccessor to be container
         # compatible.
         if self.arch == platform.machine() and self.enable_kvm:
-            cmd += ['-enable-kvm']
+            cmd += ["-enable-kvm"]
         elif self.arch != platform.machine():
-            cmd += ['-machine', 'virt']
+            cmd += ["-machine", "virt"]
 
-        cmd += ['-cpu', self.cpu_type]
+        cmd += ["-cpu", self.cpu_type]
 
-        cmd += ['-name', 'rift', '-display', 'none']
-        cmd += ['-m', str(self.memory), '-smp', str(self.cpus)]
-
+        cmd += ["-name", "rift", "-display", "none"]
+        cmd += ["-m", str(self.memory), "-smp", str(self.cpus)]
 
         # UEFI for aarch64
-        if self.arch == 'aarch64':
-            cmd += ['-bios', self.arch_efi_bios]
+        if self.arch == "aarch64":
+            cmd += ["-bios", self.arch_efi_bios]
 
         # Drive
         # TODO: switch to --device syntax
-        cmd += ['-drive', f"file={image_file},if=virtio,format=qcow2,cache=unsafe"]
+        cmd += ["-drive", f"file={image_file},if=virtio,format=qcow2,cache=unsafe"]
 
         # Console
-        cmd += ['-chardev', f"socket,id=charserial0,path={self.consolesock},"
-                "server=on,wait=off"]
+        cmd += [
+            "-chardev",
+            f"socket,id=charserial0,path={self.consolesock},server=on,wait=off",
+        ]
         # aarch64 platform need specific serial configuration
-        if self.arch == 'aarch64':
-            cmd += ['-device', 'virtio-serial,id=ser0,max_ports=8']
-            cmd += ['-serial', 'chardev:charserial0']
+        if self.arch == "aarch64":
+            cmd += ["-device", "virtio-serial,id=ser0,max_ports=8"]
+            cmd += ["-serial", "chardev:charserial0"]
         else:
-            cmd += ['-device', 'isa-serial,chardev=charserial0,id=serial0']
-
+            cmd += ["-device", "isa-serial,chardev=charserial0,id=serial0"]
 
         # NIC
-        cmd += ['-netdev', f"user,id=hostnet0,hostname={self.NAME},"
-                f"hostfwd=tcp::{self.port}-:22"]
+        cmd += [
+            "-netdev",
+            f"user,id=hostnet0,hostname={self.NAME},hostfwd=tcp::{self.port}-:22",
+        ]
         # aarch64 platform don't support PCI
-        if self.arch == 'aarch64':
-            cmd += ['-device', 'virtio-net-device,netdev=hostnet0']
+        if self.arch == "aarch64":
+            cmd += ["-device", "virtio-net-device,netdev=hostnet0"]
         else:
-            cmd += ['-device', 'virtio-net-pci,netdev=hostnet0,bus=pci.0,addr=0x3']
+            cmd += ["-device", "virtio-net-pci,netdev=hostnet0,bus=pci.0,addr=0x3"]
 
         if seed is not None:
-            cmd += ['-drive', f"driver=raw,file={seed},if=virtio"]
+            cmd += ["-drive", f"driver=raw,file={seed},if=virtio"]
 
         return cmd
 
@@ -445,8 +465,7 @@ class VM():
         if os.path.exists(self.image_local):
             if force:
                 logging.info(
-                    "Remove VM image local copy and force re-download for remote "
-                    "image"
+                    "Remove VM image local copy and force re-download for remote image"
                 )
                 os.unlink(self.image_local)
             else:
@@ -460,7 +479,7 @@ class VM():
                         "Local copy of VM image is present, unable to get remote image "
                         "modification date because of error (%s), skipping download of "
                         "remote image",
-                        err
+                        err,
                     )
                     return
                 # Compare local copy mtime with remote image Last-Modified header.
@@ -470,12 +489,10 @@ class VM():
                         "Local copy of VM image is already updated (%d > %d), "
                         "skipping download of remote image",
                         int(local_copy_mtime),
-                        int(last_remote_modification)
+                        int(last_remote_modification),
                     )
                     return
-                logging.info(
-                    "Remote VM image has been updated, removing local copy"
-                )
+                logging.info("Remote VM image has been updated, removing local copy")
                 os.unlink(self.image_local)
 
         message(f"Download remote VM image {self._image_src.geturl()}")
@@ -508,7 +525,6 @@ class VM():
         fs_cmds, helper_cmds = self._make_drive_cmd()
         cmd += fs_cmds
 
-
         logging.info("Qemu shared fs type: %s", self.shared_fs_type)
         for helper_cmd in helper_cmds:
             logging.info("Starting helper process (%s)", helper_cmd)
@@ -520,9 +536,8 @@ class VM():
         self._fix_socket_rights()
 
         logging.info("Starting VM process")
-        logging.debug("Running VM command: %s", ' '.join(cmd))
+        logging.debug("Running VM command: %s", " ".join(cmd))
         self._vm = Popen(cmd, stderr=PIPE)
-
 
     def prepare(self):
         """
@@ -531,36 +546,41 @@ class VM():
         This configure user, group, hosts, yum repos and mount points.
         """
         # Be sure current user/group exists in VM
-        userline = ':'.join([str(item) for item in pwd.getpwuid(os.getuid())])
+        userline = ":".join([str(item) for item in pwd.getpwuid(os.getuid())])
         (g_name, g_passwd, g_gid, g_mem) = grp.getgrgid(os.getgid())
         groupline = f"{g_name}:{g_passwd}:{g_gid}:{','.join(g_mem)}"
 
-        if self.shared_fs_type == '9p':
-            options = 'trans=virtio,version=9p2000.L,msize=131096'
+        if self.shared_fs_type == "9p":
+            options = "trans=virtio,version=9p2000.L,msize=131096"
         else:
-            options = 'defaults'
+            options = "defaults"
             # For guest kernel > 5.6
-            #options = 'defaults'
+            # options = 'defaults'
         # Build shared mount point info.
         mkdirs = [self._PROJ_MOUNTPOINT]
-        fstab = [f"project {self._PROJ_MOUNTPOINT} {self.shared_fs_type} {options},ro 0 0"]
+        fstab = [
+            f"project {self._PROJ_MOUNTPOINT} {self.shared_fs_type} {options},ro 0 0"
+        ]
         repos = []
         prio = 1000
         for repo in self._repos:
             if repo.is_file():
                 mkdirs.append(f"/rift.{repo.name}")
-                fstab.append(f"{repo.name} /rift.{repo.name} {self.shared_fs_type} "
-                             f"{options} 0 0")
+                fstab.append(
+                    f"{repo.name} /rift.{repo.name} {self.shared_fs_type} {options} 0 0"
+                )
             url = self._repo_url_for_guest(repo, self.QEMU_USERNET_HOST)
             prio = repo.priority or (prio - 1)
-            repos.append(textwrap.dedent(f"""\
+            repos.append(
+                textwrap.dedent(f"""\
                 [{repo.name}]
                 name={repo.name}
                 baseurl={url}
                 gpgcheck=0
                 priority={prio}
                 enabled={1 if _DEFAULT_VARIANT in repo.variants else 0}
-                """))
+                """)
+            )
             if repo.excludepkgs:
                 repos.append(f"excludepkgs={repo.excludepkgs}\n")
             if repo.module_hotfixes:
@@ -590,7 +610,7 @@ class VM():
             echo '{groupline}' >> /etc/group
 
             # Mount shared fs (9p, virtiofs,...)
-            mkdir {' '.join(mkdirs)}
+            mkdir {" ".join(mkdirs)}
             {fstab_cmd}
             mount -t {self.shared_fs_type} -a
 
@@ -608,30 +628,42 @@ class VM():
         """)
         self.cmd(cmd)
 
-    def cmd(self, command=None, options=('-T',), **kwargs):
+    def cmd(self, command=None, options=("-T",), **kwargs):
         """Run specified command inside this VM"""
-        cmd = ['ssh', '-oStrictHostKeyChecking=no', '-oLogLevel=ERROR',
-               '-oUserKnownHostsFile=/dev/null',
-               '-oBatchMode=yes', '-p', str(self.port),
-               'root@127.0.0.1']
+        cmd = [
+            "ssh",
+            "-oStrictHostKeyChecking=no",
+            "-oLogLevel=ERROR",
+            "-oUserKnownHostsFile=/dev/null",
+            "-oBatchMode=yes",
+            "-p",
+            str(self.port),
+            "root@127.0.0.1",
+        ]
         if options:
             cmd += options
         if command:
             cmd.append(command)
-        logging.debug("Running command in VM: %s", ' '.join(cmd))
+        logging.debug("Running command in VM: %s", " ".join(cmd))
         return run_command(cmd, **kwargs)
 
     def copy(self, source, dest, stderr=None):
         """Copy files from or to VM"""
-        cmd = ['scp', '-oStrictHostKeyChecking=no', '-oLogLevel=ERROR',
-               '-oUserKnownHostsFile=/dev/null', '-r', '-P', str(self.port)]
-        cmd.append(source.replace('rift:', 'root@127.0.0.1:'))
-        cmd.append(dest.replace('rift:', 'root@127.0.0.1:'))
-        logging.debug("Copy files with VM: %s", ' '.join(cmd))
+        cmd = [
+            "scp",
+            "-oStrictHostKeyChecking=no",
+            "-oLogLevel=ERROR",
+            "-oUserKnownHostsFile=/dev/null",
+            "-r",
+            "-P",
+            str(self.port),
+        ]
+        cmd.append(source.replace("rift:", "root@127.0.0.1:"))
+        cmd.append(dest.replace("rift:", "root@127.0.0.1:"))
+        logging.debug("Copy files with VM: %s", " ".join(cmd))
         with Popen(cmd, stderr=stderr) as popen:
             popen.wait()
             return popen.returncode
-
 
     def console(self):
         """Console of VM Hit Ctrl-C 3 times to exit"""
@@ -654,14 +686,14 @@ class VM():
         while 1:
             rdy = select.select([sys.stdin, console_socket], [], [console_socket])
             if console_socket in rdy[2]:
-                sys.stderr.write('Connection closed\n')
+                sys.stderr.write("Connection closed\n")
                 retcode = 1
                 break
             # Exit if Ctrl-C is pressed repeatedly
             if sys.stdin in rdy[0]:
                 buf = os.read(self_stdin, 4)
                 # Here 3 == ^C
-                if len(buf) > 0 and struct.unpack('b', buf[0:1])[0] == 3:
+                if len(buf) > 0 and struct.unpack("b", buf[0:1])[0] == 3:
                     if (datetime.datetime.now() - last_int).total_seconds() > 2:
                         last_int = datetime.datetime.now()
                         int_count = 1
@@ -669,7 +701,7 @@ class VM():
                         int_count += 1
 
                     if int_count == 3:
-                        print('\nDetaching ...')
+                        print("\nDetaching ...")
                         break
                 console_socket.sendall(buf)
 
@@ -677,7 +709,7 @@ class VM():
             if console_socket in rdy[0]:
                 msg_len = console_socket.recv_into(output, 32)
                 # Write to bytes array converted into strings
-                sys.stdout.write(''.join([f"{m:c}" for m in output[:msg_len]]))
+                sys.stdout.write("".join([f"{m:c}" for m in output[:msg_len]]))
                 sys.stdout.flush()
 
         # Restore terminal now to let user interrupt the wait if needed
@@ -690,11 +722,11 @@ class VM():
         running on hosts for handling this VM.
         """
         return {
-            'vm_cmd': (
+            "vm_cmd": (
                 "ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no "
-                f"-oLogLevel=ERROR -T -p {self.port} root@127.0.0.1 \"$@\""
+                f'-oLogLevel=ERROR -T -p {self.port} root@127.0.0.1 "$@"'
             ),
-            'vm_wait': textwrap.dedent("""\
+            "vm_wait": textwrap.dedent("""\
                 rc=1
                 for i in {1..7}
                 do
@@ -703,13 +735,11 @@ class VM():
                 vm_cmd echo -e '\\\\nConnection is OK' && rc=0 && break
                 done
                 return $rc\
-                """
-            ),
-            'vm_reboot': textwrap.dedent("""\
+                """),
+            "vm_reboot": textwrap.dedent("""\
                 echo -n 'Restarting VM...'
                 vm_cmd 'reboot' || true; sleep 5 && vm_wait || return 1\
-                """
-            )
+                """),
         }
 
     def run_test(self, test, variant):
@@ -717,10 +747,10 @@ class VM():
         Run specified test inside the VM.
         """
         # Set environment variable for package variant to allow conditionals
-        # in test scripts.
+        # in test scripts.
         cmd = f"export RIFT_VARIANT={variant}; "
         if test.command.startswith(self._project_dir):
-            testcmd = test.command[len(self._project_dir) + 1:]
+            testcmd = test.command[len(self._project_dir) + 1 :]
         else:
             testcmd = test.command
         cmd += f"cd {self._PROJ_MOUNTPOINT}; {testcmd}"
@@ -728,7 +758,7 @@ class VM():
 
     def running(self):
         """Check if VM is already running."""
-        return self.cmd('/bin/true', live_output=False).returncode == 0
+        return self.cmd("/bin/true", live_output=False).returncode == 0
 
     def ready(self):
         """
@@ -738,17 +768,19 @@ class VM():
         seconds for aarch64.
         """
         sleeping_time = 5
-        if self.arch == 'aarch64': # VM very long to boot in emulation mode
+        if self.arch == "aarch64":  # VM very long to boot in emulation mode
             sleeping_time = 20
 
         for _ in range(1, 10):
             # Check if Qemu process is really running
             if self._vm.poll() is not None:
-                raise RiftError(f"Unable to get VM running {self._vm.stderr.read().decode()}")
+                raise RiftError(
+                    f"Unable to get VM running {self._vm.stderr.read().decode()}"
+                )
             time.sleep(sleeping_time)
             if self.running():
                 return True
-            sys.stdout.write('.')
+            sys.stdout.write(".")
             sys.stdout.flush()
         return False
 
@@ -793,8 +825,7 @@ class VM():
         Remove temporary image if used.
         """
         if self._tmpimg and not self._tmpimg.closed:
-            logging.debug("Unlink VM temporary image file '%s'",
-                          self._tmpimg.name)
+            logging.debug("Unlink VM temporary image file '%s'", self._tmpimg.name)
             self._tmpimg.close()
             self._tmpimg = None
 
@@ -804,13 +835,13 @@ class VM():
         False if already running.
         """
         if self.running():
-            message('VM is already running')
+            message("VM is already running")
             return False
 
         # Download VM image if necessary
         self._download(force)
 
-        message('Launching VM ...')
+        message("Launching VM ...")
         # Start authenticated repositories proxy
         self._auth_proxy.start()
         self.spawn()
@@ -845,13 +876,11 @@ class VM():
             tmp_cache_dir.create()
             self.images_cache = tmp_cache_dir.path
             atexit.register(tmp_cache_dir.delete)
-        elif (
-                not os.path.exists(self.images_cache) or
-                not os.path.isdir(self.images_cache)
-            ):
+        elif not os.path.exists(self.images_cache) or not os.path.isdir(
+            self.images_cache
+        ):
             raise RiftError(
-                f"Cloud images cache directory {self.images_cache} does not "
-                "exist"
+                f"Cloud images cache directory {self.images_cache} does not exist"
             )
 
         base_image_path = os.path.join(self.images_cache, os.path.basename(url))
@@ -861,14 +890,11 @@ class VM():
         if os.path.exists(base_image_path):
             if force:
                 logging.info(
-                    "Download is forced, removing cached file %s",
-                    base_image_path)
+                    "Download is forced, removing cached file %s", base_image_path
+                )
                 os.remove(base_image_path)
             else:
-                logging.info(
-                    "Using cached file %s, skipping download",
-                    base_image_path
-                )
+                logging.info("Using cached file %s, skipping download", base_image_path)
                 return base_image_path
 
         logging.info("Downloading file %s", url)
@@ -892,29 +918,23 @@ class VM():
         tmp_seed_dir.create()
         atexit.register(tmp_seed_dir.delete)
 
-        seed_iso_file = os.path.join(
-            tmp_seed_dir.path,
-            CLOUD_INIT_SEED_ISO
-        )
+        seed_iso_file = os.path.join(tmp_seed_dir.path, CLOUD_INIT_SEED_ISO)
         # Generate cloud-init meta_data file
         meta_data_file = os.path.join(tmp_seed_dir.path, "meta-data")
-        with open(meta_data_file, 'w', encoding='utf-8') as fh_meta:
-            fh_meta.write(
-                f"instance-id: {uuid.uuid4()}\nlocal-hostname: rift\n"
-            )
+        with open(meta_data_file, "w", encoding="utf-8") as fh_meta:
+            fh_meta.write(f"instance-id: {uuid.uuid4()}\nlocal-hostname: rift\n")
 
         # Generate cloud-init user_data file
         user_data_file = os.path.join(tmp_seed_dir.path, "user-data")
 
         try:
-            with open(self.cloud_init_tpl, encoding='utf-8') as fh:
+            with open(self.cloud_init_tpl, encoding="utf-8") as fh:
                 tpl = Template(fh.read())
         except FileNotFoundError as err:
             raise RiftError(
-                "Unable to find cloud-init template file "
-                f"{self.cloud_init_tpl}"
+                f"Unable to find cloud-init template file {self.cloud_init_tpl}"
             ) from err
-        with open(user_data_file, 'w', encoding='utf-8') as fh_user:
+        with open(user_data_file, "w", encoding="utf-8") as fh_user:
             fh_user.write(
                 tpl.render(
                     proxy=self.proxy,
@@ -926,15 +946,24 @@ class VM():
         logging.info("Generating cloud-init seed ISO %s", seed_iso_file)
         try:
             run(
-                ['genisoimage', '-output', seed_iso_file,
-                 '-input-charset', 'utf-8', '-volid', 'cidata', '-joliet',
-                 '-rock', user_data_file, meta_data_file],
+                [
+                    "genisoimage",
+                    "-output",
+                    seed_iso_file,
+                    "-input-charset",
+                    "utf-8",
+                    "-volid",
+                    "cidata",
+                    "-joliet",
+                    "-rock",
+                    user_data_file,
+                    meta_data_file,
+                ],
                 cwd=tmp_seed_dir.path,
-                check=True)
+                check=True,
+            )
         except CalledProcessError as error:
-            raise RiftError(
-                f"Error while generating seed iso: {str(error)}"
-            ) from error
+            raise RiftError(f"Error while generating seed iso: {str(error)}") from error
 
         return seed_iso_file
 
@@ -947,7 +976,7 @@ class VM():
         if not os.path.exists(self.build_post_script):
             logging.info(
                 "Build post script %s not found, skipping its execution…",
-                self.build_post_script
+                self.build_post_script,
             )
             return
 
@@ -959,11 +988,8 @@ class VM():
             f"RIFT_REPOS={':'.join([repo.name for repo in self._repos])} "
             f"RIFT_KERNEL={self.kernel or ''}"
         )
-        with open(self.build_post_script, encoding='utf-8') as fh:
-            if self.cmd(
-                    f"{env_str} bash -",
-                    stdin=fh
-                ).returncode:
+        with open(self.build_post_script, encoding="utf-8") as fh:
+            if self.cmd(f"{env_str} bash -", stdin=fh).returncode:
                 self.stop()
                 raise RiftError("Error while running build post script")
 
@@ -979,9 +1005,17 @@ class VM():
             # image with qemu-img.
             try:
                 run(
-                    ['qemu-img', 'convert', '-c', '-O', 'qcow2',
-                     self._tmpimg.name, output],
-                    check=True)
+                    [
+                        "qemu-img",
+                        "convert",
+                        "-c",
+                        "-O",
+                        "qcow2",
+                        self._tmpimg.name,
+                        output,
+                    ],
+                    check=True,
+                )
             except CalledProcessError as error:
                 raise RiftError(
                     f"Error while converting resulting image: {str(error)}"
@@ -995,8 +1029,7 @@ class VM():
         # Check the VM is not already running or fail.
         if self.running():
             raise RiftError(
-                'VM is already running then unable to build image, stop the VM '
-                'first.'
+                "VM is already running then unable to build image, stop the VM first."
             )
 
         # Download image if necessary

@@ -6,20 +6,22 @@ import textwrap
 from unittest.mock import patch
 
 from rift import RiftError
+from rift.Gerrit import Review
 from rift.package import Package
 from rift.package._base import (
-    _SOURCES_DIR,
     _META_FILE,
+    _SOURCES_DIR,
     _TESTS_DIR,
     ActionableArchPackage,
     Test,
 )
-from ..TestUtils import RiftProjectTestCase, PackageTestDef, make_temp_file
-from rift.Gerrit import Review
+
+from ..TestUtils import PackageTestDef, RiftProjectTestCase, make_temp_file
 
 
 class PackageTestingConcrete(Package):
     """Dummy Package concrete child for testing purpose."""
+
     def __init__(self, name, config, staff, modules, _format):
         super().__init__(name, config, staff, modules, _format, f"{name}.buildfile")
 
@@ -41,6 +43,7 @@ class PackageTestingConcrete(Package):
 
 class ActionableArchPackageTestingConcrete(ActionableArchPackage):
     """Dummy ActionableArchPackage concrete child for testing purpose."""
+
     def __init__(self, package, arch):
         super().__init__(package, arch)
 
@@ -61,199 +64,195 @@ class PackageTest(RiftProjectTestCase):
 
     def test_init_abstract(self):
         with self.assertRaisesRegex(
-            TypeError,
-            "^Can't instantiate abstract class Package .*"
+            TypeError, "^Can't instantiate abstract class Package .*"
         ):
-            Package('pkg', self.config, self.staff, self.modules, 'fail', 'build.fail')
+            Package("pkg", self.config, self.staff, self.modules, "fail", "build.fail")
 
     def test_init_concrete(self):
-        """ Test Package initialisation """
-        pkgname = 'pkg'
-        self.config.project_dir = '/'
+        """Test Package initialisation"""
+        pkgname = "pkg"
+        self.config.project_dir = "/"
         pkg = PackageTestingConcrete(
-            pkgname, self.config, self.staff, self.modules, 'rpm'
+            pkgname, self.config, self.staff, self.modules, "rpm"
         )
         self.assertEqual(
-            pkg.dir, '/{0}/{1}'.format(self.config.get('packages_dir'), pkgname)
+            pkg.dir, "/{0}/{1}".format(self.config.get("packages_dir"), pkgname)
         )
         self.assertEqual(pkg.sourcesdir, os.path.join(pkg.dir, _SOURCES_DIR))
         self.assertEqual(pkg.testsdir, os.path.join(pkg.dir, _TESTS_DIR))
         self.assertEqual(pkg.metafile, os.path.join(pkg.dir, _META_FILE))
-        self.assertEqual(pkg.format, 'rpm')
+        self.assertEqual(pkg.format, "rpm")
         self.assertEqual(pkg.buildfile, f"{pkg.dir}/{pkgname}.buildfile")
 
     def test_init_invalid_format(self):
         with self.assertRaisesRegex(RiftError, "^Unsupported package format fail$"):
-            PackageTestingConcrete('pkg', self.config, self.staff, self.modules, 'fail')
+            PackageTestingConcrete("pkg", self.config, self.staff, self.modules, "fail")
 
     def test_load(self):
-        """ Test Package information loading """
+        """Test Package information loading"""
         self.make_pkg(
-            metadata={'depends': ['foo', 'bar'], 'exclude_archs': ['aarch64']}
+            metadata={"depends": ["foo", "bar"], "exclude_archs": ["aarch64"]}
         )
         pkg = PackageTestingConcrete(
-            'pkg', self.config, self.staff, self.modules, 'rpm'
+            "pkg", self.config, self.staff, self.modules, "rpm"
         )
         pkg.load()
-        self.assertEqual(pkg.module, 'Great module')
-        self.assertEqual(pkg.maintainers, ['Myself'])
-        self.assertEqual(pkg.reason, 'Missing feature')
-        self.assertEqual(pkg.origin, 'Vendor')
-        self.assertCountEqual(pkg.depends, ['foo', 'bar'])
-        self.assertCountEqual(pkg.exclude_archs, ['aarch64'])
+        self.assertEqual(pkg.module, "Great module")
+        self.assertEqual(pkg.maintainers, ["Myself"])
+        self.assertEqual(pkg.reason, "Missing feature")
+        self.assertEqual(pkg.origin, "Vendor")
+        self.assertCountEqual(pkg.depends, ["foo", "bar"])
+        self.assertCountEqual(pkg.exclude_archs, ["aarch64"])
 
     def test_for_arch(self):
         pkg = PackageTestingConcrete(
-            'pkg', self.config, self.staff, self.modules, 'rpm'
+            "pkg", self.config, self.staff, self.modules, "rpm"
         )
-        actionable_pkg = pkg.for_arch('x86_64')
+        actionable_pkg = pkg.for_arch("x86_64")
         self.assertIsInstance(actionable_pkg, ActionableArchPackageTestingConcrete)
-        self.assertEqual(actionable_pkg.name, 'pkg')
+        self.assertEqual(actionable_pkg.name, "pkg")
         self.assertEqual(actionable_pkg.package, pkg)
         self.assertEqual(actionable_pkg.buildfile, f"{pkg.dir}/{pkg.name}.buildfile")
         self.assertEqual(actionable_pkg.config, self.config)
-        self.assertEqual(actionable_pkg.arch, 'x86_64')
+        self.assertEqual(actionable_pkg.arch, "x86_64")
 
     def test_tests(self):
-        """ Test Package tests method """
+        """Test Package tests method"""
         self.make_pkg()
         pkg = PackageTestingConcrete(
-            'pkg', self.config, self.staff, self.modules, 'rpm'
+            "pkg", self.config, self.staff, self.modules, "rpm"
         )
         pkg.load()
         tests = [test for test in pkg.tests()]
         self.assertEqual(len(tests), 1)
         self.assertIsInstance(tests[0], Test)
-        self.assertEqual(tests[0].name, '0_test')
+        self.assertEqual(tests[0].name, "0_test")
 
     def test_tests_format(self):
-        """ Test Package tests method with formats restriction in tests """
+        """Test Package tests method with formats restriction in tests"""
         self.make_pkg(
             tests=[
-                PackageTestDef(name='0_test.sh', local=False, formats=[]),
-                PackageTestDef(name='1_test.sh', local=False,
-                    formats=['rpm', 'other']),
-                PackageTestDef(name='2_test.sh', local=False,
-                    formats=['other']),
+                PackageTestDef(name="0_test.sh", local=False, formats=[]),
+                PackageTestDef(name="1_test.sh", local=False, formats=["rpm", "other"]),
+                PackageTestDef(name="2_test.sh", local=False, formats=["other"]),
             ]
         )
         pkg = PackageTestingConcrete(
-            'pkg', self.config, self.staff, self.modules, 'rpm'
+            "pkg", self.config, self.staff, self.modules, "rpm"
         )
         pkg.load()
         tests = [test for test in pkg.tests()]
         self.assertEqual(len(tests), 2)
         for test in tests:
             self.assertIsInstance(test, Test)
-        self.assertCountEqual(
-            [test.name for test in tests], ['0_test', '1_test'])
+        self.assertCountEqual([test.name for test in tests], ["0_test", "1_test"])
 
     def test_subpackages(self):
-        """ Test Package subpackages (dummy implementation) """
+        """Test Package subpackages (dummy implementation)"""
         pkg = PackageTestingConcrete(
-            'pkg', self.config, self.staff, self.modules, 'rpm'
+            "pkg", self.config, self.staff, self.modules, "rpm"
         )
         self.assertCountEqual(pkg.subpackages(), [])
 
     def test_build_requires(self):
-        """ Test Package build requires (dummy implementation) """
+        """Test Package build requires (dummy implementation)"""
         pkg = PackageTestingConcrete(
-            'pkg', self.config, self.staff, self.modules, 'rpm'
+            "pkg", self.config, self.staff, self.modules, "rpm"
         )
         self.assertCountEqual(pkg.build_requires(), [])
 
     def test_add_changelog_entry(self):
-        """ Test Package add changelog entry (not implemented) """
+        """Test Package add changelog entry (not implemented)"""
         pkg = PackageTestingConcrete(
-            'pkg', self.config, self.staff, self.modules, 'rpm'
+            "pkg", self.config, self.staff, self.modules, "rpm"
         )
         with self.assertRaises(NotImplementedError):
             pkg.add_changelog_entry("Myself", "Package modification", False)
 
     def test_analyze(self):
-        """ Test Package analyze (not implemented) """
+        """Test Package analyze (not implemented)"""
         pkg = PackageTestingConcrete(
-            'pkg', self.config, self.staff, self.modules, 'rpm'
+            "pkg", self.config, self.staff, self.modules, "rpm"
         )
         with self.assertRaises(NotImplementedError):
             pkg.analyze(Review(), pkg.dir)
 
 
 class ActionableArchPackageTest(RiftProjectTestCase):
-
     def setUp(self):
         super().setUp()
         self.pkg = PackageTestingConcrete(
-            'pkg', self.config, self.staff, self.modules, 'rpm'
+            "pkg", self.config, self.staff, self.modules, "rpm"
         )
 
     def test_init_abstract(self):
         with self.assertRaisesRegex(
-            TypeError,
-            "^Can't instantiate abstract class ActionableArchPackage .*"
+            TypeError, "^Can't instantiate abstract class ActionableArchPackage .*"
         ):
-            ActionableArchPackage(self.pkg, 'x86_64')
+            ActionableArchPackage(self.pkg, "x86_64")
 
     def test_init_concrete(self):
-        ActionableArchPackageTestingConcrete(self.pkg, 'x86_64')
+        ActionableArchPackageTestingConcrete(self.pkg, "x86_64")
 
-    @patch('rift.package._base.run_command')
+    @patch("rift.package._base.run_command")
     def test_run_local_test(self, mock_run_command):
-        actionable_pkg = ActionableArchPackageTestingConcrete(self.pkg, 'x86_64')
+        actionable_pkg = ActionableArchPackageTestingConcrete(self.pkg, "x86_64")
         command = make_temp_file(
             textwrap.dedent("""\
                 #!/bin/sh
                 /bin/true
                 """),
-            suffix='.sh'
+            suffix=".sh",
         )
         test = Test(command.name)
         actionable_pkg.run_local_test(test)
         mock_run_command.assert_called_once_with(
-            command.name, capture_output=True, shell=True)
+            command.name, capture_output=True, shell=True
+        )
 
-    @patch('rift.package._base.run_command')
+    @patch("rift.package._base.run_command")
     def test_run_local_test_with_funcs(self, mock_run_command):
-        actionable_pkg = ActionableArchPackageTestingConcrete(self.pkg, 'x86_64')
+        actionable_pkg = ActionableArchPackageTestingConcrete(self.pkg, "x86_64")
         command = make_temp_file(
             textwrap.dedent("""\
                 #!/bin/sh
                 /bin/true
                 """),
-            suffix='.sh'
+            suffix=".sh",
         )
         test = Test(command.name)
-        actionable_pkg.run_local_test(test, { 'hey': 'echo hey!'})
+        actionable_pkg.run_local_test(test, {"hey": "echo hey!"})
         mock_run_command.assert_called_once_with(
             f"hey() {{ echo hey!; }}; export -f hey; {command.name}",
-            capture_output=True, shell=True)
+            capture_output=True,
+            shell=True,
+        )
 
     def test_clean(self):
-        """ Test clean method no-op on abstract class """
-        actionable_pkg = ActionableArchPackageTestingConcrete(self.pkg, 'x86_64')
+        """Test clean method no-op on abstract class"""
+        actionable_pkg = ActionableArchPackageTestingConcrete(self.pkg, "x86_64")
         actionable_pkg.clean()
 
 
 class TestTest(RiftProjectTestCase):
     def test_init(self):
-        """ Test with command """
+        """Test with command"""
         command = make_temp_file(
             textwrap.dedent("""\
                 #!/bin/sh
                 # fake test
                 /bin/true
                 """),
-            suffix='.sh'
+            suffix=".sh",
         )
         test = Test(command.name)
         self.assertEqual(test.command, command.name)
         self.assertFalse(test.local)
         self.assertCountEqual(test.formats, [])
-        self.assertEqual(
-            test.name, os.path.splitext(os.path.basename(command.name))[0])
+        self.assertEqual(test.name, os.path.splitext(os.path.basename(command.name))[0])
 
     def test_init_local(self):
-        """ Test with command to run locally """
+        """Test with command to run locally"""
         command = make_temp_file(
             textwrap.dedent("""\
                 #!/bin/sh
@@ -262,17 +261,16 @@ class TestTest(RiftProjectTestCase):
                 #
                 /bin/true
                 """),
-            suffix='.sh'
+            suffix=".sh",
         )
-        with self.assertLogs(level='DEBUG') as logs:
+        with self.assertLogs(level="DEBUG") as logs:
             test = Test(command.name)
         self.assertTrue(test.local)
         self.assertCountEqual(test.formats, [])
-        self.assertIn(
-            f"DEBUG:root:Test '{test.name}' detected as local", logs.output)
+        self.assertIn(f"DEBUG:root:Test '{test.name}' detected as local", logs.output)
 
     def test_one_format(self):
-        """ Test with analyzed command restricted to one format """
+        """Test with analyzed command restricted to one format"""
         command = make_temp_file(
             textwrap.dedent("""\
                 #!/bin/sh
@@ -281,18 +279,18 @@ class TestTest(RiftProjectTestCase):
                 #
                 /bin/true
                 """),
-            suffix='.sh'
+            suffix=".sh",
         )
-        with self.assertLogs(level='DEBUG') as logs:
+        with self.assertLogs(level="DEBUG") as logs:
             test = Test(command.name)
-        self.assertCountEqual(test.formats, ['rpm'])
+        self.assertCountEqual(test.formats, ["rpm"])
         self.assertIn(
-            f"DEBUG:root:Test '{test.name}' restricted to specific formats: "
-            "rpm",
-            logs.output)
+            f"DEBUG:root:Test '{test.name}' restricted to specific formats: rpm",
+            logs.output,
+        )
 
     def test_multiple_formats(self):
-        """ Test with analyzed command restricted to multiple formats """
+        """Test with analyzed command restricted to multiple formats"""
         command = make_temp_file(
             textwrap.dedent("""\
                 #!/bin/sh
@@ -302,12 +300,12 @@ class TestTest(RiftProjectTestCase):
                 #
                 /bin/true
                 """),
-            suffix='.sh'
+            suffix=".sh",
         )
-        with self.assertLogs(level='DEBUG') as logs:
+        with self.assertLogs(level="DEBUG") as logs:
             test = Test(command.name)
-        self.assertCountEqual(test.formats, ['rpm', 'other'])
+        self.assertCountEqual(test.formats, ["rpm", "other"])
         self.assertIn(
-            f"DEBUG:root:Test '{test.name}' restricted to specific formats:"
-             " rpm, other",
-             logs.output)
+            f"DEBUG:root:Test '{test.name}' restricted to specific formats: rpm, other",
+            logs.output,
+        )

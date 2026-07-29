@@ -34,28 +34,30 @@
 Helper class for YUM repository structure management.
 """
 
-import os
-import logging
-import shutil
 import glob
-import threading
+import logging
+import os
 import platform
-from subprocess import Popen, PIPE, STDOUT, run, CalledProcessError
+import shutil
+import threading
+from subprocess import PIPE, STDOUT, CalledProcessError, Popen, run
 
 from rift import RiftError
+from rift.Config import _DEFAULT_REPO_CMD, _DEFAULT_REPOS_VARIANTS
+from rift.Mock import Mock
 from rift.repository._base import ArchRepositoriesBase, StagingRepositoryBase
 from rift.RPM import RPM, Spec
-from rift.Mock import Mock
 from rift.TempDir import TempDir
-from rift.Config import _DEFAULT_REPO_CMD, _DEFAULT_REPOS_VARIANTS
 
 repo_lock = threading.Lock()
+
 
 class ConsumableRepository:
     """
     Manipulate RPM packages repository to be consumed by dnf/yum and Mock.
     """
-    FILE_SCHEME = 'file://'
+
+    FILE_SCHEME = "file://"
 
     def __init__(
         self,
@@ -71,10 +73,10 @@ class ConsumableRepository:
         self.priority = priority
         if options is None:
             options = {}
-        self.auth = options.get('auth')
-        self.module_hotfixes = options.get('module_hotfixes')
-        self.excludepkgs = options.get('excludepkgs')
-        self.proxy = options.get('proxy', default_proxy)
+        self.auth = options.get("auth")
+        self.module_hotfixes = options.get("module_hotfixes")
+        self.excludepkgs = options.get("excludepkgs")
+        self.proxy = options.get("proxy", default_proxy)
         if variants is None:
             self.variants = _DEFAULT_REPOS_VARIANTS
         else:
@@ -82,11 +84,11 @@ class ConsumableRepository:
 
     def is_file(self):
         """True if repository URL looks like a file URI."""
-        return self.url.startswith(self.FILE_SCHEME) or self.url.startswith('/')
+        return self.url.startswith(self.FILE_SCHEME) or self.url.startswith("/")
 
     def authenticated(self):
         """True if repository is remote and uses idp_token auth."""
-        return (not self.is_file()) and self.auth == 'idp_token'
+        return (not self.is_file()) and self.auth == "idp_token"
 
     @property
     def path(self):
@@ -97,7 +99,7 @@ class ConsumableRepository:
         if not self.is_file():
             raise RiftError("Unable to return path of remote repository")
         if self.url.startswith(self.FILE_SCHEME):
-            return self.url[len(self.FILE_SCHEME):]
+            return self.url[len(self.FILE_SCHEME) :]
         return self.url
 
     def generic_url(self, arch):
@@ -125,10 +127,10 @@ class LocalRepository:
     def __init__(self, path, config, name=None, options=None):
         self.path = os.path.realpath(path)
         self.config = config
-        self.srpms_dir = os.path.join(self.path, 'SRPMS')
+        self.srpms_dir = os.path.join(self.path, "SRPMS")
         if options is None:
             options = {}
-        self.createrepo = config.get('createrepo', _DEFAULT_REPO_CMD)
+        self.createrepo = config.get("createrepo", _DEFAULT_REPO_CMD)
 
         self.consumables = {
             arch: ConsumableRepository(
@@ -137,16 +139,16 @@ class LocalRepository:
                 name=name or os.path.basename(self.path),
                 priority=1,  # top priority for local repositories
                 options=options,
-                default_proxy=config.get('proxy')
+                default_proxy=config.get("proxy"),
             )
-            for arch in self.config.get('arch')
+            for arch in self.config.get("arch")
         }
 
     def rpms_dir(self, arch):
         """
         Path to RPMS directory for the given architecture.
         """
-        if arch not in self.config.get('arch'):
+        if arch not in self.config.get("arch"):
             raise RiftError(
                 "Unable to get repository RPM directory for unsupported "
                 f"architecture {arch}"
@@ -165,7 +167,7 @@ class LocalRepository:
                 if not os.path.exists(path):
                     os.mkdir(path)
         # Create all architectures RPM sub-directories and their repodata.
-        for arch in self.config.get('arch'):
+        for arch in self.config.get("arch"):
             path = self.rpms_dir(arch)
             # Add lock to avoid race condition between arch build threads on
             # existence test and mkdir().
@@ -179,11 +181,12 @@ class LocalRepository:
         Update the repository metadata for SRPMS repository and all
         architectures RPMS repositories.
         """
+
         def run_update(path):
             # Add lock to avoid conflicts between parallel runs of createrepo.
             with repo_lock:
                 with Popen(
-                    [self.createrepo, '-q', '--update', path],
+                    [self.createrepo, "-q", "--update", path],
                     stdout=PIPE,
                     stderr=STDOUT,
                     universal_newlines=True,
@@ -193,7 +196,7 @@ class LocalRepository:
                         raise RiftError(stdout)
 
         run_update(self.srpms_dir)
-        for arch in self.config.get('arch'):
+        for arch in self.config.get("arch"):
             run_update(self.rpms_dir(arch))
 
     def search(self, name):
@@ -204,13 +207,11 @@ class LocalRepository:
         packages and found in the repository.
         """
         src_rpms = []
-        logging.debug(
-            'Searching for package %s in repository %s', name, self.path
-        )
-        for srcrpm_p in glob.glob(os.path.join(self.srpms_dir, '*.src.rpm')):
+        logging.debug("Searching for package %s in repository %s", name, self.path)
+        for srcrpm_p in glob.glob(os.path.join(self.srpms_dir, "*.src.rpm")):
             src_rpm = RPM(srcrpm_p)
             if src_rpm.name == name:
-                logging.debug('Source package %s found: %s', name, srcrpm_p)
+                logging.debug("Source package %s found: %s", name, srcrpm_p)
                 src_rpms.append(src_rpm)
 
         bin_rpm_names = set()
@@ -221,11 +222,11 @@ class LocalRepository:
             tmp_dir = TempDir()
             tmp_dir.create()
             cmd = [
-                'rpm',
-                '-iv',
-                '--define',
+                "rpm",
+                "-iv",
+                "--define",
                 f"_topdir {tmp_dir.path}",
-                src_rpm.filepath
+                src_rpm.filepath,
             ]
             try:
                 run(cmd, check=True)
@@ -233,7 +234,7 @@ class LocalRepository:
                 raise RiftError(err) from err
             # Parse spec file
             spec = Spec(
-                os.path.join(tmp_dir.path, 'SPECS', f"{src_rpm.name}.spec"),
+                os.path.join(tmp_dir.path, "SPECS", f"{src_rpm.name}.spec"),
                 Mock(self.config, platform.machine()),
                 ArchRepositoriesRPM(self.config, None, platform.machine()).all,
             )
@@ -243,23 +244,17 @@ class LocalRepository:
             # duplicates)
             bin_rpm_names |= set(spec.pkgnames)
 
-        logging.debug(
-            'Binary built by source package %s: %s', name, bin_rpm_names
-        )
+        logging.debug("Binary built by source package %s: %s", name, bin_rpm_names)
 
         # Search all binary RPMs whose name match packages names extracted from
         # specs.
         bin_pkgs = []
 
-        for arch in self.config.get('arch'):
-            for bin_rpm_p in glob.glob(
-                    os.path.join(self.rpms_dir(arch), '*.rpm')
-                ):
+        for arch in self.config.get("arch"):
+            for bin_rpm_p in glob.glob(os.path.join(self.rpms_dir(arch), "*.rpm")):
                 bin_rpm = RPM(bin_rpm_p)
                 if bin_rpm.name in bin_rpm_names:
-                    logging.debug(
-                        'Binary package %s found: %s', name, bin_rpm_p
-                    )
+                    logging.debug("Binary package %s found: %s", name, bin_rpm_p)
                     bin_pkgs.append(bin_rpm)
 
         return src_rpms + bin_pkgs
@@ -269,19 +264,19 @@ class LocalRepository:
         Copy RPM file pointed `rpm' into the repository, in the correct
         subdirectory based on RPM type and architecture.
         """
+
         def add_bin_arch(arch):
-            logging.debug(
-                "Adding %s to repo %s", rpm.filepath, self.rpms_dir(arch)
-            )
+            logging.debug("Adding %s to repo %s", rpm.filepath, self.rpms_dir(arch))
             # rpms_dir already points to architecture directory
             shutil.copy(rpm.filepath, self.rpms_dir(arch))
+
         if rpm.is_source:
             logging.debug("Adding %s to repo %s", rpm.filepath, self.srpms_dir)
             shutil.copy(rpm.filepath, self.srpms_dir)
         else:
             # Add noarch binary package in all architectures repositories
-            if rpm.arch == 'noarch':
-                for arch in self.config.get('arch'):
+            if rpm.arch == "noarch":
+                for arch in self.config.get("arch"):
                     add_bin_arch(arch)
             else:
                 add_bin_arch(rpm.arch)
@@ -296,6 +291,7 @@ class ArchRepositoriesRPM(ArchRepositoriesBase):
     """
     Manipulate repositories defined in a project for a particular architecture.
     """
+
     def __init__(self, config, working_dir, arch):
         super().__init__(working_dir, arch)
         self.working = None
@@ -304,24 +300,22 @@ class ArchRepositoriesRPM(ArchRepositoriesBase):
             self.working = LocalRepository(
                 path=self.working_dir,
                 config=config,
-                name='working',
-                options={
-                    "module_hotfixes": "true"
-                },
+                name="working",
+                options={"module_hotfixes": "true"},
             )
             self.working.create()
         self.supplementaries = []
-        repos = config.get('repos', arch=arch)
+        repos = config.get("repos", arch=arch)
         if repos:
             for name, data in repos.items():
                 self.supplementaries.append(
                     ConsumableRepository(
-                        data['url'],
+                        data["url"],
                         name=name,
-                        priority=data.get('priority'),
+                        priority=data.get("priority"),
                         options=data,
-                        default_proxy=config.get('proxy'),
-                        variants=data.get('variants'),
+                        default_proxy=config.get("proxy"),
+                        variants=data.get("variants"),
                     )
                 )
 
@@ -333,12 +327,8 @@ class ArchRepositoriesRPM(ArchRepositoriesBase):
         defined).
         """
         return (
-            (
-                [self.working.consumables[self.arch]]
-                if self.working is not None
-                else []
-            ) + self.supplementaries
-        )
+            [self.working.consumables[self.arch]] if self.working is not None else []
+        ) + self.supplementaries
 
     def for_variant(self, variant):
         """
@@ -368,14 +358,14 @@ class StagingRepositoryRPM(StagingRepositoryBase):
     """Staging repository for RPM format"""
 
     def __init__(self, config, stagedir):
-        path = os.path.join(stagedir, 'rpm')
+        path = os.path.join(stagedir, "rpm")
         os.mkdir(path)
         super().__init__(
             LocalRepository(
                 path=path,
                 config=config,
-                name='staging',
-                options={'module_hotfixes': "true"},
+                name="staging",
+                options={"module_hotfixes": "true"},
             )
         )
         self.repo.create()

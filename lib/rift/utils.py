@@ -33,15 +33,15 @@
 Set of utilities used in multiple Rift modules.
 """
 
+import logging
 import os
 import shutil
-import urllib
-import logging
 import time
-
+import urllib
 from datetime import datetime, timezone
 
 from rift import RiftError
+
 
 def message(msg):
     """
@@ -49,11 +49,13 @@ def message(msg):
     """
     print(f"> {msg}")
 
+
 def banner(title):
     """
     helper function to print a banner
     """
     print(f"** {title} **")
+
 
 def download_file(url, output, max_size=None, retries=0, bearer_token=None):
     """
@@ -71,7 +73,7 @@ def download_file(url, output, max_size=None, retries=0, bearer_token=None):
 
     req = urllib.request.Request(url)
     if bearer_token:
-        req.add_header('Authorization', f'Bearer {bearer_token}')
+        req.add_header("Authorization", f"Bearer {bearer_token}")
 
     for attempt in range(retries + 1):
         try:
@@ -79,17 +81,17 @@ def download_file(url, output, max_size=None, retries=0, bearer_token=None):
                 with urllib.request.urlopen(req) as opened_url:
                     meta = opened_url.info()
                     length = meta["Content-Length"]
-                    if (isinstance(length, str) and int(length) > max_size):
+                    if isinstance(length, str) and int(length) > max_size:
                         raise RiftError(
                             f"'{url}' has a size of '{length}' bytes, larger than "
                             f"max size '{max_size}', skipping download",
                         )
-                    with open(output, 'wb') as out_fh:
+                    with open(output, "wb") as out_fh:
                         shutil.copyfileobj(opened_url, out_fh)
                     break
             else:
                 with urllib.request.urlopen(req) as opened_url:
-                    with open(output, 'wb') as out_fh:
+                    with open(output, "wb") as out_fh:
                         shutil.copyfileobj(opened_url, out_fh)
                 break
 
@@ -105,9 +107,10 @@ def download_file(url, output, max_size=None, retries=0, bearer_token=None):
                 "Error while downloading %s: %s, will retry in %s seconds…",
                 url,
                 error,
-                delay
+                delay,
             )
             time.sleep(delay)
+
 
 def last_modified(url, bearer_token=None):
     """
@@ -117,27 +120,30 @@ def last_modified(url, bearer_token=None):
 
     If bearer_token is set, send Authorization: Bearer <token> on the request.
     """
-    req = urllib.request.Request(url, method='HEAD')
+    req = urllib.request.Request(url, method="HEAD")
     if bearer_token:
-        req.add_header('Authorization', f'Bearer {bearer_token}')
+        req.add_header("Authorization", f"Bearer {bearer_token}")
 
     try:
         with urllib.request.urlopen(req) as response:
-            return int(datetime.strptime(
-                response.getheader('Last-Modified'), '%a, %d %b %Y %H:%M:%S %Z'
-            ).replace(tzinfo=timezone.utc).timestamp())
+            return int(
+                datetime.strptime(
+                    response.getheader("Last-Modified"), "%a, %d %b %Y %H:%M:%S %Z"
+                )
+                .replace(tzinfo=timezone.utc)
+                .timestamp()
+            )
     except urllib.error.URLError as err:
         raise RiftError(
             f"Unable to send HTTP HEAD request for URL {url}: {err}"
         ) from err
     except TypeError as err:
-        raise RiftError(
-            f"Unable to get Last-Modified header for URL {url}"
-        ) from err
+        raise RiftError(f"Unable to get Last-Modified header for URL {url}") from err
     except ValueError as err:
         raise RiftError(
             f"Unable to convert Last-Modified header to datetime for URL {url}"
         ) from err
+
 
 def setup_dl_opener(proxy, no_proxy, fake_user_agent=True):
     """
@@ -148,18 +154,17 @@ def setup_dl_opener(proxy, no_proxy, fake_user_agent=True):
 
     handlers = []
     if proxy:
-        handlers = [
-            urllib.request.ProxyHandler({'http' : proxy, 'https': proxy})
-        ]
+        handlers = [urllib.request.ProxyHandler({"http": proxy, "https": proxy})]
     # If no_proxy is defined, set environment variable accordingly to
     # make urllib.request.ProxyHandler skip proxy for these targeted
     # hosts.
     if no_proxy is not None:
-        os.environ['no_proxy'] = no_proxy
+        os.environ["no_proxy"] = no_proxy
     opener = urllib.request.build_opener(*handlers)
     if fake_user_agent:
-        opener.addheaders = [('User-agent', 'Mozilla/5.0')]
+        opener.addheaders = [("User-agent", "Mozilla/5.0")]
     urllib.request.install_opener(opener)
+
 
 def removesuffix(input_string, suffix):
     """
@@ -168,5 +173,5 @@ def removesuffix(input_string, suffix):
     a reimplementation
     """
     if suffix and input_string.endswith(suffix):
-        return input_string[:-len(suffix)]
+        return input_string[: -len(suffix)]
     return input_string

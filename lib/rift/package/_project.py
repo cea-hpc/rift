@@ -36,8 +36,9 @@ import os
 
 from rift import RiftError
 from rift.package._virtual import PackageVirtual
-from rift.package.rpm import PackageRPM
 from rift.package.oci import PackageOCI
+from rift.package.rpm import PackageRPM
+
 
 class ProjectPackages:
     """
@@ -51,10 +52,13 @@ class ProjectPackages:
         Iterate over PackageBase concrete children instances from 'names' list
         or all packages if list is not provided.
         """
-        pkgs_dir = config.project_path(config.get('packages_dir'))
+        pkgs_dir = config.project_path(config.get("packages_dir"))
         if not names:
-            names = [path for path in os.listdir(pkgs_dir)
-                     if os.path.isdir(os.path.join(pkgs_dir, path))]
+            names = [
+                path
+                for path in os.listdir(pkgs_dir)
+                if os.path.isdir(os.path.join(pkgs_dir, path))
+            ]
 
         for name in names:
             yield from ProjectPackages._get(name, config, staff, modules)
@@ -68,7 +72,7 @@ class ProjectPackages:
         present. Raise RiftError if package directory is present without
         supported package buildfile.
         """
-        pkgdir = os.path.join(config.project_path(config.get('packages_dir')), name)
+        pkgdir = os.path.join(config.project_path(config.get("packages_dir")), name)
         if not os.path.isdir(pkgdir):
             yield PackageVirtual(name, config, staff, modules)
             return  # stop here when directory does not exist
@@ -79,8 +83,10 @@ class ProjectPackages:
                 package_format_found = True
                 yield pkg
         if not package_format_found:
-            raise RiftError(f"Unable to determine format of package {name} due "
-                    f"to missing build file in {pkgdir}")
+            raise RiftError(
+                f"Unable to determine format of package {name} due "
+                f"to missing build file in {pkgdir}"
+            )
 
     @staticmethod
     def get(name, config, staff, modules):

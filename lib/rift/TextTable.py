@@ -21,11 +21,13 @@ Table formatting classes for text-based interface.
 
 import re
 
-COLORS = {'header': '\033[34m',
-          'stop': '\033[0m',
-         }
+COLORS = {
+    "header": "\033[34m",
+    "stop": "\033[0m",
+}
 
-class TextTable():
+
+class TextTable:
     """
     Display a list of dict into a ASCII table, based an a printf-like format.
 
@@ -58,7 +60,7 @@ class TextTable():
         optional_cols     Column list to not display if they are empty.
     """
 
-    RE_PATTERN = r'%(>)?(\d+)?(?P<name>[a-z]+)'
+    RE_PATTERN = r"%(>)?(\d+)?(?P<name>[a-z]+)"
 
     def __init__(self, fmt=""):
         self._rows = []
@@ -93,23 +95,23 @@ class TextTable():
         return self.header_labels.get(name, name)
 
     def pattern_fields(self):
-        """Return the list of all field place holder name used in fmt.  """
-        return [match.group('name')
-                for match in re.finditer(self.RE_PATTERN, self.fmt)]
+        """Return the list of all field place holder name used in fmt."""
+        return [match.group("name") for match in re.finditer(self.RE_PATTERN, self.fmt)]
 
     def append(self, row):
         """Append a new row to be displayed. `row' should be a dict."""
         # Keep track of wider value for each field
         for key, value in row.items():
-            real_value_len = len(str(value or ''))
+            real_value_len = len(str(value or ""))
             if self.show_header:
                 header_length = len(self._header(key))
             else:
                 header_length = 0
 
             # Keep track of the wider value in each col (header or value)
-            self._max_width[key] = max(self._max_width.get(key, header_length),
-                                       real_value_len)
+            self._max_width[key] = max(
+                self._max_width.get(key, header_length), real_value_len
+            )
 
             # Keep track of cols with at least one non empty row
             if real_value_len > 0 and key not in self._non_empty_cols:
@@ -146,7 +148,7 @@ class TextTable():
             # If the value is too long, cut it
             if len(value) > length:
                 length = max(4, length)
-                value = f"{value[:length - 3]}..."
+                value = f"{value[: length - 3]}..."
             if matchobj.group(1):
                 return f"{value:>{length}}"
             return f"{value:{length}}"
@@ -158,7 +160,7 @@ class TextTable():
     def _str_header(self):
         """Build the header string"""
         headline = self._str_common(self._header).upper().rstrip()
-        underline = re.sub("[^ ]", '-', headline)
+        underline = re.sub("[^ ]", "-", headline)
         if self.color:
             headline = f"{COLORS['header']}{headline}{COLORS['stop']}"
         if underline:

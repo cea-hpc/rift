@@ -55,8 +55,11 @@ class AuthTest(unittest.TestCase):
         auth = Auth(self._minimal_config)
         with self.assertRaisesRegex(
             RiftError,
-            rf"Missing idp_token in authentication state file {re.escape(self._cred_path)}\. "
-            r"Run 'rift auth' first\.",
+            (
+                r"Missing idp_token in authentication state file "
+                rf"{re.escape(self._cred_path)}\. "
+                r"Run 'rift auth' first\."
+            ),
         ):
             auth.get_idp_token_noninteractive()
 
@@ -82,7 +85,10 @@ class AuthTest(unittest.TestCase):
         auth = Auth(self._minimal_config)
         with self.assertRaisesRegex(
             RiftError,
-            rf"Missing idp_token in authentication state file {re.escape(self._cred_path)}\. "
-            r"Run 'rift auth' first\.",
+            (
+                r"Missing idp_token in authentication state file "
+                rf"{re.escape(self._cred_path)}\. "
+                r"Run 'rift auth' first\."
+            ),
         ):
             auth.get_idp_token_noninteractive()

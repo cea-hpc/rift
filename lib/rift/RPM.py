@@ -34,28 +34,27 @@
 Helper classes to manipulate RPM files and SPEC files.
 """
 
+import datetime
+import itertools
+import locale
 import logging
 import os
 import re
 import shutil
-from subprocess import Popen, PIPE, STDOUT, run, CalledProcessError
-import time
-import itertools
-import datetime
-import locale
 import tempfile
+import time
+from subprocess import PIPE, STDOUT, CalledProcessError, Popen, run
 
 import rpm
 
-
+import rift.utils
 from rift import RiftError
 from rift.annex import Annex, is_binary
 from rift.Config import _DEFAULT_VARIANT
-import rift.utils
 
 
 def _header_values(values):
-    """ Convert values from header specfile to strings """
+    """Convert values from header specfile to strings"""
     if isinstance(values, list):
         return [_header_values(val) for val in values]
     if isinstance(values, bytes):
@@ -63,7 +62,7 @@ def _header_values(values):
     return str(values)
 
 
-class RPM():
+class RPM:
     """Manipulate a source or binary RPM."""
 
     def __init__(self, filepath, config=None):
@@ -121,9 +120,9 @@ class RPM():
         srcdir = os.path.realpath(srcdir)
 
         # Extract (install) source file and spec file from source rpm
-        cmd = ['rpm', '-iv']
-        cmd += ['--define', f"_sourcedir {srcdir}"]
-        cmd += ['--define', f"_specdir {os.path.realpath(specdir)}"]
+        cmd = ["rpm", "-iv"]
+        cmd += ["--define", f"_sourcedir {srcdir}"]
+        cmd += ["--define", f"_specdir {os.path.realpath(specdir)}"]
         cmd += [self.filepath]
         with Popen(cmd, stdout=PIPE, stderr=STDOUT, universal_newlines=True) as popen:
             stdout = popen.communicate()[0]
@@ -147,14 +146,14 @@ class RPM():
         parameters are missing in project configuration or GPG key is not found.
         """
         # GPG parameters not defined in project config, raise RiftError.
-        if self._config is None or self._config.get('gpg') is None:
+        if self._config is None or self._config.get("gpg") is None:
             raise RiftError(
                 "Unable to retrieve GPG configuration, unable to sign package "
                 f"{self.filepath}",
             )
 
-        gpg = self._config.get('gpg')
-        keyring = os.path.expanduser(gpg.get('keyring'))
+        gpg = self._config.get("gpg")
+        keyring = os.path.expanduser(gpg.get("keyring"))
 
         # Check gpg_keyring path exists or raise error
         if not os.path.exists(keyring):
@@ -164,33 +163,32 @@ class RPM():
             )
 
         cmd = [
-            'rpmsign',
-            '--define',
+            "rpmsign",
+            "--define",
             f"%_gpg_name {gpg.get('key')}",
-            '--define',
+            "--define",
             f"%_gpg_path {keyring}",
-            '--addsign',
-            self.filepath
+            "--addsign",
+            self.filepath,
         ]
         # If passphrase is defined, add the passphrase to gpg sign command
         # parameters and make it non-interactive.
-        if gpg.get('passphrase') is not None:
+        if gpg.get("passphrase") is not None:
             cmd[6:6] = [
-                '--define',
+                "--define",
                 "%_gpg_sign_cmd_extra_args --batch "
-                f"--passphrase '{gpg.get('passphrase')}' --pinentry-mode loopback"
+                f"--passphrase '{gpg.get('passphrase')}' --pinentry-mode loopback",
             ]
         # Run rpmsign command and raise error in case of failure.
         try:
             run(cmd, check=True)
         except CalledProcessError as err:
             raise RiftError(
-                f"Error with signing package {self.filepath} command: "
-                f"{str(err)}"
+                f"Error with signing package {self.filepath} command: {str(err)}"
             ) from err
 
 
-class Spec():
+class Spec:
     """Access information from a Specfile and build SRPMS."""
 
     def __init__(self, filepath, mock, repos, config=None, variant=None):
@@ -221,7 +219,7 @@ class Spec():
 
     def _set_macros(self):
         """Set macros specified in configuration file"""
-        macros = self._config.get('rpm_macros', {})
+        macros = self._config.get("rpm_macros", {})
         for macro, value in macros.items():
             rpm.delMacro(macro)
             if value:
@@ -239,14 +237,13 @@ class Spec():
         for index, line in enumerate(self.lines):
             match = re.match(pattern, line)
             if match:
-                name = match.group('name')
-                value = match.group('value')
-                keyword = match.group('keyword')
+                name = match.group("name")
+                value = match.group("value")
+                keyword = match.group("keyword")
                 if name and value:
-                    self.variables[name] = Variable(index=index,
-                                                    name=name,
-                                                    value=value,
-                                                    keyword=keyword)
+                    self.variables[name] = Variable(
+                        index=index, name=name, value=value, keyword=keyword
+                    )
 
     def load(self):
         """Extract interesting information from spec file."""
@@ -259,7 +256,7 @@ class Spec():
                 self.mock.init(self.repos)
                 content = self.mock.read_spec(self.filepath)
                 self.mock.clean()
-            with tempfile.NamedTemporaryFile(mode='w+') as fp:
+            with tempfile.NamedTemporaryFile(mode="w+") as fp:
                 fp.write(content)
                 fp.seek(0)
                 rpm.reloadConfig()
@@ -274,41 +271,39 @@ class Spec():
                 # https://github.com/rpm-software-management/rpm/issues/1821,
                 # restore timezone after it has been changed to parse changelog.
                 # Note this is fixed in RPM >= 4.19.
-                os.environ['TZ'] = str(current_timezone)
+                os.environ["TZ"] = str(current_timezone)
                 time.tzset()
         except ValueError as exp:
             raise RiftError(f"{self.filepath}: {str(exp).strip()}") from exp
-        self.pkgnames = [_header_values(pkg.header['name']) for pkg in spec.packages]
+        self.pkgnames = [_header_values(pkg.header["name"]) for pkg in spec.packages]
         # Global unique list of provides. Here dict.fromkeys() is used to remove
         # duplicates as an alternative to set() for the sake of preserving order.
-        self.provides = list(dict.fromkeys(
-            itertools.chain(
-                *[_header_values(pkg.header['provides'])
-                  for pkg in spec.packages])))
+        self.provides = list(
+            dict.fromkeys(
+                itertools.chain(
+                    *[_header_values(pkg.header["provides"]) for pkg in spec.packages]
+                )
+            )
+        )
         hdr = spec.sourceHeader
-        self.srpmname = hdr.sprintf('%{NAME}-%{VERSION}-%{RELEASE}.src.rpm')
-        self.basename = hdr.sprintf('%{NAME}')
-        self.version = hdr.sprintf('%{VERSION}')
-        self.arch = hdr.sprintf('%{ARCH}')
+        self.srpmname = hdr.sprintf("%{NAME}-%{VERSION}-%{RELEASE}.src.rpm")
+        self.basename = hdr.sprintf("%{NAME}")
+        self.version = hdr.sprintf("%{VERSION}")
+        self.arch = hdr.sprintf("%{ARCH}")
         self.exclusive_archs = _header_values(hdr[rpm.RPMTAG_EXCLUSIVEARCH])
         if hdr[rpm.RPMTAG_CHANGELOGNAME]:
-            self.changelog_name = _header_values(
-                hdr[rpm.RPMTAG_CHANGELOGNAME][0])
+            self.changelog_name = _header_values(hdr[rpm.RPMTAG_CHANGELOGNAME][0])
         if hdr[rpm.RPMTAG_CHANGELOGTIME]:
-            self.changelog_time = int(_header_values(
-                hdr[rpm.RPMTAG_CHANGELOGTIME][0]))
-        self.sources.extend(_header_values(
-            hdr[rpm.RPMTAG_SOURCE]))
-        self.sources.extend(_header_values(
-            hdr[rpm.RPMTAG_PATCH]))
-        self.buildrequires = ' '.join(_header_values(
-            hdr[rpm.RPMTAG_REQUIRENEVRS]))
-        self.release = hdr.sprintf('%{RELEASE}')
-        self.epoch = hdr.sprintf('%|epoch?{%{epoch}:}:{}|')
-        self.dist = rpm.expandMacro('%dist')
+            self.changelog_time = int(_header_values(hdr[rpm.RPMTAG_CHANGELOGTIME][0]))
+        self.sources.extend(_header_values(hdr[rpm.RPMTAG_SOURCE]))
+        self.sources.extend(_header_values(hdr[rpm.RPMTAG_PATCH]))
+        self.buildrequires = " ".join(_header_values(hdr[rpm.RPMTAG_REQUIRENEVRS]))
+        self.release = hdr.sprintf("%{RELEASE}")
+        self.epoch = hdr.sprintf("%|epoch?{%{epoch}:}:{}|")
+        self.dist = rpm.expandMacro("%dist")
         self.update_evr()
 
-        with open(self.filepath, 'r', encoding='utf-8') as fspec:
+        with open(self.filepath, "r", encoding="utf-8") as fspec:
             self.lines = fspec.readlines()
 
         self._parse_vars()
@@ -318,7 +313,8 @@ class Spec():
         Update epoch:version-release
         """
         self.evr = (
-            f"{self.epoch}{self.version}-{rift.utils.removesuffix(self.release, self.dist)}"
+            f"{self.epoch}{self.version}-"
+            f"{rift.utils.removesuffix(self.release, self.dist)}"
         )
 
     def _inc_release(self, release):
@@ -329,29 +325,27 @@ class Spec():
         if release.endswith(self.dist):
             pattern += f"({dist})"
         elif dist_match:
-            dist = dist_match.group('dist')
-            pattern += "(" + dist.replace('?', r'\?') + ")"
+            dist = dist_match.group("dist")
+            pattern += "(" + dist.replace("?", r"\?") + ")"
         else:
-            dist = ''
-        pattern += '$'
+            dist = ""
+        pattern += "$"
         release_id = re.match(pattern, release)
         if release_id is None:
             raise RiftError(f"Cannot parse package release: {release}")
-        newrelease = int(release_id.group('num')) + 1
-        logging.debug("New release from %s to %s", release_id.group('num'),
-                      newrelease)
-        baserelease = release_id.group('baserelease')
+        newrelease = int(release_id.group("num")) + 1
+        logging.debug("New release from %s to %s", release_id.group("num"), newrelease)
+        baserelease = release_id.group("baserelease")
         return f"{baserelease}{newrelease}{dist}"
 
-
-    def _match_var(self, expression, pattern='.*[0-9]$'):
-        """ Get variable with value matching pattern in expression """
-        match = re.match(r'(?P<leftbehind>.*)%{?\??(?P<varname>[^}]*)}?', expression)
+    def _match_var(self, expression, pattern=".*[0-9]$"):
+        """Get variable with value matching pattern in expression"""
+        match = re.match(r"(?P<leftbehind>.*)%{?\??(?P<varname>[^}]*)}?", expression)
         if match:
-            name = match.group('varname')
-            left = match.group('leftbehind')
+            name = match.group("varname")
+            left = match.group("leftbehind")
             if name:
-                logging.debug('Spec._match_var: found %s', name)
+                logging.debug("Spec._match_var: found %s", name)
                 try:
                     if re.match(pattern, str(self.variables[name])):
                         return self.variables[name]
@@ -373,7 +367,6 @@ class Spec():
         self.release = self._inc_release(self.release)
         self.update_evr()
 
-
     def add_changelog_entry(self, userstring, comment, bump=False):
         """
         Add a new entry to changelog.
@@ -387,7 +380,7 @@ class Spec():
         # Temporarily set basic C locale to generate date representation in
         # changelog.
         current_locale = locale.getlocale(locale.LC_TIME)
-        locale.setlocale(locale.LC_TIME, 'C')
+        locale.setlocale(locale.LC_TIME, "C")
         date = time.strftime("%a %b %d %Y", time.gmtime())
         # Immediately restore previous locale.
         locale.setlocale(locale.LC_TIME, current_locale)
@@ -396,10 +389,11 @@ class Spec():
         chlg_match = None
         for i, _ in enumerate(self.lines):
             if bump:
-                release_match = re.match(r'^[Rr]elease:(?P<spaces>\s+)(?P<release>.*$)',
-                                         self.lines[i])
+                release_match = re.match(
+                    r"^[Rr]elease:(?P<spaces>\s+)(?P<release>.*$)", self.lines[i]
+                )
                 if release_match:
-                    release_str = release_match.group('release')
+                    release_str = release_match.group("release")
                     # If Release field contains only variables, we may need to
                     # resolv and increment last variable:
                     # Release: %{something}%{?dist}
@@ -415,7 +409,7 @@ class Spec():
                             var.value = self._inc_release(var.value)
                             var.spec_output(self.lines)
 
-            chlg_match = re.match(r'^%changelog(\s|$)', self.lines[i])
+            chlg_match = re.match(r"^%changelog(\s|$)", self.lines[i])
             if chlg_match:
                 if len(self.lines) > i + 1 and self.lines[i + 1].strip() != "":
                     newchangelogentry += "\n"
@@ -428,7 +422,7 @@ class Spec():
             self.lines.append("%changelog\n")
             self.lines.append(newchangelogentry)
 
-        with open(self.filepath, 'w', encoding='utf-8') as fspec:
+        with open(self.filepath, "w", encoding="utf-8") as fspec:
             fspec.writelines(self.lines)
 
         # Reload
@@ -440,9 +434,9 @@ class Spec():
 
         Return a RPM instance of this source RPM.
         """
-        cmd = ['rpmbuild', '-bs']
-        cmd += ['--define', f"_sourcedir {srcdir}"]
-        cmd += ['--define', f"_srcrpmdir {destdir}"]
+        cmd = ["rpmbuild", "-bs"]
+        cmd += ["--define", f"_sourcedir {srcdir}"]
+        cmd += ["--define", f"_srcrpmdir {destdir}"]
         cmd += [self.filepath]
 
         with Popen(cmd, stdout=PIPE, stderr=STDOUT, universal_newlines=True) as popen:
@@ -466,14 +460,16 @@ class Spec():
 
             # Changelog section is mandatory
             if not (self.changelog_name or self.changelog_time):
-                raise RiftError('Proper changelog section is needed in specfile')
+                raise RiftError("Proper changelog section is needed in specfile")
 
             # Check if all sources are declared and present in package directory
             if pkg.sources - set(self.sources):
-                msg = f"Unused source file(s): {' '.join(pkg.sources - set(self.sources))}"
+                unused = pkg.sources - set(self.sources)
+                msg = f"Unused source file(s): {' '.join(unused)}"
                 raise RiftError(msg)
             if set(self.sources) - pkg.sources:
-                msg = f"Missing source file(s): {' '.join(set(self.sources) - pkg.sources)}"
+                missing = set(self.sources) - pkg.sources
+                msg = f"Missing source file(s): {' '.join(missing)}"
                 raise RiftError(msg)
 
         with self.mock.lock():
@@ -483,7 +479,7 @@ class Spec():
             finally:
                 self.mock.clean()
         if proc.returncode:
-            raise RiftError(proc.err or 'rpmlint reported errors')
+            raise RiftError(proc.err or "rpmlint reported errors")
 
     def analyze(self, review, configdir=None):
         """Run `rpmlint' for this specfile and fill provided `review'."""
@@ -496,18 +492,19 @@ class Spec():
         if proc.returncode not in (0, 64, 66):
             raise RiftError(proc.err or f"rpmlint returned {proc.returncode}")
 
-        stdout = proc.out or ''
+        stdout = proc.out or ""
         for line in stdout.splitlines():
-            if line.startswith(self.filepath + ':'):
-                line = line[len(self.filepath + ':'):]
+            if line.startswith(self.filepath + ":"):
+                line = line[len(self.filepath + ":") :]
                 try:
                     linenbr = None
-                    code, txt = line.split(':', 1)
+                    code, txt = line.split(":", 1)
                     if code.isdigit():
                         linenbr = int(code)
-                        code, txt = txt.split(':', 1)
-                    review.add_comment(self.filepath, linenbr,
-                                       code.strip(), txt.strip())
+                        code, txt = txt.split(":", 1)
+                    review.add_comment(
+                        self.filepath, linenbr, code.strip(), txt.strip()
+                    )
                 except (ValueError, KeyError):
                     pass
 
@@ -522,22 +519,22 @@ class Spec():
         return not self.exclusive_archs or arch in self.exclusive_archs
 
 
-class Variable():
-
+class Variable:
     """
-        This class represents specfile variables
-        Args:
-            index (int): Line where variable is defined in specfile
-            name: The variable name
-            value: The variable value
-            keyword: The keyword used to define the variable
+    This class represents specfile variables
+    Args:
+        index (int): Line where variable is defined in specfile
+        name: The variable name
+        value: The variable value
+        keyword: The keyword used to define the variable
 
-        Attributes:
-            index (int): Line where variable is defined in specfile
-            name: The variable name
-            value: The variable value
-            keyword: The keyword used to define the variable
+    Attributes:
+        index (int): Line where variable is defined in specfile
+        name: The variable name
+        value: The variable value
+        keyword: The keyword used to define the variable
     """
+
     def __init__(self, index, name, value, keyword):
         self.index = index
         self.name = name
@@ -549,15 +546,15 @@ class Variable():
 
     def spec_output(self, buffer=None):
         """
-            Return variable definition with specfile syntax.
-            Args:
-                buffer (list): Buffer containing specfile content
+        Return variable definition with specfile syntax.
+        Args:
+            buffer (list): Buffer containing specfile content
 
-            Raises:
-                IndexError: If buffer is not large enough
+        Raises:
+            IndexError: If buffer is not large enough
 
-            Returns:
-                define_str: String syntax to define the variable
+        Returns:
+            define_str: String syntax to define the variable
         """
         define_str = f"%{self.keyword} {self.name} {self.value}"
         if buffer:

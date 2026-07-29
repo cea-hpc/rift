@@ -2,26 +2,26 @@
 # Copyright (C) 2025 CEA
 #
 
-from unittest.mock import Mock, patch, ANY
 import os
 import textwrap
+from unittest.mock import ANY, Mock, patch
 
 from rift import RiftError
-from rift.package.rpm import PackageRPM, ActionableArchPackageRPM
+from rift.Config import _DEFAULT_VARIANT
+from rift.Gerrit import Review
+from rift.package.rpm import ActionableArchPackageRPM, PackageRPM
 from rift.repository import StagingRepository
 from rift.run import RunResult
 from rift.TestResults import TestResults
-from rift.Config import _DEFAULT_VARIANT
-from rift.Gerrit import Review
 
 from ..TestUtils import (
-    RiftProjectTestCase,
     PackageTestDef,
-    make_temp_file,
+    RiftProjectTestCase,
     gen_rpm_spec,
-    read_file,
-    nullcontext,
     host_rpmlint,
+    make_temp_file,
+    nullcontext,
+    read_file,
 )
 
 
@@ -29,21 +29,23 @@ class PackageRPMTest(RiftProjectTestCase):
     """
     Tests class for PackageRPM
     """
+
     def test_init(self):
-        """ Test PackageRPM initialisation """
-        pkgname = 'pkg'
+        """Test PackageRPM initialisation"""
+        pkgname = "pkg"
         pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
-        self.assertEqual(pkg.format, 'rpm')
-        self.assertEqual(pkg.buildfile, '{0}/{1}.spec'.format(pkg.dir, pkgname))
+        self.assertEqual(pkg.format, "rpm")
+        self.assertEqual(pkg.buildfile, "{0}/{1}.spec".format(pkg.dir, pkgname))
         self.assertIsNone(pkg.ignore_rpms)
         self.assertIsNone(pkg.rpmnames)
         self.assertCountEqual(pkg.variants, [])
 
     def test_load(self):
-        """ Test PackageRPM information loading """
-        pkgname = 'pkg'
+        """Test PackageRPM information loading"""
+        pkgname = "pkg"
         pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
-        pkgfile = make_temp_file(textwrap.dedent("""
+        pkgfile = make_temp_file(
+            textwrap.dedent("""
             package:
                 maintainers:
                 - Myself
@@ -58,7 +60,8 @@ class PackageRPMTest(RiftProjectTestCase):
                 variants:
                 - variant1
                 - variant2
-            """))
+            """)
+        )
         spec_file = make_temp_file(
             gen_rpm_spec(
                 name=pkgname,
@@ -70,25 +73,27 @@ class PackageRPMTest(RiftProjectTestCase):
         )
         pkg.buildfile = spec_file.name
         # mock Mock.read_spec to return spec file content directly read on host
-        with patch('rift.package.rpm.Mock') as mock_mock:
+        with patch("rift.package.rpm.Mock") as mock_mock:
             mock_mock.return_value.read_spec = read_file
-            pkg.load(infopath = pkgfile.name)
-        self.assertEqual(pkg.rpmnames, [ 'pkg', 'pkg-devel' ])
-        self.assertEqual(pkg.ignore_rpms, [ 'pkg-debuginfos' ])
-        self.assertCountEqual(pkg.variants, ['variant1', 'variant2'])
+            pkg.load(infopath=pkgfile.name)
+        self.assertEqual(pkg.rpmnames, ["pkg", "pkg-devel"])
+        self.assertEqual(pkg.ignore_rpms, ["pkg-debuginfos"])
+        self.assertCountEqual(pkg.variants, ["variant1", "variant2"])
 
     def test_check(self):
-        """ Test PackageRPM.check() does not fail with error """
-        pkgname = 'pkg'
+        """Test PackageRPM.check() does not fail with error"""
+        pkgname = "pkg"
         pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
-        pkgfile = make_temp_file(textwrap.dedent("""
+        pkgfile = make_temp_file(
+            textwrap.dedent("""
             package:
                 maintainers:
                 - Myself
                 module: Great module
                 reason: Missing package
                 origin: Company
-            """))
+            """)
+        )
         spec_file = make_temp_file(
             gen_rpm_spec(
                 name=pkgname,
@@ -99,29 +104,31 @@ class PackageRPMTest(RiftProjectTestCase):
             )
         )
         # Create sources dir and source
-        sources_dir = os.path.join(pkg.dir, 'sources')
+        sources_dir = os.path.join(pkg.dir, "sources")
         os.makedirs(sources_dir)
-        with open(os.path.join(sources_dir, "pkg-1.0.tar.gz"), 'w+') as fh:
+        with open(os.path.join(sources_dir, "pkg-1.0.tar.gz"), "w+") as fh:
             fh.write("data")
         pkg.buildfile = spec_file.name
-        with patch('rift.package.rpm.Mock') as mock_mock:
+        with patch("rift.package.rpm.Mock") as mock_mock:
             mock_mock.return_value.read_spec.return_value = open(spec_file.name).read()
-            pkg.load(infopath = pkgfile.name)
-        with patch.object(pkg.spec.mock, 'rpmlint', host_rpmlint):
+            pkg.load(infopath=pkgfile.name)
+        with patch.object(pkg.spec.mock, "rpmlint", host_rpmlint):
             pkg.check()
 
     def test_check_missing_source(self):
-        """ Test PackageRPM.check() detect missing source """
-        pkgname = 'pkg'
+        """Test PackageRPM.check() detect missing source"""
+        pkgname = "pkg"
         pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
-        pkgfile = make_temp_file(textwrap.dedent("""
+        pkgfile = make_temp_file(
+            textwrap.dedent("""
             package:
                 maintainers:
                 - Myself
                 module: Great module
                 reason: Missing package
                 origin: Company
-            """))
+            """)
+        )
         spec_file = make_temp_file(
             gen_rpm_spec(
                 name=pkgname,
@@ -133,26 +140,29 @@ class PackageRPMTest(RiftProjectTestCase):
         )
         pkg.buildfile = spec_file.name
         # mock Mock.read_spec to return spec file content directly read on host
-        with patch('rift.package.rpm.Mock') as mock_mock:
+        with patch("rift.package.rpm.Mock") as mock_mock:
             mock_mock.return_value.read_spec = read_file
-            pkg.load(infopath = pkgfile.name)
-        with patch.object(pkg.spec.mock, 'rpmlint', host_rpmlint):
-            with self.assertRaisesRegex(RiftError,
-                r'Missing source file\(s\): pkg-1.0.tar.gz'):
+            pkg.load(infopath=pkgfile.name)
+        with patch.object(pkg.spec.mock, "rpmlint", host_rpmlint):
+            with self.assertRaisesRegex(
+                RiftError, r"Missing source file\(s\): pkg-1.0.tar.gz"
+            ):
                 pkg.check()
 
     def test_check_unused_source(self):
-        """ Test PackageRPM.check() detect unused source """
-        pkgname = 'pkg'
+        """Test PackageRPM.check() detect unused source"""
+        pkgname = "pkg"
         pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
-        pkgfile = make_temp_file(textwrap.dedent("""
+        pkgfile = make_temp_file(
+            textwrap.dedent("""
             package:
                 maintainers:
                 - Myself
                 module: Great module
                 reason: Missing package
                 origin: Company
-            """))
+            """)
+        )
         spec_file = make_temp_file(
             gen_rpm_spec(
                 name=pkgname,
@@ -163,41 +173,42 @@ class PackageRPMTest(RiftProjectTestCase):
             )
         )
         # Create sources dir, source and unused source
-        sources_dir = os.path.join(pkg.dir, 'sources')
+        sources_dir = os.path.join(pkg.dir, "sources")
         os.makedirs(sources_dir)
-        with open(os.path.join(sources_dir, 'pkg-1.0.tar.gz'), 'w+') as fh:
+        with open(os.path.join(sources_dir, "pkg-1.0.tar.gz"), "w+") as fh:
             fh.write("data")
-        with open(os.path.join(sources_dir, 'unused-1.0.tar.gz'), 'w+') as fh:
+        with open(os.path.join(sources_dir, "unused-1.0.tar.gz"), "w+") as fh:
             fh.write("data")
         pkg.buildfile = spec_file.name
         # mock Mock.read_spec to return spec file content directly read on host
-        with patch('rift.package.rpm.Mock') as mock_mock:
+        with patch("rift.package.rpm.Mock") as mock_mock:
             mock_mock.return_value.read_spec = read_file
-            pkg.load(infopath = pkgfile.name)
-        with patch.object(pkg.spec.mock, 'rpmlint', host_rpmlint):
-            with self.assertRaisesRegex(RiftError,
-                r'Unused source file\(s\): unused-1.0.tar.gz'):
+            pkg.load(infopath=pkgfile.name)
+        with patch.object(pkg.spec.mock, "rpmlint", host_rpmlint):
+            with self.assertRaisesRegex(
+                RiftError, r"Unused source file\(s\): unused-1.0.tar.gz"
+            ):
                 pkg.check()
 
     def test_subpackages(self):
-        """ Test PackageRPM.subpackages() returns list of provides """
+        """Test PackageRPM.subpackages() returns list of provides"""
         self.make_pkg()
-        pkg = PackageRPM('pkg', self.config, self.staff, self.modules)
+        pkg = PackageRPM("pkg", self.config, self.staff, self.modules)
         # mock Mock.read_spec to return spec file content directly read on host
-        with patch('rift.package.rpm.Mock') as mock_mock:
+        with patch("rift.package.rpm.Mock") as mock_mock:
             mock_mock.return_value.read_spec = read_file
             pkg.load()
-        self.assertCountEqual(pkg.subpackages(), ['pkg', 'pkg-provide'])
+        self.assertCountEqual(pkg.subpackages(), ["pkg", "pkg-provide"])
 
     def test_build_requires(self):
-        """ Test PackageRPM.build_requires() returns list of build requirements """
+        """Test PackageRPM.build_requires() returns list of build requirements"""
         self.make_pkg()
-        pkg = PackageRPM('pkg', self.config, self.staff, self.modules)
+        pkg = PackageRPM("pkg", self.config, self.staff, self.modules)
         # mock Mock.read_spec to return spec file content directly read on host
-        with patch('rift.package.rpm.Mock') as mock_mock:
+        with patch("rift.package.rpm.Mock") as mock_mock:
             mock_mock.return_value.read_spec = read_file
             pkg.load()
-        self.assertCountEqual(pkg.build_requires(), ['br-package'])
+        self.assertCountEqual(pkg.build_requires(), ["br-package"])
 
     def test_build_requires_explicit_versions(self):
         """
@@ -205,29 +216,31 @@ class PackageRPMTest(RiftProjectTestCase):
         explicit versioning.
         """
         self.make_pkg(
-            build_requires=['lib1-devel', 'lib2-devel >= 3.4', 'lib3-devel < 6.0.0']
+            build_requires=["lib1-devel", "lib2-devel >= 3.4", "lib3-devel < 6.0.0"]
         )
-        pkg = PackageRPM('pkg', self.config, self.staff, self.modules)
+        pkg = PackageRPM("pkg", self.config, self.staff, self.modules)
         # mock Mock.read_spec to return spec file content directly read on host
-        with patch('rift.package.rpm.Mock') as mock_mock:
+        with patch("rift.package.rpm.Mock") as mock_mock:
             mock_mock.return_value.read_spec = read_file
             pkg.load()
         self.assertCountEqual(
-            pkg.build_requires(), ['lib1-devel', 'lib2-devel', 'lib3-devel']
+            pkg.build_requires(), ["lib1-devel", "lib2-devel", "lib3-devel"]
         )
 
     def test_add_changelog_entry(self):
-        """ Test PackageRPM add changelog entry"""
-        pkgname = 'pkg'
+        """Test PackageRPM add changelog entry"""
+        pkgname = "pkg"
         pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
-        pkgfile = make_temp_file(textwrap.dedent("""
+        pkgfile = make_temp_file(
+            textwrap.dedent("""
             package:
                 maintainers:
                 - Myself
                 module: Great module
                 reason: Missing package
                 origin: Company
-            """))
+            """)
+        )
         spec_file = make_temp_file(
             gen_rpm_spec(
                 name=pkgname,
@@ -239,27 +252,31 @@ class PackageRPMTest(RiftProjectTestCase):
         )
         pkg.buildfile = spec_file.name
         # mock Mock.read_spec to return spec file content directly read on host
-        with patch('rift.package.rpm.Mock') as mock_mock:
+        with patch("rift.package.rpm.Mock") as mock_mock:
             mock_mock.return_value.read_spec = read_file
-            pkg.load(infopath = pkgfile.name)
+            pkg.load(infopath=pkgfile.name)
         pkg.add_changelog_entry("Myself", "Package modification", False)
-        with patch('rift.package.rpm.Mock') as mock_mock:
+        with patch("rift.package.rpm.Mock") as mock_mock:
             mock_mock.return_value.read_spec = read_file
-            pkg.load(infopath = pkgfile.name)
-        self.assertEqual(pkg.spec.changelog_name, "Myself <buddy@somewhere.org> - 1.0-1")
+            pkg.load(infopath=pkgfile.name)
+        self.assertEqual(
+            pkg.spec.changelog_name, "Myself <buddy@somewhere.org> - 1.0-1"
+        )
 
     def test_add_changelog_entry_bump(self):
-        """ Test PackageRPM add changelog entry with release bump"""
-        pkgname = 'pkg'
+        """Test PackageRPM add changelog entry with release bump"""
+        pkgname = "pkg"
         pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
-        pkgfile = make_temp_file(textwrap.dedent("""
+        pkgfile = make_temp_file(
+            textwrap.dedent("""
             package:
                 maintainers:
                 - Myself
                 module: Great module
                 reason: Missing package
                 origin: Company
-            """))
+            """)
+        )
         spec_file = make_temp_file(
             gen_rpm_spec(
                 name=pkgname,
@@ -271,27 +288,31 @@ class PackageRPMTest(RiftProjectTestCase):
         )
         pkg.buildfile = spec_file.name
         # mock Mock.read_spec to return spec file content directly read on host
-        with patch('rift.package.rpm.Mock') as mock_mock:
+        with patch("rift.package.rpm.Mock") as mock_mock:
             mock_mock.return_value.read_spec = read_file
-            pkg.load(infopath = pkgfile.name)
+            pkg.load(infopath=pkgfile.name)
         pkg.add_changelog_entry("Myself", "Package modification", True)
-        with patch('rift.package.rpm.Mock') as mock_mock:
+        with patch("rift.package.rpm.Mock") as mock_mock:
             mock_mock.return_value.read_spec = read_file
-            pkg.load(infopath = pkgfile.name)
-        self.assertEqual(pkg.spec.changelog_name, "Myself <buddy@somewhere.org> - 1.0-2")
+            pkg.load(infopath=pkgfile.name)
+        self.assertEqual(
+            pkg.spec.changelog_name, "Myself <buddy@somewhere.org> - 1.0-2"
+        )
 
     def test_add_changelog_entry_unknown_maintainer(self):
-        """ Test PackageRPM add changelog entry with unknown maintainer """
-        pkgname = 'pkg'
+        """Test PackageRPM add changelog entry with unknown maintainer"""
+        pkgname = "pkg"
         pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
-        pkgfile = make_temp_file(textwrap.dedent("""
+        pkgfile = make_temp_file(
+            textwrap.dedent("""
             package:
                 maintainers:
                 - Myself
                 module: Great module
                 reason: Missing package
                 origin: Company
-            """))
+            """)
+        )
         spec_file = make_temp_file(
             gen_rpm_spec(
                 name=pkgname,
@@ -303,40 +324,42 @@ class PackageRPMTest(RiftProjectTestCase):
         )
         pkg.buildfile = spec_file.name
         # mock Mock.read_spec to return spec file content directly read on host
-        with patch('rift.package.rpm.Mock') as mock_mock:
+        with patch("rift.package.rpm.Mock") as mock_mock:
             mock_mock.return_value.read_spec = read_file
-            pkg.load(infopath = pkgfile.name)
+            pkg.load(infopath=pkgfile.name)
         with self.assertRaisesRegex(
             RiftError, "Unknown maintainer Unknown, cannot be found in staff"
         ):
             pkg.add_changelog_entry("Unknown", "Package modification", False)
 
     def test_has_real_variants(self):
-        """ Test PackageRPM has_real_variants() """
-        pkg = PackageRPM('pkg', self.config, self.staff, self.modules)
+        """Test PackageRPM has_real_variants()"""
+        pkg = PackageRPM("pkg", self.config, self.staff, self.modules)
         with self.assertRaises(AssertionError):
             pkg.has_real_variants()
         pkg.variants = [_DEFAULT_VARIANT]
         self.assertFalse(pkg.has_real_variants())
-        pkg.variants = ['variant1']
+        pkg.variants = ["variant1"]
         self.assertTrue(pkg.has_real_variants())
-        pkg.variants = [_DEFAULT_VARIANT, 'variant2']
+        pkg.variants = [_DEFAULT_VARIANT, "variant2"]
         self.assertTrue(pkg.has_real_variants())
-        pkg.variants = ['variant1', 'variant2']
+        pkg.variants = ["variant1", "variant2"]
         self.assertTrue(pkg.has_real_variants())
 
     def test_supports_arch_w_exclusive_arch(self):
-        """ Test PackageRPM supports_arch() method with ExclusiveArch"""
-        pkgname = 'pkg'
+        """Test PackageRPM supports_arch() method with ExclusiveArch"""
+        pkgname = "pkg"
         pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
-        pkgfile = make_temp_file(textwrap.dedent("""
+        pkgfile = make_temp_file(
+            textwrap.dedent("""
             package:
                 maintainers:
                 - Myself
                 module: Great module
                 reason: Missing package
                 origin: Company
-            """))
+            """)
+        )
         spec_file = make_temp_file(
             gen_rpm_spec(
                 name=pkgname,
@@ -348,24 +371,26 @@ class PackageRPMTest(RiftProjectTestCase):
         )
         pkg.buildfile = spec_file.name
         # mock Mock.read_spec to return spec file content directly read on host
-        with patch('rift.package.rpm.Mock') as mock_mock:
+        with patch("rift.package.rpm.Mock") as mock_mock:
             mock_mock.return_value.read_spec = read_file
-            pkg.load(infopath = pkgfile.name)
-        self.assertTrue(pkg.supports_arch('x86_64'))
-        self.assertFalse(pkg.supports_arch('aarch64'))
+            pkg.load(infopath=pkgfile.name)
+        self.assertTrue(pkg.supports_arch("x86_64"))
+        self.assertFalse(pkg.supports_arch("aarch64"))
 
     def test_supports_arch_wo_exclusive_arch(self):
-        """ Test PackageRPM supports_arch() method without ExclusiveArch"""
-        pkgname = 'pkg'
+        """Test PackageRPM supports_arch() method without ExclusiveArch"""
+        pkgname = "pkg"
         pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
-        pkgfile = make_temp_file(textwrap.dedent("""
+        pkgfile = make_temp_file(
+            textwrap.dedent("""
             package:
                 maintainers:
                 - Myself
                 module: Great module
                 reason: Missing package
                 origin: Company
-            """))
+            """)
+        )
         spec_file = make_temp_file(
             gen_rpm_spec(
                 name=pkgname,
@@ -376,24 +401,26 @@ class PackageRPMTest(RiftProjectTestCase):
         )
         pkg.buildfile = spec_file.name
         # mock Mock.read_spec to return spec file content directly read on host
-        with patch('rift.package.rpm.Mock') as mock_mock:
+        with patch("rift.package.rpm.Mock") as mock_mock:
             mock_mock.return_value.read_spec = read_file
-            pkg.load(infopath = pkgfile.name)
-        self.assertTrue(pkg.supports_arch('x86_64'))
-        self.assertTrue(pkg.supports_arch('aarch64'))
+            pkg.load(infopath=pkgfile.name)
+        self.assertTrue(pkg.supports_arch("x86_64"))
+        self.assertTrue(pkg.supports_arch("aarch64"))
 
     def test_analyze(self):
-        """ Test PackageRPM analyze success """
-        pkgname = 'pkg'
+        """Test PackageRPM analyze success"""
+        pkgname = "pkg"
         pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
-        pkgfile = make_temp_file(textwrap.dedent("""
+        pkgfile = make_temp_file(
+            textwrap.dedent("""
             package:
                 maintainers:
                 - Myself
                 module: Great module
                 reason: Missing package
                 origin: Company
-            """))
+            """)
+        )
         spec_file = make_temp_file(
             gen_rpm_spec(
                 name=pkgname,
@@ -401,30 +428,32 @@ class PackageRPMTest(RiftProjectTestCase):
                 release="1",
                 arch="x86_64",
             ),
-            suffix='.spec'
+            suffix=".spec",
         )
         pkg.buildfile = spec_file.name
         # mock Mock.read_spec to return spec file content directly read on host
-        with patch('rift.package.rpm.Mock') as mock_mock:
+        with patch("rift.package.rpm.Mock") as mock_mock:
             mock_mock.return_value.read_spec = read_file
-            pkg.load(infopath = pkgfile.name)
+            pkg.load(infopath=pkgfile.name)
         review = Mock(spec=Review)
-        with patch.object(pkg.spec.mock, 'rpmlint', host_rpmlint):
+        with patch.object(pkg.spec.mock, "rpmlint", host_rpmlint):
             pkg.analyze(review, pkg.dir)
         review.invalidate.assert_not_called()
 
     def test_analyze_invalidate(self):
-        """ Test PackageRPM analyze failure """
-        pkgname = 'pkg'
+        """Test PackageRPM analyze failure"""
+        pkgname = "pkg"
         pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
-        pkgfile = make_temp_file(textwrap.dedent("""
+        pkgfile = make_temp_file(
+            textwrap.dedent("""
             package:
                 maintainers:
                 - Myself
                 module: Great module
                 reason: Missing package
                 origin: Company
-            """))
+            """)
+        )
         # Use $$RPM_SOURCE_DIR and $RPM_BUILD_ROOT in build steps in order to
         # produce error in both rpmlint v1 and v2.
         spec_file = make_temp_file(
@@ -435,57 +464,54 @@ class PackageRPMTest(RiftProjectTestCase):
                 arch="x86_64",
                 buildsteps="$RPM_SOURCE_DIR\n$RPM_BUILD_ROOT",
             ),
-            suffix='.spec'
+            suffix=".spec",
         )
         pkg.buildfile = spec_file.name
         # mock Mock.read_spec to return spec file content directly read on host
-        with patch('rift.package.rpm.Mock') as mock_mock:
+        with patch("rift.package.rpm.Mock") as mock_mock:
             mock_mock.return_value.read_spec = read_file
-            pkg.load(infopath = pkgfile.name)
+            pkg.load(infopath=pkgfile.name)
         review = Mock(spec=Review)
-        with patch.object(pkg.spec.mock, 'rpmlint', host_rpmlint):
+        with patch.object(pkg.spec.mock, "rpmlint", host_rpmlint):
             pkg.analyze(review, pkg.dir)
         review.invalidate.assert_called_once()
 
     def test_for_arch(self):
-        """ Test PackageRPM for_arch() returns ActionableArchPackageRPM object. """
-        pkgname = 'pkg'
+        """Test PackageRPM for_arch() returns ActionableArchPackageRPM object."""
+        pkgname = "pkg"
         pkg = PackageRPM(pkgname, self.config, self.staff, self.modules)
-        pkg_arch = pkg.for_arch('x86_64')
+        pkg_arch = pkg.for_arch("x86_64")
         self.assertIsInstance(pkg_arch, ActionableArchPackageRPM)
         self.assertEqual(pkg_arch.name, pkg.name)
         self.assertEqual(pkg_arch.buildfile, pkg.buildfile)
         self.assertEqual(pkg_arch.config, pkg._config)
         self.assertEqual(pkg_arch.package, pkg)
-        self.assertEqual(pkg_arch.arch, 'x86_64')
+        self.assertEqual(pkg_arch.arch, "x86_64")
 
 
 class ActionableArchPackageRPMTest(RiftProjectTestCase):
     """
     Tests class for ActionableArchPackageRPM
     """
+
     def setup_package(self, variants=None, tests=None):
         self.make_pkg(variants=variants, tests=tests)
-        _pkg = PackageRPM('pkg', self.config, self.staff, self.modules)
+        _pkg = PackageRPM("pkg", self.config, self.staff, self.modules)
         # mock Mock.read_spec to return spec file content directly read on host
-        with patch('rift.package.rpm.Mock') as mock_mock:
+        with patch("rift.package.rpm.Mock") as mock_mock:
             mock_mock.return_value.read_spec = read_file
             _pkg.load()
-        self.pkg = ActionableArchPackageRPM(_pkg, 'x86_64')
+        self.pkg = ActionableArchPackageRPM(_pkg, "x86_64")
         self.pkg.mock.read_spec = read_file
 
-    @patch('rift.package.rpm.message')
-    @patch('rift.package.rpm.Mock.build_rpms')
-    @patch('rift.package.rpm.Mock.build_srpm')
-    @patch('rift.package.rpm.Mock.init')
+    @patch("rift.package.rpm.message")
+    @patch("rift.package.rpm.Mock.build_rpms")
+    @patch("rift.package.rpm.Mock.build_srpm")
+    @patch("rift.package.rpm.Mock.init")
     def test_build(
-        self,
-        mock_mock_init,
-        mock_mock_build_srpm,
-        mock_mock_build_rpms,
-        mock_message
+        self, mock_mock_init, mock_mock_build_srpm, mock_mock_build_rpms, mock_message
     ):
-        """ Test ActionableArchPackageRPM build """
+        """Test ActionableArchPackageRPM build"""
         self.setup_package()
         self.pkg.build()
         # Check build() has called expected Mock methods.
@@ -496,11 +522,13 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         )
         mock_message.assert_any_call("Building RPMS...")
 
-    @patch('rift.package.rpm.Mock.build_rpms')
-    @patch('rift.package.rpm.Mock.build_srpm')
-    @patch('rift.package.rpm.Mock.init')
-    def test_build_sign(self, mock_mock_init, mock_mock_build_srpm, mock_mock_build_rpms):
-        """ Test ActionableArchPackageRPM build with sign enabled"""
+    @patch("rift.package.rpm.Mock.build_rpms")
+    @patch("rift.package.rpm.Mock.build_srpm")
+    @patch("rift.package.rpm.Mock.init")
+    def test_build_sign(
+        self, mock_mock_init, mock_mock_build_srpm, mock_mock_build_rpms
+    ):
+        """Test ActionableArchPackageRPM build with sign enabled"""
         self.setup_package()
         self.pkg.build(sign=True)
         # Check build() has called expected Mock methods.
@@ -510,28 +538,30 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
             mock_mock_build_srpm.return_value, _DEFAULT_VARIANT, self.pkg.repos, True
         )
 
-    @patch('rift.package.rpm.Mock.build_rpms')
-    @patch('rift.package.rpm.Mock.build_srpm')
-    @patch('rift.package.rpm.Mock.init')
-    def test_build_staging(self, mock_mock_init, mock_mock_build_srpm, mock_mock_build_rpms):
-        """ Test ActionableArchPackageRPM build with staging repository"""
+    @patch("rift.package.rpm.Mock.build_rpms")
+    @patch("rift.package.rpm.Mock.build_srpm")
+    @patch("rift.package.rpm.Mock.init")
+    def test_build_staging(
+        self, mock_mock_init, mock_mock_build_srpm, mock_mock_build_rpms
+    ):
+        """Test ActionableArchPackageRPM build with staging repository"""
         self.setup_package()
         staging = StagingRepository(self.config)
         self.pkg.build(staging=staging)
         staging.delete()
         # Check build() has called expected Mock methods.
         mock_mock_init.assert_called_once_with(
-            [staging.for_format('rpm').repo.consumables['x86_64']]
+            [staging.for_format("rpm").repo.consumables["x86_64"]]
         )
         mock_mock_build_srpm.assert_called_once()
         mock_mock_build_rpms.assert_any_call(
             mock_mock_build_srpm.return_value, _DEFAULT_VARIANT, self.pkg.repos, False
         )
 
-    @patch('rift.package.rpm.message')
-    @patch('rift.package.rpm.Mock.build_rpms')
-    @patch('rift.package.rpm.Mock.build_srpm')
-    @patch('rift.package.rpm.Mock.init')
+    @patch("rift.package.rpm.message")
+    @patch("rift.package.rpm.Mock.build_rpms")
+    @patch("rift.package.rpm.Mock.build_srpm")
+    @patch("rift.package.rpm.Mock.init")
     def test_build_multiple_variants(
         self,
         mock_mock_init,
@@ -539,8 +569,8 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         mock_mock_build_rpms,
         mock_message,
     ):
-        """ Test ActionableArchPackageRPM build with multiple variants"""
-        variants = ['variant1', 'variant2']
+        """Test ActionableArchPackageRPM build with multiple variants"""
+        variants = ["variant1", "variant2"]
         self.setup_package(variants=variants)
         self.pkg.package.variants = variants
         self.pkg.build()
@@ -553,20 +583,21 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
             )
             mock_message.assert_any_call(f"Building RPMS variant {variant}...")
 
-    @patch('rift.package.rpm.Mock.clean')
-    @patch('rift.package.rpm.Mock.init')
-    @patch('rift.package.rpm.time.sleep')
-    @patch('rift.package.rpm.VM')
+    @patch("rift.package.rpm.Mock.clean")
+    @patch("rift.package.rpm.Mock.init")
+    @patch("rift.package.rpm.time.sleep")
+    @patch("rift.package.rpm.VM")
     def test_test_local(
         self, mock_vm, mock_time_sleep, mock_mock_init, mock_mock_clean
     ):
-        """ Test ActionableArchPackageRPM local test """
+        """Test ActionableArchPackageRPM local test"""
         # mock time.sleep() to avoid waiting sleep timeout when VM is stopped
         mock_vm_obj = mock_vm.return_value
         mock_vm_obj.running.return_value = False
         mock_vm_obj.run_test.return_value = RunResult(0, None, None)
         self.setup_package(
-            tests=[PackageTestDef(name='0_test.sh', local=True, formats=[])])
+            tests=[PackageTestDef(name="0_test.sh", local=True, formats=[])]
+        )
         self.pkg.run_local_test = Mock(return_value=RunResult(0, None, None))
         results = self.pkg.test()
         self.assertIsInstance(results, TestResults)
@@ -579,15 +610,15 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         # Check VM is stopped after the tests
         mock_vm_obj.stop.assert_called_once()
 
-    @patch('rift.package.rpm.Mock.clean')
-    @patch('rift.package.rpm.Mock.init')
-    @patch('rift.package.rpm.banner')
-    @patch('rift.package.rpm.time.sleep')
-    @patch('rift.package.rpm.VM')
+    @patch("rift.package.rpm.Mock.clean")
+    @patch("rift.package.rpm.Mock.init")
+    @patch("rift.package.rpm.banner")
+    @patch("rift.package.rpm.time.sleep")
+    @patch("rift.package.rpm.VM")
     def test_test_vm(
         self, mock_vm, mock_time_sleep, mock_banner, mock_mock_init, mock_mock_clean
     ):
-        """ Test ActionableArchPackageRPM test in VM """
+        """Test ActionableArchPackageRPM test in VM"""
         # mock time.sleep() to avoid waiting sleep timeout when VM is stopped
         mock_vm_obj = mock_vm.return_value
         mock_vm_obj.running.return_value = False
@@ -601,24 +632,24 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         # Check run_local_test() has not been called.
         self.pkg.run_local_test.assert_not_called()
         # Check VM initialized (w/o extra repository)
-        mock_vm.assert_called_once_with(self.config, 'x86_64', extra_repos=[])
+        mock_vm.assert_called_once_with(self.config, "x86_64", extra_repos=[])
         # Check VM run_test() called once for basic test
         mock_vm_obj.run_test.assert_called_once_with(ANY, _DEFAULT_VARIANT)
         # Check VM is stopped after the tests
         mock_vm_obj.stop.assert_called_once()
         mock_banner.assert_called_once_with(
-            'Starting tests of package pkg on architecture x86_64'
+            "Starting tests of package pkg on architecture x86_64"
         )
 
-    @patch('rift.package.rpm.Mock.clean')
-    @patch('rift.package.rpm.Mock.init')
-    @patch('rift.package.rpm.banner')
-    @patch('rift.package.rpm.time.sleep')
-    @patch('rift.package.rpm.VM')
+    @patch("rift.package.rpm.Mock.clean")
+    @patch("rift.package.rpm.Mock.init")
+    @patch("rift.package.rpm.banner")
+    @patch("rift.package.rpm.time.sleep")
+    @patch("rift.package.rpm.VM")
     def test_test_staging(
         self, mock_vm, mock_time_sleep, mock_banner, mock_mock_init, mock_mock_clean
     ):
-        """ Test ActionableArchPackageRPM test with staging repository """
+        """Test ActionableArchPackageRPM test with staging repository"""
         # mock time.sleep() to avoid waiting sleep timeout when VM is stopped
         mock_vm_obj = mock_vm.return_value
         mock_vm_obj.running.return_value = False
@@ -633,20 +664,20 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         # Check VM initialized with staging extra repository
         mock_vm.assert_called_once_with(
             self.config,
-            'x86_64',
-            extra_repos=[staging.for_format('rpm').repo.consumables['x86_64']]
+            "x86_64",
+            extra_repos=[staging.for_format("rpm").repo.consumables["x86_64"]],
         )
         # Check VM is stopped after the tests
         mock_vm_obj.stop.assert_called_once()
         mock_banner.assert_called_once_with(
-            'Starting tests of package pkg on architecture x86_64'
+            "Starting tests of package pkg on architecture x86_64"
         )
 
-    @patch('rift.package.rpm.Mock.clean')
-    @patch('rift.package.rpm.Mock.init')
-    @patch('rift.package.rpm.banner')
-    @patch('rift.package.rpm.time.sleep')
-    @patch('rift.package.rpm.VM')
+    @patch("rift.package.rpm.Mock.clean")
+    @patch("rift.package.rpm.Mock.init")
+    @patch("rift.package.rpm.banner")
+    @patch("rift.package.rpm.time.sleep")
+    @patch("rift.package.rpm.VM")
     def test_test_vm_multiple_variants(
         self,
         mock_vm,
@@ -655,8 +686,8 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         mock_mock_init,
         mock_mock_clean,
     ):
-        """ Test ActionableArchPackageRPM test with multiple variants """
-        variants = ['variant1', 'variant2']
+        """Test ActionableArchPackageRPM test with multiple variants"""
+        variants = ["variant1", "variant2"]
         # mock time.sleep() to avoid waiting sleep timeout when VM is stopped
         mock_vm_obj = mock_vm.return_value
         mock_vm_obj.running.return_value = False
@@ -681,10 +712,10 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         # Check VM is stopped after the tests
         mock_vm_obj.stop.assert_called_once()
 
-    @patch('rift.package.rpm.time.sleep')
-    @patch('rift.package.rpm.VM')
+    @patch("rift.package.rpm.time.sleep")
+    @patch("rift.package.rpm.VM")
     def test_test_vm_running(self, mock_vm, mock_time_sleep):
-        """ Test ActionableArchPackageRPM test error VM running """
+        """Test ActionableArchPackageRPM test error VM running"""
         # mock time.sleep() to avoid waiting sleep timeout when VM is stopped
         mock_vm_obj = mock_vm.return_value
         mock_vm_obj.running.return_value = True
@@ -692,10 +723,10 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         with self.assertRaisesRegex(RiftError, "^VM is already running$"):
             self.pkg.test()
 
-    @patch('rift.package.rpm.time.sleep')
-    @patch('rift.package.rpm.VM')
+    @patch("rift.package.rpm.time.sleep")
+    @patch("rift.package.rpm.VM")
     def test_test_failure(self, mock_vm, mock_time_sleep):
-        """ Test ActionableArchPackageRPM test failure """
+        """Test ActionableArchPackageRPM test failure"""
         # mock time.sleep() to avoid waiting sleep timeout when VM is stopped
         mock_vm_obj = mock_vm.return_value
         mock_vm_obj.running.return_value = False
@@ -704,16 +735,16 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         # mock Mock.read_spec() so BasicTest can extract rpm packages from spec file
         self.pkg.mock = Mock()
         self.pkg.mock.lock.return_value = nullcontext()
-        self.pkg.mock.read_spec.return_value = open(self.buildfiles['pkg:rpm']).read()
+        self.pkg.mock.read_spec.return_value = open(self.buildfiles["pkg:rpm"]).read()
         results = self.pkg.test()
         self.assertIsInstance(results, TestResults)
         self.assertEqual(len(results), 2)
         self.assertEqual(results.global_result, False)
 
-    @patch('rift.package.rpm.time.sleep')
-    @patch('rift.package.rpm.VM')
+    @patch("rift.package.rpm.time.sleep")
+    @patch("rift.package.rpm.VM")
     def test_test_noauto(self, mock_vm, mock_time_sleep):
-        """ Test ActionableArchPackageRPM test noauto """
+        """Test ActionableArchPackageRPM test noauto"""
         # mock time.sleep() to avoid waiting sleep timeout when VM is stopped
         mock_vm_obj = mock_vm.return_value
         mock_vm_obj.running.return_value = False
@@ -724,9 +755,9 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         self.assertEqual(len(results), 0)
         self.assertEqual(results.global_result, True)
 
-    @patch('rift.package.rpm.VM')
+    @patch("rift.package.rpm.VM")
     def test_test_noquit(self, mock_vm):
-        """ Test ActionableArchPackageRPM test noquit """
+        """Test ActionableArchPackageRPM test noquit"""
         mock_vm_obj = mock_vm.return_value
         mock_vm_obj.running.return_value = False
         mock_vm_obj.run_test.return_value = RunResult(0, None, None)
@@ -734,14 +765,14 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         # mock Mock.read_spec() so BasicTest can extract rpm packages from spec file
         self.pkg.mock = Mock()
         self.pkg.mock.lock.return_value = nullcontext()
-        self.pkg.mock.read_spec.return_value = open(self.buildfiles['pkg:rpm']).read()
+        self.pkg.mock.read_spec.return_value = open(self.buildfiles["pkg:rpm"]).read()
         self.pkg.test(noquit=True)
         # Check VM is NOT stopped after the tests
         mock_vm_obj.stop.assert_not_called()
 
-    @patch('rift.package.rpm.Mock.publish')
+    @patch("rift.package.rpm.Mock.publish")
     def test_publish_working_repo(self, mock_mock_publish):
-        """ Test ActionableArchPackageRPM publish in working repository """
+        """Test ActionableArchPackageRPM publish in working repository"""
         mock_repository = Mock()
         self.setup_package()
         self.pkg.repos.working = mock_repository
@@ -749,18 +780,18 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         mock_mock_publish.assert_called_once_with(mock_repository)
         mock_repository.update.assert_called_once()
 
-    @patch('rift.package.rpm.Mock.publish')
+    @patch("rift.package.rpm.Mock.publish")
     def test_publish_staging_repo(self, mock_mock_publish):
-        """ Test ActionableArchPackageRPM publish in staging repository """
+        """Test ActionableArchPackageRPM publish in staging repository"""
         mock_staging_repo = Mock()
         self.setup_package()
         self.pkg.publish(staging=mock_staging_repo)
         mock_mock_publish.assert_called_once_with(mock_staging_repo.for_format().repo)
         mock_staging_repo.for_format().repo.update.assert_called_once()
 
-    @patch('rift.package.rpm.Mock.publish')
+    @patch("rift.package.rpm.Mock.publish")
     def test_publish_no_update(self, mock_mock_publish):
-        """ Test ActionableArchPackageRPM publish """
+        """Test ActionableArchPackageRPM publish"""
         mock_repository = Mock()
         self.setup_package()
         self.pkg.repos.working = mock_repository
@@ -769,9 +800,9 @@ class ActionableArchPackageRPMTest(RiftProjectTestCase):
         # Check repo is NOT uppdated
         mock_repository.update.assert_not_called()
 
-    @patch('rift.package.rpm.Mock.clean')
+    @patch("rift.package.rpm.Mock.clean")
     def test_clean(self, mock_mock_clean):
-        """ Test ActionableArchPackageRPM clean """
+        """Test ActionableArchPackageRPM clean"""
         self.setup_package()
         self.pkg.clean()
         # Check clean() has called expected Mock method.

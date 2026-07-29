@@ -33,56 +33,55 @@
 Synchronize remote repositories.
 """
 
-import os
-import time
-from datetime import datetime
-import shlex
-import subprocess
-import urllib
-import tempfile
-import glob
-import shutil
-import re
 import collections
+import glob
 import logging
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import tempfile
+import time
+import urllib
+from datetime import datetime
 
 import dnf
 
+from rift import RiftError
 from rift.TempDir import TempDir
 from rift.utils import download_file, setup_dl_opener
-from rift import RiftError
 
-SyncPatterns = collections.namedtuple('SyncPatterns', ['include', 'exclude'])
+SyncPatterns = collections.namedtuple("SyncPatterns", ["include", "exclude"])
 
 
 class RepoSyncBase:
     """Common parent to all RepoSync* classes."""
 
     def __init__(
-            self,
-            config,
-            name,
-            output,
-            sync,
-            max_size=None,
-            retries=0,
-            enable_log_file=False,
-            arch=None,
+        self,
+        config,
+        name,
+        output,
+        sync,
+        max_size=None,
+        retries=0,
+        enable_log_file=False,
+        arch=None,
     ):
         self.config = config
         self.name = name
-        subdir = sync.get('subdir', '').lstrip('/')
+        subdir = sync.get("subdir", "").lstrip("/")
         if arch is not None:
             self.output = os.path.join(output, self.name, subdir, arch)
         else:
             self.output = os.path.join(output, self.name, subdir)
-        self.source = urllib.parse.urlparse(os.path.join(sync['source'], subdir))
+        self.source = urllib.parse.urlparse(os.path.join(sync["source"], subdir))
         self.logfile = os.path.join(
-            output,
-            f"sync_{name}_{datetime.now().strftime('%Y-%m-%d_%H:%M')}.log"
+            output, f"sync_{name}_{datetime.now().strftime('%Y-%m-%d_%H:%M')}.log"
         )
         self._logfh = None  # Initialized in _log_open()
-        self.patterns = SyncPatterns(sync['include'], sync['exclude'])
+        self.patterns = SyncPatterns(sync["include"], sync["exclude"])
         self.max_size = max_size
         self.retries = retries
         self.enable_log_file = enable_log_file
@@ -98,7 +97,7 @@ class RepoSyncBase:
         and call _run() method on concrete class.
         """
         tic = time.perf_counter()
-        setup_dl_opener(self.config.get('proxy'), self.config.get('noproxy'))
+        setup_dl_opener(self.config.get("proxy"), self.config.get("noproxy"))
         self._ensure_repo_dir()
         self._run()
         self._log_close()
@@ -113,14 +112,14 @@ class RepoSyncBase:
 
     def _log_open(self):
         if self.enable_log_file:
-            self._logfh = open(self.logfile, 'w+', encoding='utf-8')
+            self._logfh = open(self.logfile, "w+", encoding="utf-8")
 
     def log_write(self, entry):
         """Add entry message in synchronizer log file."""
         if self.enable_log_file:
             if self._logfh is None:
                 self._log_open()
-            self._logfh.write(entry + '\n')
+            self._logfh.write(entry + "\n")
 
     def _log_close(self):
         if self._logfh is not None:
@@ -138,49 +137,44 @@ class RepoSyncLftp(RepoSyncBase):
     """Synchronize remote repositories with LFTP."""
 
     def __init__(
-            self,
-            config,
-            name,
-            output,
-            sync,
-            max_size=None,
-            retries=0,
-            enable_log_file=False,
-            arch=None,
+        self,
+        config,
+        name,
+        output,
+        sync,
+        max_size=None,
+        retries=0,
+        enable_log_file=False,
+        arch=None,
     ):
-        super().__init__(config, name, output, sync, max_size, retries, enable_log_file, arch)
-        self.include_arg = ' '.join(
+        super().__init__(
+            config, name, output, sync, max_size, retries, enable_log_file, arch
+        )
+        self.include_arg = " ".join(
             [f"--include={pattern}" for pattern in self.patterns.include]
         )
-        self.exclude_arg = ' '.join(
+        self.exclude_arg = " ".join(
             [f"--exclude={pattern}" for pattern in self.patterns.exclude]
         )
 
     @staticmethod
     def _cmd_str(cmd):
         """Transform a list of command arguments into a quoted string."""
-        return ' '.join([shlex.quote(arg) for arg in cmd])
+        return " ".join([shlex.quote(arg) for arg in cmd])
 
     def _run(self):
         """Run repository synchronization with LFTP."""
-        log_part = (
-            f"--log {self.logfile}"
-            if self.enable_log_file
-            else ""
-        )
+        log_part = f"--log {self.logfile}" if self.enable_log_file else ""
         cmd = [
-            'lftp',
+            "lftp",
             self.base_url,
-            '-e',
+            "-e",
             "set ssl:verify-certificate off; mirror --no-empty-dirs ",
             f"{self.include_arg} {self.exclude_arg} --delete",
             f"{log_part} {self.source.path} {self.output} --delete",
             "; quit",
         ]
-        logging.debug(
-            "running synchronization command: %s",
-            self._cmd_str(cmd)
-        )
+        logging.debug("running synchronization command: %s", self._cmd_str(cmd))
         try:
             subprocess.run(cmd, check=True)
         except subprocess.CalledProcessError as err:
@@ -197,17 +191,19 @@ class RepoSyncIndexed(RepoSyncBase):
     """
 
     def __init__(
-            self,
-            config,
-            name,
-            output,
-            sync,
-            max_size=None,
-            retries=0,
-            enable_log_file=False,
-            arch=None,
+        self,
+        config,
+        name,
+        output,
+        sync,
+        max_size=None,
+        retries=0,
+        enable_log_file=False,
+        arch=None,
     ):
-        super().__init__(config, name, output, sync, max_size, retries, enable_log_file, arch)
+        super().__init__(
+            config, name, output, sync, max_size, retries, enable_log_file, arch
+        )
         self.indexed_files = []
 
     def _relpath_matches(self, relpath):
@@ -215,19 +211,18 @@ class RepoSyncIndexed(RepoSyncBase):
         if self.patterns.include:
             match_include = False
             for pattern in self.patterns.include:
-                if not re.match(pattern, relpath) is None:
+                if re.match(pattern, relpath) is not None:
                     match_include = True
                     break
             if not match_include:
                 logging.debug(
-                    "Skipping file %s which does not match any include pattern",
-                    relpath
+                    "Skipping file %s which does not match any include pattern", relpath
                 )
                 return False
 
         # Check file does not match any exclude pattern.
         for pattern in self.patterns.exclude:
-            if not re.search(pattern, relpath) is None:
+            if re.search(pattern, relpath) is not None:
                 logging.debug(
                     "Skipping file %s which matches exclude pattern %s",
                     relpath,
@@ -244,15 +239,15 @@ class RepoSyncIndexed(RepoSyncBase):
         """
         for root, dirs, files in os.walk(self.output, topdown=False):
             for filename in files:
-                if skip_repodata and filename.startswith('repodata'):
+                if skip_repodata and filename.startswith("repodata"):
                     continue
                 path = os.path.join(root, filename)
-                if not path in self.indexed_files:
+                if path not in self.indexed_files:
                     self.log_write(f"rm {path}")
                     logging.info("Removing unindexed file %s", path)
                     os.remove(path)
             for dirname in dirs:
-                if skip_repodata and dirname.startswith('repodata'):
+                if skip_repodata and dirname.startswith("repodata"):
                     continue
                 path = os.path.join(root, dirname)
                 if not os.listdir(path):
@@ -271,29 +266,31 @@ class RepoSyncEpel(RepoSyncIndexed):
     PUB_ROOT = "/pub/epel"
 
     def __init__(
-            self,
-            config,
-            name,
-            output,
-            sync,
-            max_size=None,
-            retries=0,
-            enable_log_file=False,
-            arch=None,
+        self,
+        config,
+        name,
+        output,
+        sync,
+        max_size=None,
+        retries=0,
+        enable_log_file=False,
+        arch=None,
     ):
-        super().__init__(config, name, output, sync, max_size, retries, enable_log_file, arch)
+        super().__init__(
+            config, name, output, sync, max_size, retries, enable_log_file, arch
+        )
         self.pub_url = f"{self.base_url}{self.PUB_ROOT}"
 
     def _process_line(self, line):
         """Process one EPEL files index line."""
         try:
-            (timestamp_s, ftype, _, relpath) = line.split('\t')
+            (timestamp_s, ftype, _, relpath) = line.split("\t")
         except ValueError:
             # Ignore all lines outside [Files] section with less than 4
             # values separated with tabs
             logging.debug("Skipping non-file line '%s'", line)
             return
-        if ftype != 'f':
+        if ftype != "f":
             logging.debug("Skipping filetype '%s' for path %s", ftype, relpath)
             return
         # Prefix filepath with EPEL public root directory
@@ -308,7 +305,7 @@ class RepoSyncEpel(RepoSyncIndexed):
 
         # To check against include/exclude pattern, use path relative to
         # repository source URL.
-        relpath = abspath[len(self.source.path):].lstrip('/')
+        relpath = abspath[len(self.source.path) :].lstrip("/")
 
         # Check relative path against include/exclude pattern
         if not self._relpath_matches(relpath):
@@ -355,7 +352,7 @@ class RepoSyncEpel(RepoSyncIndexed):
         """Run EPEL repository synchronization."""
         # Download EPEL files index in temporary file
         with tempfile.NamedTemporaryFile(
-            mode='r', prefix='rift-epel-filelist-'
+            mode="r", prefix="rift-epel-filelist-"
         ) as tmp_file:
             filelist_url = f"{self.pub_url}/fullfiletimelist-epel"
             logging.debug("Downloading EPEL files index %s", filelist_url)
@@ -363,7 +360,6 @@ class RepoSyncEpel(RepoSyncIndexed):
                 download_file(filelist_url, tmp_file.name, self.max_size, self.retries)
             except RiftError as err:
                 logging.warning("Download failed, skipping entry: %s", str(err))
-
 
             # Open synchronization log file
             logging.debug("Creating synchronization log file %s", self.logfile)
@@ -382,7 +378,7 @@ class RepoSyncDnf(RepoSyncIndexed):
     def _process_package(self, package):
         """Process one package found in DNF repository."""
 
-        relpath = package.remote_location()[len(self.source.geturl()):].lstrip('/')
+        relpath = package.remote_location()[len(self.source.geturl()) :].lstrip("/")
 
         # Check relative path against include/exclude pattern
         if not self._relpath_matches(relpath):
@@ -429,9 +425,7 @@ class RepoSyncDnf(RepoSyncIndexed):
         base.conf.cachedir = dnf_metadata_cache_dir.path
 
         # Add repository in runtime DNF configuration
-        base.repos.add_new_repo(
-            self.name, base.conf, baseurl=[self.source.geturl()]
-        )
+        base.repos.add_new_repo(self.name, base.conf, baseurl=[self.source.geturl()])
         try:
             base.fill_sack(load_system_repo=False)
         except dnf.exceptions.RepoError as err:
@@ -453,25 +447,28 @@ class RepoSyncDnf(RepoSyncIndexed):
         self._clean_output(skip_repodata=True)
 
         # Copy repodata directory from cache
-        cached_repodata_dirs = glob.glob(f"{dnf_metadata_cache_dir.path}/"
-                                         f"{self.name}-*/repodata")
+        cached_repodata_dirs = glob.glob(
+            f"{dnf_metadata_cache_dir.path}/{self.name}-*/repodata"
+        )
         # Check there is only one result.
         try:
             assert len(cached_repodata_dirs) == 1
         except AssertionError as err:
-            raise RiftError("Unexpected number of repodata directory in DNF "
-                            f"cache: {cached_repodata_dirs}") from err
+            raise RiftError(
+                "Unexpected number of repodata directory in DNF "
+                f"cache: {cached_repodata_dirs}"
+            ) from err
 
         # Remove repodata destination directory, if existing
         repodata = os.path.join(self.output, "repodata")
         if os.path.exists(repodata):
-            logging.info("Removing existing repository metadata %s",
-                         repodata)
+            logging.info("Removing existing repository metadata %s", repodata)
             shutil.rmtree(repodata)
 
         # Copy new repodata downloaded in DNF metadata cache temporary directory
-        logging.info("Copying new cached repository metadata %s",
-                     cached_repodata_dirs[0])
+        logging.info(
+            "Copying new cached repository metadata %s", cached_repodata_dirs[0]
+        )
         shutil.copytree(cached_repodata_dirs[0], repodata)
 
         # Remove DNF metadata cache temporary directory
@@ -480,24 +477,32 @@ class RepoSyncDnf(RepoSyncIndexed):
 
 class RepoSyncFactory:
     """Factory class for all implementations of RepoSync."""
+
     METHODS = {
-        'lftp': RepoSyncLftp,
-        'epel': RepoSyncEpel,
-        'dnf':  RepoSyncDnf,
+        "lftp": RepoSyncLftp,
+        "epel": RepoSyncEpel,
+        "dnf": RepoSyncDnf,
     }
 
     @staticmethod
     def check_valid_method(method):
         """Check given method is supported or raise RiftError"""
         if method not in RepoSyncFactory.METHODS:
-            raise RiftError(
-                f"Unsupported repository synchronization method {method}"
-            )
+            raise RiftError(f"Unsupported repository synchronization method {method}")
 
     @staticmethod
-    def get(config, name, output, sync, max_size=None, retries=0, enable_log_file=False, arch=None):
+    def get(
+        config,
+        name,
+        output,
+        sync,
+        max_size=None,
+        retries=0,
+        enable_log_file=False,
+        arch=None,
+    ):
         """Return the concrete RepoSync* class corresponding to the method."""
-        RepoSyncFactory.check_valid_method(sync['method'])
-        return RepoSyncFactory.METHODS[sync['method']](
+        RepoSyncFactory.check_valid_method(sync["method"])
+        return RepoSyncFactory.METHODS[sync["method"]](
             config, name, output, sync, max_size, retries, enable_log_file, arch
         )

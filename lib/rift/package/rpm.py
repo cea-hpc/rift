@@ -33,28 +33,29 @@
 
 import logging
 import os
+import platform
 import random
+import re
 import shutil
 import textwrap
 import time
-import re
-import platform
 
 from rift import RiftError
-from rift.package._base import Package, ActionableArchPackage, Test
 from rift.annex import Annex
+from rift.Config import _DEFAULT_VARIANT
 from rift.Mock import Mock
+from rift.package._base import ActionableArchPackage, Package, Test
 from rift.RPM import Spec
 from rift.TestResults import TestCase, TestResults
+from rift.utils import banner, message
 from rift.VM import VM
-from rift.Config import _DEFAULT_VARIANT
-from rift.utils import message, banner
+
 
 class PackageRPM(Package):
     """Handle rift project package in RPM format."""
 
     def __init__(self, name, config, staff, modules):
-        super().__init__(name, config, staff, modules, 'rpm', f"{name}.spec")
+        super().__init__(name, config, staff, modules, "rpm", f"{name}.spec")
 
         # Attributes assigned in load()
         # Extracted from infos.yaml
@@ -68,27 +69,27 @@ class PackageRPM(Package):
         """Return dict of format specific metadata to write in metadata file."""
         data = {}
         if self.rpmnames:
-            data['rpm_names'] = self.rpmnames
+            data["rpm_names"] = self.rpmnames
         if self.ignore_rpms:
-            data['ignore_rpms'] = self.ignore_rpms
+            data["ignore_rpms"] = self.ignore_rpms
         if self.variants:
-            data['variants'] = self.variants
+            data["variants"] = self.variants
         return data
 
     def _deserialize_specific_metadata(self, data):
         """Set format specific object attribute with values in metadata dict."""
-        if isinstance(data.get('rpm_names'), str):
-            self.rpmnames = [data.get('rpm_names')]
+        if isinstance(data.get("rpm_names"), str):
+            self.rpmnames = [data.get("rpm_names")]
         else:
-            self.rpmnames = data.get('rpm_names', [])
-        if isinstance(data.get('ignore_rpms'), str):
-            self.ignore_rpms = [data.get('ignore_rpms')]
+            self.rpmnames = data.get("rpm_names", [])
+        if isinstance(data.get("ignore_rpms"), str):
+            self.ignore_rpms = [data.get("ignore_rpms")]
         else:
-            self.ignore_rpms = data.get('ignore_rpms', [])
-        if isinstance(data.get('variants'), str):
-            self.variants = [data.get('variants')]
+            self.ignore_rpms = data.get("ignore_rpms", [])
+        if isinstance(data.get("variants"), str):
+            self.variants = [data.get("variants")]
         else:
-            self.variants = data.get('variants', [_DEFAULT_VARIANT])
+            self.variants = data.get("variants", [_DEFAULT_VARIANT])
 
     def load(self, infopath=None):
         """Load package metadata, check its content and load RPM spec file with
@@ -96,7 +97,9 @@ class PackageRPM(Package):
         # load infos.yaml with parent class
         super().load(infopath)
         arch_pkg = self.for_arch(platform.machine())
-        self.spec = Spec(self.buildfile, arch_pkg.mock, arch_pkg.repos.all, config=self._config)
+        self.spec = Spec(
+            self.buildfile, arch_pkg.mock, arch_pkg.repos.all, config=self._config
+        )
         self.version = self.spec.version
         self.release = self.spec.release
         self.arch = self.spec.arch
@@ -110,7 +113,7 @@ class PackageRPM(Package):
 
         # Check spec
         assert self.spec is not None
-        message('Validate specfile...')
+        message("Validate specfile...")
         self.spec.check(self)
 
     def subpackages(self):
@@ -136,8 +139,9 @@ class PackageRPM(Package):
         # versions before the actual builds.
         return [
             value.group(1)
-            for value
-            in re.finditer(r"(\S+)( (>|>=|=|<=|<) \S+)?", self.spec.buildrequires)
+            for value in re.finditer(
+                r"(\S+)( (>|>=|=|<=|<) \S+)?", self.spec.buildrequires
+            )
         ]
 
     def add_changelog_entry(self, maintainer, comment, bump):
@@ -156,16 +160,18 @@ class PackageRPM(Package):
         # Format comment.
         # Grab bullet, insert one if not found.
         bullet = "-"
-        match = re.search(r'^([^\s\w])\s', comment, re.UNICODE)
+        match = re.search(r"^([^\s\w])\s", comment, re.UNICODE)
         if match:
             bullet = match.group(1)
         else:
             comment = bullet + " " + comment
 
         if comment.find("\n") == -1:
-            wrapopts = {"subsequent_indent": (len(bullet) + 1) * " ",
-                        "break_long_words": False,
-                        "break_on_hyphens": False}
+            wrapopts = {
+                "subsequent_indent": (len(bullet) + 1) * " ",
+                "break_long_words": False,
+                "break_on_hyphens": False,
+            }
             comment = textwrap.fill(comment, 80, **wrapopts)
 
         logging.info("Adding changelog record for '%s'", author)
@@ -202,7 +208,7 @@ class ActionableArchPackageRPM(ActionableArchPackage):
 
     def __init__(self, package, arch):
         super().__init__(package, arch)
-        self.mock = Mock(self.config, arch, self.config.get('version'))
+        self.mock = Mock(self.config, arch, self.config.get("version"))
 
     def build(self, **kwargs):
         message(f"Building RPM package '{self.name}' on architecture {self.arch}")
@@ -211,47 +217,51 @@ class ActionableArchPackageRPM(ActionableArchPackage):
         mock_repos = self.repos.all
         # If staging is set, append it to the list of repositories in mock build
         # environment.
-        staging = kwargs.get('staging')
+        staging = kwargs.get("staging")
         if staging:
-            mock_repos.append(staging.for_format(
-                self.package.format
-            ).repo.consumables[self.arch])
+            mock_repos.append(
+                staging.for_format(self.package.format).repo.consumables[self.arch]
+            )
 
         with self.mock.lock():
-            message('Preparing Mock environment...')
+            message("Preparing Mock environment...")
             self.mock.init(mock_repos)
 
             message("Building SRPM...")
-            sign = kwargs.get('sign', False)
+            sign = kwargs.get("sign", False)
             srpm = self._build_srpm(sign)
             logging.info("Built: %s", srpm.filepath)
 
             for variant in self.package.variants:
                 message(
                     "Building RPMS"
-                    + (f" variant {variant}" if self.package.has_real_variants() else '')
+                    + (
+                        f" variant {variant}"
+                        if self.package.has_real_variants()
+                        else ""
+                    )
                     + "..."
                 )
                 for rpm in self._build_rpms(srpm, variant, sign):
-                    logging.info('Built: %s', rpm.filepath)
+                    logging.info("Built: %s", rpm.filepath)
 
         message("RPMS successfully built")
 
     def test(self, **kwargs):
         """Execute test and return TestResults"""
 
-        results = TestResults('test')
-        staging = kwargs.get('staging')
+        results = TestResults("test")
+        staging = kwargs.get("staging")
         if staging:
             extra_repos = [
                 staging.for_format(self.package.format).repo.consumables[self.arch]
             ]
         else:
-            extra_repos=[]
+            extra_repos = []
         vm = VM(self.config, self.arch, extra_repos=extra_repos)
 
         if vm.running():
-            raise RiftError('VM is already running')
+            raise RiftError("VM is already running")
 
         message(f"Preparing {self.arch} test environment")
         vm.start(False)
@@ -259,22 +269,22 @@ class ActionableArchPackageRPM(ActionableArchPackage):
         for variant in self.package.variants:
             # Setup repos in VM considering the variant and presence of working
             # repository.
-            repos_args = ''
+            repos_args = ""
             if variant != _DEFAULT_VARIANT:
                 for repo in self.repos.for_variant(variant):
                     repos_args += f"--enablerepo={repo} "
             if self.repos.working is None:
-                repos_args = '--disablerepo=working'
+                repos_args = "--disablerepo=working"
             vm.cmd(f"yum -y -d0 {repos_args} update")
 
             banner(
                 f"Starting tests of package {self.name}"
-                + (f" variant {variant}" if self.package.has_real_variants() else '')
+                + (f" variant {variant}" if self.package.has_real_variants() else "")
                 + f" on architecture {self.arch}"
             )
 
             tests = list(self.package.tests())
-            if not kwargs.get('noauto', False):
+            if not kwargs.get("noauto", False):
                 tests.insert(
                     0,
                     BasicTest(
@@ -282,8 +292,8 @@ class ActionableArchPackageRPM(ActionableArchPackage):
                         self.mock,
                         self.repos.all,
                         variant,
-                        config=self.config
-                    )
+                        config=self.config,
+                    ),
                 )
             for test in tests:
                 case = TestCase(
@@ -302,13 +312,13 @@ class ActionableArchPackageRPM(ActionableArchPackage):
                     message(f"Test '{case.fullname}' on architecture {self.arch}: OK")
                 else:
                     results.add_failure(
-                        case, time.time() - now, out=proc.out,  err=proc.err
+                        case, time.time() - now, out=proc.out, err=proc.err
                     )
                     message(
                         f"Test '{case.fullname}' on architecture {self.arch}: ERROR"
                     )
 
-        if not kwargs.get('noquit', False):
+        if not kwargs.get("noquit", False):
             message(f"Cleaning {self.arch} test environment")
             vm.cmd("poweroff")
             time.sleep(5)
@@ -317,7 +327,7 @@ class ActionableArchPackageRPM(ActionableArchPackage):
         return results
 
     def publish(self, **kwargs):
-        staging = kwargs.get('staging')
+        staging = kwargs.get("staging")
         if staging:
             repo = staging.for_format(self.package.format).repo
         else:
@@ -328,12 +338,12 @@ class ActionableArchPackageRPM(ActionableArchPackage):
         message("Publishing RPMS...")
         self.mock.publish(repo)
 
-        if kwargs.get('updaterepo', True):
+        if kwargs.get("updaterepo", True):
             message("Updating repository...")
             repo.update()
 
     def clean(self, **kwargs):
-        if kwargs.get('noquit', False):
+        if kwargs.get("noquit", False):
             message("Keep environment, VM is running. Use: rift vm connect")
         else:
             self.mock.clean()
@@ -342,14 +352,15 @@ class ActionableArchPackageRPM(ActionableArchPackage):
         """
         Build package source RPM
         """
-        tmpdir = Annex(self.config).import_dir(self.package.sourcesdir,
-                                               force_temp=True)
+        tmpdir = Annex(self.config).import_dir(self.package.sourcesdir, force_temp=True)
 
         # To avoid root_squash issue, also copy the specfile in the temp dir
         tmpspec = os.path.join(tmpdir.path, os.path.basename(self.buildfile))
         shutil.copyfile(self.buildfile, tmpspec)
 
-        srpm = self.mock.build_srpm(tmpspec, tmpdir.path or self.package.sourcesdir, sign)
+        srpm = self.mock.build_srpm(
+            tmpspec, tmpdir.path or self.package.sourcesdir, sign
+        )
         tmpdir.delete()
         return srpm
 
@@ -374,7 +385,9 @@ class BasicTest(Test):
         if pkg.rpmnames:
             rpmnames = pkg.rpmnames
         else:
-            rpmnames = Spec(pkg.buildfile, mock, repos, config=config, variant=variant).pkgnames
+            rpmnames = Spec(
+                pkg.buildfile, mock, repos, config=config, variant=variant
+            ).pkgnames
 
         try:
             for name in pkg.ignore_rpms:
@@ -392,7 +405,7 @@ class BasicTest(Test):
             YUM="yum"
         fi
         i=0
-        for pkg in {' '.join(rpmnames)}; do
+        for pkg in {" ".join(rpmnames)}; do
             i=$(( $i + 1 ))
             echo -e "[Testing '${{pkg}}' (${{i}}/{len(rpmnames)})]"
             rm -rf /var/lib/${{YUM}}/history*

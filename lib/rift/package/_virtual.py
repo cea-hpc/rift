@@ -31,8 +31,8 @@
 #
 """Manage virtual packages."""
 
-from rift.package._base import Package
 from rift import RiftError
+from rift.package._base import Package
 
 
 class PackageVirtual(Package):
@@ -45,7 +45,7 @@ class PackageVirtual(Package):
     """
 
     def __init__(self, name, config, staff, modules):
-        super().__init__(name, config, staff, modules, '_virtual', None)
+        super().__init__(name, config, staff, modules, "_virtual", None)
 
     def add_changelog_entry(self, maintainer, comment, bump):
         """Must not be called on virtual package."""

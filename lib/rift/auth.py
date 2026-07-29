@@ -33,6 +33,7 @@
 Auth:
     This package manage rift s3 authentication
 """
+
 import datetime
 import getpass
 import json
@@ -48,19 +49,21 @@ from rift import RiftError
 
 urllib3.disable_warnings()
 
+
 class Auth:
     """
     Config: Manage rift authentication
         This class manages rift authentication
     """
+
     def __init__(self, config):
-        self.idp_app_token = config.get('idp_app_token')
+        self.idp_app_token = config.get("idp_app_token")
         if self.idp_app_token is None:
             msg = "authentication requires presence of idp_app_token config"
             raise RiftError(msg)
-        self.idp_auth_endpoint = config.get('idp_auth_endpoint')
-        self.s3_auth_endpoint = config.get('s3_auth_endpoint')
-        self.credentials_file = os.path.expanduser(config.get('s3_credential_file'))
+        self.idp_auth_endpoint = config.get("idp_auth_endpoint")
+        self.s3_auth_endpoint = config.get("s3_auth_endpoint")
+        self.credentials_file = os.path.expanduser(config.get("s3_credential_file"))
 
         self.config = {}
         self.expiration_dt = ""
@@ -80,14 +83,16 @@ class Auth:
         If credentials file contains expired data, remove expired items from file.
         """
 
-        with open(self.credentials_file, 'r', encoding="utf-8") as fs:
+        with open(self.credentials_file, "r", encoding="utf-8") as fs:
             data = fs.read()
 
             config = {}
             try:
                 config = json.loads(data)
             except json.JSONDecodeError as e:
-                logging.info("failed to decode json from existing credentials file: %s", e)
+                logging.info(
+                    "failed to decode json from existing credentials file: %s", e
+                )
 
             update_authfile = False
 
@@ -109,7 +114,9 @@ class Auth:
 
             idp_expiry = config.get("idp_token_expiration")
             if idp_expiry:
-                expiration = datetime.datetime.strptime(idp_expiry, "%Y-%m-%dT%H:%M:%SZ")
+                expiration = datetime.datetime.strptime(
+                    idp_expiry, "%Y-%m-%dT%H:%M:%SZ"
+                )
                 if expiration > datetime.datetime.now():
                     # IDP access token is still valid
                     logging.info("found existing, valid idp access token")
@@ -131,9 +138,9 @@ class Auth:
         """
         os.umask(0)
         fd = os.open(
-            path = self.credentials_file,
-            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
-            mode=0o600
+            path=self.credentials_file,
+            flags=os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+            mode=0o600,
         )
         with open(fd, "w", encoding="utf-8") as fs:
             json.dump(self.config, fs, indent=2, sort_keys=True)
@@ -161,21 +168,21 @@ class Auth:
 
         password = os.environ.get("RIFT_AUTH_PASSWORD")
         if not password:
-            password = getpass.getpass('Password: ')
+            password = getpass.getpass("Password: ")
 
         data = {
-            'client_id': 'minio',
-            'grant_type': 'password',
-            'username': user,
-            'password': password,
-            'client_secret': client_secret,
+            "client_id": "minio",
+            "grant_type": "password",
+            "username": user,
+            "password": password,
+            "client_secret": client_secret,
         }
 
         res = requests.post(
             self.idp_auth_endpoint,
-            data = data,
-            headers = {"Content-Type": "application/x-www-form-urlencoded"},
-            timeout = 60
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=60,
         )
 
         js = res.json()
@@ -220,7 +227,8 @@ class Auth:
         token = self.config.get("idp_token")
         if not token:
             raise RiftError(
-                f"Missing idp_token in authentication state file {self.credentials_file}. "
+                "Missing idp_token in authentication state file "
+                f"{self.credentials_file}. "
                 "Run 'rift auth' first."
             )
         return token
@@ -228,9 +236,10 @@ class Auth:
     # Step 2: Get S3 credentials using token from (1)
     def get_s3_credentials(self):
         """
-        Obtains an S3 credential using an already-obtained OpenID credential, unless
-        an S3 credential is already available in auth object's config, in which case the credential
-        is considered to have already been obtained.
+        Obtains an S3 credential using an already-obtained OpenID credential,
+        unless an S3 credential is already available in auth object's config,
+        in which case the credential is considered to have already been
+        obtained.
 
         Returns True on success, False on failure.
         """
@@ -250,30 +259,36 @@ class Auth:
             return False
 
         data = {
-          'Version': '2011-06-15',
-          'Action': 'AssumeRoleWithWebIdentity',
-          'DurationSeconds': '86000',
-          'WebIdentityToken': self.config["idp_token"],
+            "Version": "2011-06-15",
+            "Action": "AssumeRoleWithWebIdentity",
+            "DurationSeconds": "86000",
+            "WebIdentityToken": self.config["idp_token"],
         }
 
         res = requests.post(
             self.s3_auth_endpoint,
-            data = data,
-            headers = {"Content-Type": "application/x-www-form-urlencoded"},
-            verify = False,
-            timeout = 60
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            verify=False,
+            timeout=60,
         )
 
         res_xml = xmltodict.parse(res.text)
 
         creds = res_xml.get("AssumeRoleWithWebIdentityResponse")
         if not creds:
-            msg = "S3 credential response missing expected key: AssumeRoleWithWebIdentityResponse"
+            msg = (
+                "S3 credential response missing expected key: "
+                "AssumeRoleWithWebIdentityResponse"
+            )
             raise RiftError(msg)
 
         creds = creds.get("AssumeRoleWithWebIdentityResult")
         if not creds:
-            msg = "S3 credential response missing expected key: AssumeRoleWithWebIdentityResult"
+            msg = (
+                "S3 credential response missing expected key: "
+                "AssumeRoleWithWebIdentityResult"
+            )
             raise RiftError(msg)
 
         creds = creds.get("Credentials")
@@ -296,7 +311,9 @@ class Auth:
         self.config["session_token"] = session_token
         self.config["expiration"] = expiration
 
-        self.expiration_dt = datetime.datetime.strptime(expiration, "%Y-%m-%dT%H:%M:%SZ")
+        self.expiration_dt = datetime.datetime.strptime(
+            expiration, "%Y-%m-%dT%H:%M:%SZ"
+        )
 
         self.save_state()
 
@@ -307,7 +324,7 @@ class Auth:
         Ensures S3 credentials are available.
         Returns True if S3 credentials are found, or False if not.
 
-        This is the method auth object consumers should invoke to 
+        This is the method auth object consumers should invoke to
         ensure authentication credentials are available.
         """
 
@@ -316,8 +333,13 @@ class Auth:
         aws_session_token = os.environ.get("AWS_SESSION_TOKEN")
 
         if None not in (aws_access_key_id, aws_secret_access_key):
-            msg = "found AWS S3 variables in environment; will bypass credentials file\n"
-            msg += "to allow use of credential file, please clear these environment variables:"
+            msg = (
+                "found AWS S3 variables in environment; will bypass credentials file\n"
+            )
+            msg += (
+                "to allow use of credential file, please clear these "
+                "environment variables:"
+            )
             msg += " AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN"
             logging.info(msg)
             self.config["access_key_id"] = aws_access_key_id

@@ -30,10 +30,12 @@
 # knowledge of the CeCILL license and that you accept its terms.
 #
 
-__version__ = '0.12'
+__version__ = "0.12"
+
 
 class RiftError(Exception):
     """Generic error in Rift"""
+
 
 class DeclError(RiftError):
     """A configuration file has a declaration error"""

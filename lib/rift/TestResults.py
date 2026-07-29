@@ -30,12 +30,13 @@
 # knowledge of the CeCILL license and that you accept its terms.
 #
 
-import re
 import collections
+import re
 import xml.etree.cElementTree as ET
 
 from rift.Config import _DEFAULT_VARIANT
 from rift.TextTable import TextTable
+
 
 def str_xml_escape(arg):
     r"""Visually escape invalid XML characters.
@@ -62,13 +63,12 @@ def str_xml_escape(arg):
     #          | [#x10000-#x10FFFF]
     # For an unknown(?) reason, we disallow #x7F (DEL) as well.
     illegal_xml_re = (
-        "[^\u0009\u000a\u000d\u0020-\u007e\u0080-\ud7ff\ue000-\ufffd\u10000-"
-        "\u10ffff]"
+        "[^\u0009\u000a\u000d\u0020-\u007e\u0080-\ud7ff\ue000-\ufffd\u10000-\u10ffff]"
     )
     return re.sub(illegal_xml_re, repl, arg)
 
 
-class TestCase():
+class TestCase:
     """
     TestCase: oject for to manage a Test to format ajunit file in TestResult
     """
@@ -97,11 +97,11 @@ class TestCase():
 
 
 TestResult = collections.namedtuple(
-    'TestResult', ['case', 'value', 'time', 'out', 'err']
+    "TestResult", ["case", "value", "time", "out", "err"]
 )
 
 
-class TestResults():
+class TestResults:
     """
     TestResults: gather and mange TestCase results
     """
@@ -126,14 +126,14 @@ class TestResults():
         """
         Add a failed TestCase
         """
-        self._add_result(TestResult(case, 'Failure', time, out, err))
+        self._add_result(TestResult(case, "Failure", time, out, err))
         self.global_result = False
 
     def add_success(self, case, time, out=None, err=None):
         """
         Add a successful TestCase
         """
-        self._add_result(TestResult(case, 'Success', time, out, err))
+        self._add_result(TestResult(case, "Success", time, out, err))
 
     def _add_result(self, result):
         """
@@ -156,7 +156,7 @@ class TestResults():
         """
         for result in other.results:
             self.results.append(result)
-            if result.value == 'Failure':
+            if result.value == "Failure":
                 self.global_result = False
 
     def junit(self, filename):
@@ -169,29 +169,29 @@ class TestResults():
         failed.
         """
 
-        suite = ET.Element('testsuite', tests=str(len(self.results)))
+        suite = ET.Element("testsuite", tests=str(len(self.results)))
         if self.name:
-            suite.set('name', self.name)
+            suite.set("name", self.name)
 
         for result in self.results:
-            sub = ET.SubElement(suite, 'testcase', name=result.case.name)
+            sub = ET.SubElement(suite, "testcase", name=result.case.name)
             if result.case.classname:
-                sub.set('classname', f"rift.{result.case.classname}")
+                sub.set("classname", f"rift.{result.case.classname}")
             if result.time:
-                sub.set('time', f"{result.time:.2f}")
-            if result.value == 'Failure':
-                failure = ET.SubElement(sub, 'failure')
+                sub.set("time", f"{result.time:.2f}")
+            if result.value == "Failure":
+                failure = ET.SubElement(sub, "failure")
                 if result.out is None and result.err:
                     failure.text = str_xml_escape(result.err)
             if result.out:
-                system_out = ET.SubElement(sub, 'system-out')
+                system_out = ET.SubElement(sub, "system-out")
                 system_out.text = str_xml_escape(result.out)
                 if result.err:
-                    system_err = ET.SubElement(sub, 'system-err')
+                    system_err = ET.SubElement(sub, "system-err")
                     system_err.text = str_xml_escape(result.err)
 
         tree = ET.ElementTree(suite)
-        tree.write(filename, encoding='UTF-8', xml_declaration=True)
+        tree.write(filename, encoding="UTF-8", xml_declaration=True)
 
     def summary(self):
         """
@@ -203,17 +203,15 @@ class TestResults():
             tbl = TextTable("%name %arch %format %>duration %result")
         for result in self.results:
             entry = {
-                'name': result.case.fullname,
-                'arch': result.case.arch,
-                'format': result.case.format,
-                'duration': f"{result.time:.0f}s",
-                'result': (
-                    result.value.upper()
-                    if result.value == 'Failure'
-                    else result.value
-                )
+                "name": result.case.fullname,
+                "arch": result.case.arch,
+                "format": result.case.format,
+                "duration": f"{result.time:.0f}s",
+                "result": (
+                    result.value.upper() if result.value == "Failure" else result.value
+                ),
             }
             if self._has_real_variants():
-                entry['variant'] = result.case.variant
+                entry["variant"] = result.case.variant
             tbl.append(entry)
         return str(tbl)

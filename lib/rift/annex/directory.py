@@ -32,21 +32,24 @@
 """
 Implementation of the Annex class for a directory annex
 """
+
 import logging
 import os
 import shutil
 import tarfile
 import time
-
 from datetime import datetime as dt
 from urllib.parse import urlparse
 
 import yaml
 
 from rift.annex.generic_annex import GenericAnnex
-from rift.annex.utils import ( get_digest_from_path, get_info_from_digest,
-                               print_annex_tar_progress,
-                               _INFOSUFFIX )
+from rift.annex.utils import (
+    _INFOSUFFIX,
+    get_digest_from_path,
+    get_info_from_digest,
+    print_annex_tar_progress,
+)
 from rift.Config import OrderedLoader
 
 
@@ -60,6 +63,7 @@ class DirectoryAnnex(GenericAnnex):
 
     For now, files are stored in a flat namespace.
     """
+
     # Read and Write file modes
     WMODE = 0o664
 
@@ -69,7 +73,7 @@ class DirectoryAnnex(GenericAnnex):
 
     def get(self, identifier, destpath):
         """Get a file identified by identifier and copy it at destpath."""
-        logging.debug('Extracting %s to %s', identifier, destpath)
+        logging.debug("Extracting %s to %s", identifier, destpath)
         idpath = os.path.join(self.annex_path, identifier)
         shutil.copyfile(idpath, destpath)
 
@@ -78,7 +82,7 @@ class DirectoryAnnex(GenericAnnex):
     def delete(self, identifier):
         """Remove a file from annex, whose ID is `identifier'"""
         idpath = os.path.join(self.annex_path, identifier)
-        logging.debug('Deleting from annex: %s', idpath)
+        logging.debug("Deleting from annex: %s", idpath)
         infopath = get_info_from_digest(idpath)
         if os.path.exists(infopath):
             os.unlink(infopath)
@@ -112,27 +116,32 @@ class DirectoryAnnex(GenericAnnex):
                 continue
 
             info = self._load_metadata(filename)
-            names = info.get('filenames', [])
+            names = info.get("filenames", [])
             for annexed_file, details in names.items():
-                insertion_time = details['date']
+                insertion_time = details["date"]
 
                 # Handle different date formats (old method)
                 if not isinstance(insertion_time, (int, float, str)):
-                    raise ValueError(f"Invalid date format in metadata: "
-                                     f"{insertion_time} "
-                                     f"(type {type(insertion_time)})")
+                    raise ValueError(
+                        f"Invalid date format in metadata: "
+                        f"{insertion_time} "
+                        f"(type {type(insertion_time)})"
+                    )
 
                 if isinstance(insertion_time, str):
-                    fmt = '%a %b %d %H:%M:%S %Y'
+                    fmt = "%a %b %d %H:%M:%S %Y"
                     try:
                         insertion_time = dt.strptime(insertion_time, fmt).timestamp()
                     except ValueError:
-                        fmt = '%a %d %b %Y %H:%M:%S %p %Z'
+                        fmt = "%a %d %b %Y %H:%M:%S %p %Z"
                         try:
-                            insertion_time = dt.strptime(insertion_time, fmt).timestamp()
+                            insertion_time = dt.strptime(
+                                insertion_time, fmt
+                            ).timestamp()
                         except ValueError as exc:
-                            raise ValueError(f"Unknown date format in "
-                                             f"metadata: {insertion_time}") from exc
+                            raise ValueError(
+                                f"Unknown date format in metadata: {insertion_time}"
+                            ) from exc
 
                 elif isinstance(insertion_time, float):
                     insertion_time = int(insertion_time)
@@ -160,24 +169,26 @@ class DirectoryAnnex(GenericAnnex):
         destinfo = None
         if os.path.exists(destpath):
             destinfo = os.stat(destpath)
-            if destinfo and destinfo.st_size == originfo.st_size and \
-            filename in metadata.get('filenames', {}):
-                logging.debug('%s is already into annex, skipping it', filename)
+            if (
+                destinfo
+                and destinfo.st_size == originfo.st_size
+                and filename in metadata.get("filenames", {})
+            ):
+                logging.debug("%s is already into annex, skipping it", filename)
                 return
 
         # Update them and write them back
-        fileset = metadata.setdefault('filenames', {})
+        fileset = metadata.setdefault("filenames", {})
         fileset.setdefault(filename, {})
-        fileset[filename]['date'] = time.time()  # Unix timestamp
+        fileset[filename]["date"] = time.time()  # Unix timestamp
 
-        metapath = os.path.join(self.annex_path,
-                                get_info_from_digest(digest))
-        with open(metapath, 'w', encoding="utf-8") as fyaml:
+        metapath = os.path.join(self.annex_path, get_info_from_digest(digest))
+        with open(metapath, "w", encoding="utf-8") as fyaml:
             yaml.dump(metadata, fyaml, default_flow_style=False)
         os.chmod(metapath, self.WMODE)
 
         # Move binary file to annex
-        logging.debug('Importing %s into annex (%s)', filepath, digest)
+        logging.debug("Importing %s into annex (%s)", filepath, digest)
         shutil.copyfile(filepath, destpath)
         os.chmod(destpath, self.WMODE)
 
@@ -193,7 +204,9 @@ class DirectoryAnnex(GenericAnnex):
             for _file in filelist:
                 digest = get_digest_from_path(_file)
                 annex_file = os.path.join(self.annex_path, digest)
-                annex_file_info = os.path.join(self.annex_path, get_info_from_digest(digest))
+                annex_file_info = os.path.join(
+                    self.annex_path, get_info_from_digest(digest)
+                )
                 tar.add(annex_file, arcname=os.path.basename(annex_file))
                 tar.add(annex_file_info, arcname=os.path.basename(annex_file_info))
 

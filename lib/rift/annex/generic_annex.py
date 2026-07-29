@@ -36,10 +36,12 @@ repository called an annex.
 
 from abc import ABC, abstractmethod
 
+
 class GenericAnnex(ABC):
     """
     Generic implemention of an annex and the methods it should define
     """
+
     @abstractmethod
     def get(self, identifier, destpath):
         """

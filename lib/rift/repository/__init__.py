@@ -33,3 +33,8 @@
 """Module to manage package repositories in a project."""
 
 from rift.repository._project import ProjectArchRepositories, StagingRepository
+
+__all__ = [
+    "ProjectArchRepositories",
+    "StagingRepository",
+]

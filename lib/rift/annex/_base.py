@@ -42,11 +42,11 @@ import sys
 import tempfile
 
 from rift import RiftError
-from rift.TempDir import TempDir
 from rift.annex.directory import DirectoryAnnex
-from rift.annex.server import ServerAnnex
 from rift.annex.s3 import S3Annex
-from rift.annex.utils import hashfile, is_pointer, get_digest_from_path
+from rift.annex.server import ServerAnnex
+from rift.annex.utils import get_digest_from_path, hashfile, is_pointer
+from rift.TempDir import TempDir
 
 
 class Annex:
@@ -59,24 +59,25 @@ class Annex:
 
     For now, files are stored in a flat namespace.
     """
+
     # Read and Write file modes
     RMODE = 0o644
 
     def __init__(self, config, set_annex=None, staging_annex=None):
-        self.restore_cache = config.get('annex_restore_cache')
+        self.restore_cache = config.get("annex_restore_cache")
         if self.restore_cache is not None:
             self.restore_cache = os.path.expanduser(self.restore_cache)
 
-         # Set/Staging annex paths
+        # Set/Staging annex paths
         if set_annex is None:
-            set_annex = config.get('set_annex')
+            set_annex = config.get("set_annex")
 
         self.set_annex = self.annex_from_type(config, set_annex)
         if self.set_annex is None:
             self.set_annex = DirectoryAnnex(config, set_annex)
 
         if staging_annex is None:
-            staging_annex = config.get('staging_annex')
+            staging_annex = config.get("staging_annex")
             if staging_annex is None:
                 staging_annex = set_annex
 
@@ -89,13 +90,13 @@ class Annex:
         Return an instance of GenericAnnex based on the given annex address and
         type
         """
-        annex_type = annex.get('type')
-        if annex_type == 'directory':
-            return DirectoryAnnex(config, annex.get('address'))
-        if annex_type == 'server':
-            return ServerAnnex(config, annex.get('address'), annex.get('auth'))
-        if annex_type == 's3':
-            return S3Annex(config, annex.get('address'))
+        annex_type = annex.get("type")
+        if annex_type == "directory":
+            return DirectoryAnnex(config, annex.get("address"))
+        if annex_type == "server":
+            return ServerAnnex(config, annex.get("address"), annex.get("auth"))
+        if annex_type == "s3":
+            return S3Annex(config, annex.get("address"))
 
         return None
 
@@ -127,8 +128,9 @@ class Annex:
             self.make_restore_cache()
             cached_path = self.get_cached_path(identifier)
             if os.path.isfile(cached_path):
-                logging.debug('Extract %s to %s using restore cache',
-                              identifier, destpath)
+                logging.debug(
+                    "Extract %s to %s using restore cache", identifier, destpath
+                )
                 shutil.copyfile(cached_path, destpath)
                 return
 
@@ -173,7 +175,7 @@ class Annex:
         If `force_temp' is True, temporary is always created and source files
         copied in it even if there is no binary files.
         """
-        tmpdir = TempDir('sources')
+        tmpdir = TempDir("sources")
         if force_temp:
             tmpdir.create()
 
@@ -187,7 +189,6 @@ class Annex:
 
             # Is a pointer to a binary file?
             if is_pointer(filepath):
-
                 # We have our first binary file, we need a temp directory
                 if tmpdir.path is None:
                     tmpdir.create()
@@ -231,7 +232,7 @@ class Annex:
         os.chmod(filepath, self.RMODE)
 
         # Create fake pointer file
-        with open(filepath, 'w', encoding='utf-8') as fakefile:
+        with open(filepath, "w", encoding="utf-8") as fakefile:
             fakefile.write(digest)
 
     def backup(self, packages, output_file=None):
@@ -248,8 +249,8 @@ class Annex:
                     filelist.append(source_file)
 
         if output_file is None:
-            output_file = tempfile.NamedTemporaryFile(delete=False,
-                                                      prefix='rift-annex-backup',
-                                                      suffix='.tar.gz').name
+            output_file = tempfile.NamedTemporaryFile(
+                delete=False, prefix="rift-annex-backup", suffix=".tar.gz"
+            ).name
 
         return self.set_annex.backup(filelist, output_file)

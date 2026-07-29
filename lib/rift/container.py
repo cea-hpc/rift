@@ -31,19 +31,18 @@
 #
 """Module to instanciate container and manage container images."""
 
-import os
 import getpass
 import logging
+import os
 
 from rift import RiftError
 from rift.run import run_command
 
+
 class ContainerRuntime:
     """Handle containers and images."""
-    ARCHS_MAP = {
-        'x86_64': 'amd64',
-        'aarch64': 'arm64'
-    }
+
+    ARCHS_MAP = {"x86_64": "amd64", "aarch64": "arm64"}
 
     def __init__(self, config):
         self.config = config
@@ -59,16 +58,23 @@ class ContainerRuntime:
     def build(self, actionable_pkg, sources_topdir):
         """Execute command to build OCI package container image."""
         cmd = [
-            self.config.get('containers').get('command'),
-            '--root', self.rootdir, 'build',
-            '--arch', self.ARCHS_MAP[actionable_pkg.arch],
-            '--annotation',
+            self.config.get("containers").get("command"),
+            "--root",
+            self.rootdir,
+            "build",
+            "--arch",
+            self.ARCHS_MAP[actionable_pkg.arch],
+            "--annotation",
             f"org.opencontainers.image.version={actionable_pkg.package.version}"
             f"-{actionable_pkg.package.release}",
-            '--annotation', f"org.opencontainers.image.title={actionable_pkg.name}",
-            '--annotation', "org.opencontainers.image.vendir=rift",
-            '--tag', self.tag(actionable_pkg),
-            sources_topdir ]
+            "--annotation",
+            f"org.opencontainers.image.title={actionable_pkg.name}",
+            "--annotation",
+            "org.opencontainers.image.vendir=rift",
+            "--tag",
+            self.tag(actionable_pkg),
+            sources_topdir,
+        ]
         proc = run_command(cmd)
         if proc.returncode:
             raise RiftError(f"Container image build error: exit code {proc.returncode}")
@@ -79,15 +85,19 @@ class ContainerRuntime:
         container.
         """
         cmd = [
-            self.config.get('containers').get('command'),
-            '--root', self.rootdir,
-            'run', '--rm', '-i',
-            '--mount',
+            self.config.get("containers").get("command"),
+            "--root",
+            self.rootdir,
+            "run",
+            "--rm",
+            "-i",
+            "--mount",
             f"type=bind,src={test.command},"
             f"dst=/run/{os.path.basename(test.command)},ro=true",
-            '--arch', self.ARCHS_MAP[actionable_pkg.arch],
+            "--arch",
+            self.ARCHS_MAP[actionable_pkg.arch],
             f"localhost/{self.tag(actionable_pkg)}",
-            f"/run/{os.path.basename(test.command)}"
+            f"/run/{os.path.basename(test.command)}",
         ]
         return run_command(cmd, capture_output=True)
 
@@ -97,10 +107,12 @@ class ContainerRuntime:
         image as OCI archive in the provided path.
         """
         cmd = [
-            self.config.get('containers').get('command'),
-            '--root', self.rootdir,
-            'push', self.tag(actionable_pkg),
-            f"oci-archive:{container_archive.path}:{self.tag(actionable_pkg)}"
+            self.config.get("containers").get("command"),
+            "--root",
+            self.rootdir,
+            "push",
+            self.tag(actionable_pkg),
+            f"oci-archive:{container_archive.path}:{self.tag(actionable_pkg)}",
         ]
         return run_command(cmd)
 
@@ -123,14 +135,14 @@ class ContainerArchive:
         parameters are missing in project configuration or GPG key is not found.
         """
         # GPG parameters not defined in project config, raise RiftError.
-        if self.config is None or self.config.get('gpg') is None:
+        if self.config is None or self.config.get("gpg") is None:
             raise RiftError(
                 "Unable to retrieve GPG configuration, unable to sign OCI "
                 f"archive {self.path}",
             )
 
-        gpg = self.config.get('gpg')
-        keyring = os.path.expanduser(gpg.get('keyring'))
+        gpg = self.config.get("gpg")
+        keyring = os.path.expanduser(gpg.get("keyring"))
 
         # Check gpg_keyring path exists or raise error
         if not os.path.exists(keyring):
@@ -143,38 +155,40 @@ class ContainerArchive:
 
         # If passphrase is defined, add the passphrase to gpg command
         # parameters and make it non-interactive.
-        if gpg.get('passphrase') is not None:
+        if gpg.get("passphrase") is not None:
             gpg_passphrase_args = [
-                '--batch',
-                '--passphrase',
-                gpg.get('passphrase'),
-                '--pinentry-mode',
-                'loopback',
+                "--batch",
+                "--passphrase",
+                gpg.get("passphrase"),
+                "--pinentry-mode",
+                "loopback",
             ]
 
         cmd = [
-            'gpg',
-            '--detach-sign',
-            '--output',
+            "gpg",
+            "--detach-sign",
+            "--output",
             self.signature,
-            '--default-key',
-            gpg.get('key'),
+            "--default-key",
+            gpg.get("key"),
             self.path,
         ]
 
         cmd[2:2] = gpg_passphrase_args
         print(cmd)
         # Run gpg command and raise error in case of failure.
-        proc = run_command(cmd, capture_output=True, merge_out_err=True, env={'GNUPGHOME': keyring})
+        proc = run_command(
+            cmd, capture_output=True, merge_out_err=True, env={"GNUPGHOME": keyring}
+        )
         if proc.returncode:
             raise RiftError(
-                f"Error with signing OCI archive {self.path} command: "
-                f"{proc.out}"
+                f"Error with signing OCI archive {self.path} command: {proc.out}"
             )
 
 
 class ContainerFile:
     """Handle Containerfile with checks and review analysis."""
+
     def __init__(self, config, path):
         self.config = config
         self.path = path
@@ -184,17 +198,17 @@ class ContainerFile:
     @property
     def linter(self):
         """Return linter path or executable name in configuration."""
-        return self.config.get('containers').get('linter')
+        return self.config.get("containers").get("linter")
 
     def _check(self, configdir):
         cmd = [self.linter, self.path]
 
         if configdir:
-            pkg_config = os.path.join(configdir, 'hadolint.yaml')
+            pkg_config = os.path.join(configdir, "hadolint.yaml")
             if os.path.exists(pkg_config):
-                cmd[1:1] = ['--config', pkg_config]
+                cmd[1:1] = ["--config", pkg_config]
 
-        logging.debug('Running OCI linter command: %s', ' '.join(cmd))
+        logging.debug("Running OCI linter command: %s", " ".join(cmd))
         return run_command(cmd, capture_output=True, merge_out_err=True)
 
     def check(self, pkg=None):
@@ -224,12 +238,11 @@ class ContainerFile:
             raise RiftError(f"hadolint returned {result.returncode}: {result.out}")
 
         for line in result.out.splitlines():
-            if line.startswith(self.path + ':'):
-                line = line[len(self.path + ':'):]
+            if line.startswith(self.path + ":"):
+                line = line[len(self.path + ":") :]
                 try:
-                    (linenbr, code, _, txt) = line.split(' ', 3)
-                    review.add_comment(self.path, linenbr,
-                                       code.strip(), txt.strip())
+                    (linenbr, code, _, txt) = line.split(" ", 3)
+                    review.add_comment(self.path, linenbr, code.strip(), txt.strip())
                 except (ValueError, KeyError):
                     pass
 

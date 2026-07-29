@@ -34,22 +34,24 @@
 Manage OCI archive repository structure.
 """
 
-import os
 import glob
 import logging
+import os
 
 from rift.repository._base import ArchRepositoriesBase
+
 
 class ArchRepositoriesOCI(ArchRepositoriesBase):
     """
     Manipulate repositories defined in a project for a particular architecture.
     """
+
     def __init__(self, config, working_dir, arch):
         super().__init__(working_dir, arch)
         self.config = config
         self.path = None
         if working_dir:
-            self.path = os.path.join(working_dir, 'oci')
+            self.path = os.path.join(working_dir, "oci")
 
     def ensure_created(self):
         """Make sure OCI archives repository directory exists or create it."""
