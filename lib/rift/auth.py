@@ -267,14 +267,17 @@ class Auth:
         self.idp_token_refresh_threshold = config.get("idp_token_refresh_threshold")
 
         self.state = AuthState()
+        # Persist refreshed tokens to the credentials file by default. Disabled
+        # when tokens come from RIFT_AUTH_IDP_* env vars (ephemeral in-memory use).
+        self._persist_credentials = True
         # Serialize IDP refresh across threads (e.g. repos proxy) so only one
         # identical refresh_token grant is sent when many callers race near expiry.
         self._idp_refresh_lock = threading.Lock()
 
     def _request_idp_token(self, data):
         """
-        Request an IDP token with the given grant form data, update AuthState,
-        and persist.
+        Request an IDP token with the given grant form data and update AuthState.
+        Persist to the credentials file when _persist_credentials is true.
         """
         logging.debug("requesting new idp token on %s", self.idp_auth_endpoint)
         res = requests.post(
@@ -306,7 +309,8 @@ class Auth:
         if refresh_token:
             self.state.idp_refresh_token = refresh_token
 
-        self.state.save(self.credentials_file)
+        if self._persist_credentials:
+            self.state.save(self.credentials_file)
 
     def _ensure_idp_token_fresh(self):
         """
@@ -422,6 +426,9 @@ class Auth:
                 )
             else:
                 self.state.idp_token_expiration = exp_dt
+
+            # Env-sourced tokens stay in memory only (do not write state file).
+            self._persist_credentials = False
 
             # Refresh the token if it is near expiry.
             self._ensure_idp_token_fresh()

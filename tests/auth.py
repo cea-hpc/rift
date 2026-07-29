@@ -393,6 +393,7 @@ class AuthTest(unittest.TestCase):
             "expires_in": 3600,
             "refresh_token": "refresh-new",
         }
+        os.unlink(self._cred_path)
         auth = Auth(self._minimal_config)
 
         # Generate near-expiry JWT token.
@@ -409,9 +410,16 @@ class AuthTest(unittest.TestCase):
             token = auth.get_idp_token_noninteractive()
 
         self.assertEqual(token, "access-refreshed")
+        # Make sure the state in memory is updated with the new token.
+        self.assertEqual(auth.state.idp_token, "access-refreshed")
+        self.assertEqual(auth.state.idp_refresh_token, "refresh-new")
+        self.assertFalse(auth._persist_credentials)
         mock_post.assert_called_once()
         self.assertEqual(mock_post.call_args[1]["data"]["grant_type"], "refresh_token")
         self.assertEqual(mock_post.call_args[1]["data"]["refresh_token"], "refresh-env")
+        # Make sure the credentials file is not created after tokens from environment
+        # are refreshed.
+        self.assertFalse(os.path.isfile(self._cred_path))
 
     @patch("rift.auth.requests.post")
     def test_get_idp_token_noninteractive_successive_calls_reuse_refreshed_env_token(
@@ -423,6 +431,7 @@ class AuthTest(unittest.TestCase):
             "expires_in": 3600,
             "refresh_token": "refresh-new",
         }
+        os.unlink(self._cred_path)
         auth = Auth(self._minimal_config)
 
         # Generate near-expiry JWT token.
@@ -441,6 +450,9 @@ class AuthTest(unittest.TestCase):
 
         # Check the refreshed token has been requested only once.
         mock_post.assert_called_once()
+        # Make sure the credentials file is not created after tokens from environment
+        # are refreshed.
+        self.assertFalse(os.path.isfile(self._cred_path))
 
     @patch("rift.auth.requests.post")
     def test_get_idp_token_noninteractive_non_jwt_env_skips_refresh(self, mock_post):
