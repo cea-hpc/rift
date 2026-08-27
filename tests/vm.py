@@ -772,6 +772,20 @@ class VMTest(RiftTestCase):
         vm._auth_proxy.start.assert_not_called()
         vm._auth_proxy.stop.assert_not_called()
 
+    def test_connect_skips_proxy_when_noproxy(self):
+        """Test VM connect does not start the proxy with proxy=False"""
+        vm = VM(self.config, platform.machine())
+        vm._auth_proxy = Mock()
+        vm._auth_proxy.required = True
+        ssh = Mock()
+        ssh.returncode = 0
+        vm.cmd = Mock(return_value=ssh)
+
+        self.assertEqual(vm.connect(proxy=False), 0)
+        vm._auth_proxy.start.assert_not_called()
+        vm._auth_proxy.stop.assert_not_called()
+        vm.cmd.assert_called_once_with(options=None, manage_output=False)
+
     def test_connect_reuses_proxy_on_addr_in_use(self):
         """Test VM connect reuses an existing proxy listener"""
         vm = VM(self.config, platform.machine())

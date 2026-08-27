@@ -675,11 +675,12 @@ class VM:
         logging.debug("Running command in VM: %s", " ".join(cmd))
         return run_command(cmd, **kwargs)
 
-    def connect(self):
+    def connect(self, proxy=True):
         """Open an interactive SSH session to the running VM."""
         started = False
         try:
-            started = self._start_auth_proxy(reuse=True)
+            if proxy:
+                started = self._start_auth_proxy(reuse=True)
             return self.cmd(options=None, manage_output=False).returncode
         finally:
             if started:

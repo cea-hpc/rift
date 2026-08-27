@@ -364,7 +364,12 @@ def make_parser():
     subprs = subparsers.add_parser("vm", help="Manipulate VM process")
     subprs.add_argument("-a", "--arch", help="CPU architecture of the VM")
     subprs_vm = subprs.add_subparsers(dest="vm_cmd", title="possible commands")
-    subprs_vm.add_parser("connect", help="connect to running VM")
+    subsubprs = subprs_vm.add_parser("connect", help="connect to running VM")
+    subsubprs.add_argument(
+        "--noproxy",
+        action="store_true",
+        help="do not start the IDP repository proxy",
+    )
     subsubprs = subprs_vm.add_parser("start", help="launch a new VM")
     subsubprs.add_argument(
         "--force",
@@ -835,7 +840,7 @@ def action_vm(args, config):
         raise RiftError(f"Project does not support architecture '{args.arch}'")
     vm = VM(config, args.arch)
     if args.vm_cmd == "connect":
-        ret = vm.connect()
+        ret = vm.connect(proxy=not args.noproxy)
     elif args.vm_cmd == "console":
         ret = vm.console()
     elif args.vm_cmd == "cmd":

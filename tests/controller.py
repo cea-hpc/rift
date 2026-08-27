@@ -2478,7 +2478,16 @@ class ControllerProjectActionVMTest(RiftProjectTestCase):
         mock_vm.connect.return_value = 0
 
         self.assertEqual(main(["vm", "connect"]), 0)
-        mock_vm.connect.assert_called_once_with()
+        mock_vm.connect.assert_called_once_with(proxy=True)
+
+    @patch("rift.controller.VM")
+    def test_action_vm_connect_noproxy(self, mock_vm_class):
+        """'rift vm connect --noproxy' disables IDP proxy startup"""
+        mock_vm = mock_vm_class.return_value
+        mock_vm.connect.return_value = 0
+
+        self.assertEqual(main(["vm", "connect", "--noproxy"]), 0)
+        mock_vm.connect.assert_called_once_with(proxy=False)
 
     @patch("rift.controller.VM")
     def test_action_vm_build(self, mock_vm_class):
@@ -3629,6 +3638,12 @@ class ControllerArgumentsTest(RiftTestCase):
         args = ["vm", "connect"]
         opts = parser.parse_args(args)
         self.assertEqual(opts.vm_cmd, "connect")
+        self.assertFalse(opts.noproxy)
+
+        args = ["vm", "connect", "--noproxy"]
+        opts = parser.parse_args(args)
+        self.assertEqual(opts.vm_cmd, "connect")
+        self.assertTrue(opts.noproxy)
 
         args = ["vm", "--arch", "x86_64", "connect"]
         opts = parser.parse_args(args)
