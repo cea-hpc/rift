@@ -285,7 +285,7 @@ class AuthenticatedRepositoryProxyRuntime:
         """Check if repository proxy is required."""
         return len(self.repositories) > 0
 
-    def start(self):
+    def start(self, host="127.0.0.1", port=0):
         """Start repository proxy."""
         if self.server is not None:
             return
@@ -298,14 +298,18 @@ class AuthenticatedRepositoryProxyRuntime:
 
         # Start HTTP server in a separate thread.
         self.server = _ThreadingHTTPServer(
-            ("127.0.0.1", 0), _TokenAuthRepositoryProxyHandler, self
+            (host, port), _TokenAuthRepositoryProxyHandler, self
         )
         # Make thread daemon to avoid hanging when the main thread finishes (e.g.
         # after mock build or VM test). Daemon threads are stopped on interpreter
         # exit.
         self._thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self._thread.start()
-        logging.info("Started repository proxy on port %s", self.port)
+        logging.info(
+            "Started repository proxy on %s:%s",
+            self.server.server_address[0],
+            self.port,
+        )
 
     def stop(self):
         """Stop repository proxy."""

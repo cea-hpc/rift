@@ -83,6 +83,7 @@ class AuthenticatedRepositoryProxyRuntimeTest(RiftTestCase):
     ):
         mock_server = Mock()
         mock_server.server_port = 51234
+        mock_server.server_address = ("127.0.0.1", 51234)
         mock_server_cls.return_value = mock_server
 
         mock_thread = Mock()
@@ -111,6 +112,35 @@ class AuthenticatedRepositoryProxyRuntimeTest(RiftTestCase):
         self.assertTrue(runtime.active)
         self.assertEqual(runtime.token, "idp-token")
         self.assertEqual(runtime.port, 51234)
+
+    @patch("rift.proxy.threading.Thread")
+    @patch("rift.proxy._ThreadingHTTPServer")
+    @patch("rift.proxy.Auth")
+    def test_runtime_start_custom_bind(
+        self,
+        mock_auth_cls,
+        mock_server_cls,
+        mock_thread_cls,
+    ):
+        mock_server = Mock()
+        mock_server.server_port = 8080
+        mock_server.server_address = ("0.0.0.0", 8080)
+        mock_server_cls.return_value = mock_server
+        mock_thread_cls.return_value = Mock()
+        mock_auth_cls.return_value.get_idp_token_noninteractive.return_value = "tok"
+
+        runtime = AuthenticatedRepositoryProxyRuntime(
+            {"idp_app_token": "x"},
+            [_DummyRepo("private", "https://repo/private", True)],
+        )
+        runtime.start(host="0.0.0.0", port=8080)
+
+        mock_server_cls.assert_called_once_with(
+            ("0.0.0.0", 8080),
+            _TokenAuthRepositoryProxyHandler,
+            runtime,
+        )
+        self.assertEqual(runtime.port, 8080)
 
     @patch("rift.proxy.Auth")
     def test_start_skips_when_no_authenticated_repos(self, mock_auth):
