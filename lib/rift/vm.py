@@ -36,6 +36,7 @@ Class to start, stop and manipulate VM used mostly for testing.
 
 import atexit
 import datetime
+import errno
 import grp
 import hashlib
 import logging
@@ -164,7 +165,7 @@ class VM:
         self._auth_proxy = AuthenticatedRepositoryProxyRuntime(config, self._repos)
 
         self.address = vm_config.get("address")
-        self.port = self.default_port(vm_config.get("port_range"))
+        self.port, self.proxy_port = self.default_ports(vm_config.get("port_range"))
         self.cpus = vm_config.get("cpus", 1)
         self.memory = vm_config.get("memory")
         self.qemu = config.get("qemu", arch=arch)
@@ -239,10 +240,13 @@ class VM:
             return True
         raise RiftError(f"Unsupported VM image URL scheme {self._image_src.scheme}")
 
-    def default_port(self, port_range):
+    def default_ports(self, port_range):
         """
-        Return the default port number for this VM considering its unique
-        identifier and the given port range.
+        Return (ssh_port, proxy_port) in the given range for this VM.
+
+        SSH port is derived from the VM unique identifier. Proxy port is the
+        next port in the range (wrapping) so it never matches this VM's SSH
+        port.
         """
         try:
             assert port_range["max"] > port_range["min"]
@@ -250,9 +254,33 @@ class VM:
             raise RiftError(
                 "VM port range maximum must be greater than the minimum"
             ) from exc
-        return (
-            int(self.vmid, 16) % (port_range["max"] - port_range["min"])
-        ) + port_range["min"]
+        span = port_range["max"] - port_range["min"]
+        ssh = (int(self.vmid, 16) % span) + port_range["min"]
+        proxy = port_range["min"] + ((ssh - port_range["min"] + 1) % span)
+        return ssh, proxy
+
+    def _start_auth_proxy(self, reuse=False):
+        """
+        Start the IDP repository proxy on this VM's proxy port.
+
+        Return True if this call started the server and the caller must stop
+        it. If reuse is True and the port is already bound, log and return
+        False so an existing listener can be used.
+        """
+        if not self._auth_proxy.required:
+            return False
+        try:
+            self._auth_proxy.start(port=self.proxy_port)
+        except OSError as err:
+            if reuse and err.errno == errno.EADDRINUSE:
+                logging.info(
+                    "Repository proxy port %s already in use, "
+                    "reusing existing listener",
+                    self.proxy_port,
+                )
+                return False
+            raise
+        return True
 
     def _vm_image_bearer_token(self):
         """Return bearer token for remote VM image HTTP(S) requests, or None."""
@@ -649,7 +677,13 @@ class VM:
 
     def connect(self):
         """Open an interactive SSH session to the running VM."""
-        return self.cmd(options=None, manage_output=False).returncode
+        started = False
+        try:
+            started = self._start_auth_proxy(reuse=True)
+            return self.cmd(options=None, manage_output=False).returncode
+        finally:
+            if started:
+                self._auth_proxy.stop()
 
     def copy(self, source, dest, stderr=None):
         """Copy files from or to VM"""
@@ -847,7 +881,7 @@ class VM:
 
         message("Launching VM ...")
         # Start authenticated repositories proxy
-        self._auth_proxy.start()
+        self._start_auth_proxy()
         self.spawn()
         self.ready()
         self.prepare()
@@ -1040,7 +1074,7 @@ class VM:
         base_image_path = self._dl_base_image(url, force)
 
         # Start authenticated repositories proxy
-        self._auth_proxy.start()
+        self._start_auth_proxy()
 
         # Build cloud-init seed iso
         seed_iso_file = self._build_seed_iso()
