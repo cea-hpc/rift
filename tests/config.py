@@ -5,6 +5,7 @@
 import os
 import os.path
 import textwrap
+from unittest.mock import patch
 
 from rift import DeclError
 from rift.config import (
@@ -229,6 +230,22 @@ class ConfigTest(RiftTestCase):
             "^Unable to set configuration option for unsupported architecture 'fail'$",
         ):
             config.set("vm", {"image": "/path/to/image.qcow2"}, arch="fail")
+
+    def test_chroot_arch_host_supported(self):
+        """chroot_arch() returns host when it is a project architecture"""
+        config = Config()
+        config.set("arch", ["x86_64", "aarch64"])
+        with patch("rift.config.platform.machine", return_value="x86_64"):
+            self.assertEqual(config.chroot_arch(), "x86_64")
+        with patch("rift.config.platform.machine", return_value="aarch64"):
+            self.assertEqual(config.chroot_arch(), "aarch64")
+
+    def test_chroot_arch_host_unsupported(self):
+        """chroot_arch() returns first project arch when host is not supported"""
+        config = Config()
+        config.set("arch", ["aarch64"])
+        with patch("rift.config.platform.machine", return_value="x86_64"):
+            self.assertEqual(config.chroot_arch(), "aarch64")
 
     def test_load(self):
         """load() checks mandatory options are present"""

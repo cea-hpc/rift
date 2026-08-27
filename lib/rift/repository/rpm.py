@@ -37,7 +37,6 @@ Helper class for YUM repository structure management.
 import glob
 import logging
 import os
-import platform
 import shutil
 import threading
 from subprocess import PIPE, STDOUT, CalledProcessError, Popen, run
@@ -233,10 +232,11 @@ class LocalRepository:
             except CalledProcessError as err:
                 raise RiftError(err) from err
             # Parse spec file
+            arch = self.config.chroot_arch()
             spec = Spec(
                 os.path.join(tmp_dir.path, "SPECS", f"{src_rpm.name}.spec"),
-                Mock(self.config, platform.machine()),
-                ArchRepositoriesRPM(self.config, None, platform.machine()).all,
+                Mock(self.config, arch),
+                ArchRepositoriesRPM(self.config, None, arch).all,
             )
             # Remove tmp directory
             tmp_dir.delete()

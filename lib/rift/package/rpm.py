@@ -33,7 +33,6 @@
 
 import logging
 import os
-import platform
 import random
 import re
 import shutil
@@ -96,7 +95,7 @@ class PackageRPM(Package):
         its main attributes."""
         # load infos.yaml with parent class
         super().load(infopath)
-        arch_pkg = self.for_arch(platform.machine())
+        arch_pkg = self.for_arch(self._config.chroot_arch())
         self.spec = Spec(
             self.buildfile, arch_pkg.mock, arch_pkg.repos.all, config=self._config
         )

@@ -37,7 +37,6 @@ Controler.py:
 import argparse
 import logging
 import os
-import platform
 import time
 from operator import attrgetter
 
@@ -568,8 +567,9 @@ def action_check(args, config):
         if args.file is None:
             raise RiftError("You must specify a file path (-f)")
 
-        mock = Mock(config, platform.machine())
-        repos = ProjectArchRepositories(config, platform.machine()).for_format("rpm")
+        arch = config.chroot_arch()
+        mock = Mock(config, arch)
+        repos = ProjectArchRepositories(config, arch).for_format("rpm")
         spec = Spec(args.file, mock, repos.all, config=config)
         spec.check()
         logging.info("Spec file is OK.")

@@ -37,6 +37,7 @@ Config:
 import errno
 import logging
 import os
+import platform
 import warnings
 
 import yaml
@@ -408,6 +409,19 @@ class Config:
             filepath = os.path.join(self.project_dir, filepath)
 
         return filepath
+
+    def chroot_arch(self):
+        """
+        Return a project architecture suitable for a Mock chroot.
+
+        For performance reasons, prefer the host CPU architecture when it is listed in
+        the project, otherwise return the first project supported architecture.
+        """
+        host = platform.machine()
+        archs = self.get("arch")
+        if host in archs:
+            return host
+        return archs[0]
 
     def get(self, option, default=None, arch=None):
         """
