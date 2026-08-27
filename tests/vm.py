@@ -712,6 +712,16 @@ class VMTest(RiftTestCase):
         vm.ready.assert_called_once()
         vm.prepare.assert_called_once()
 
+    def test_connect(self):
+        """Test VM connect opens an interactive SSH session"""
+        vm = VM(self.config, platform.machine())
+        ssh = Mock()
+        ssh.returncode = 0
+        vm.cmd = Mock(return_value=ssh)
+
+        self.assertEqual(vm.connect(), 0)
+        vm.cmd.assert_called_once_with(options=None, manage_output=False)
+
     @patch("rift.vm.message")
     def test_start_force(self, mock_message):
         """Test VM force start not running"""

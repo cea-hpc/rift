@@ -647,6 +647,10 @@ class VM:
         logging.debug("Running command in VM: %s", " ".join(cmd))
         return run_command(cmd, **kwargs)
 
+    def connect(self):
+        """Open an interactive SSH session to the running VM."""
+        return self.cmd(options=None, manage_output=False).returncode
+
     def copy(self, source, dest, stderr=None):
         """Copy files from or to VM"""
         cmd = [

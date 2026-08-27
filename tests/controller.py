@@ -2472,6 +2472,15 @@ class ControllerProjectActionVMTest(RiftProjectTestCase):
         self.clean_mock_environments()
 
     @patch("rift.controller.VM")
+    def test_action_vm_connect(self, mock_vm_class):
+        """simple 'rift vm connect' calls VM.connect()"""
+        mock_vm = mock_vm_class.return_value
+        mock_vm.connect.return_value = 0
+
+        self.assertEqual(main(["vm", "connect"]), 0)
+        mock_vm.connect.assert_called_once_with()
+
+    @patch("rift.controller.VM")
     def test_action_vm_build(self, mock_vm_class):
         """simple 'rift vm build' is ok"""
 
