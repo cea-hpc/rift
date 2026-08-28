@@ -38,6 +38,7 @@ from .test_utils import (
     make_temp_file,
     make_temp_tar,
     read_file,
+    remove_gpg_home,
 )
 from .vm import GLOBAL_CACHE, PROXY, VALID_IMAGE_URL
 
@@ -2630,13 +2631,7 @@ class ControllerProjectActionSignTest(RiftProjectTestCase):
         self.update_project_conf()
 
     def tearDown(self):
-        # Kill GPG agent launched for the test
-        cmd = ["gpgconf", "--homedir", self.gpg_home, "--kill", "gpg-agent"]
-        subprocess.run(cmd)
-
-        # Remove temporary GPG home with generated key
-        shutil.rmtree(self.gpg_home)
-
+        remove_gpg_home(self.gpg_home)
         super().tearDown()
 
     def test_action_sign_rpm(self):

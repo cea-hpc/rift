@@ -2,7 +2,6 @@
 # Copyright (C) 2026 CEA
 #
 import os
-import shutil
 import subprocess
 from unittest.mock import Mock, patch
 
@@ -19,6 +18,7 @@ from .test_utils import (
     gen_containerfile,
     make_temp_file,
     make_temp_tar,
+    remove_gpg_home,
 )
 
 
@@ -254,12 +254,7 @@ class ContainerArchiveTest(RiftProjectTestCase):
             self.container_archive.sign()
 
         finally:
-            # Kill GPG agent launched for the test
-            cmd = ["gpgconf", "--homedir", gpg_home, "--kill", "gpg-agent"]
-            subprocess.run(cmd)
-
-            # Remove temporary GPG home with generated key
-            shutil.rmtree(gpg_home)
+            remove_gpg_home(gpg_home)
 
     def test_sign(self):
         """Container archive signature."""
