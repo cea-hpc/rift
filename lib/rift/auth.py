@@ -34,12 +34,14 @@ Auth:
     This package manage rift s3 authentication
 """
 
+import base64
 import datetime
 import getpass
 import json
 import logging
 import os
 import sys
+import threading
 
 import requests
 import urllib3
@@ -48,6 +50,204 @@ import xmltodict
 from rift import RiftError
 
 urllib3.disable_warnings()
+
+_EXPIRATION_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def _parse_expiration(value):
+    """Parse an expiration value to datetime, or None if unset."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime.datetime):
+        return value
+    return datetime.datetime.strptime(value, _EXPIRATION_FMT)
+
+
+def _format_expiration(value):
+    """Format a datetime expiration for JSON persistence, or None if unset."""
+    if value is None:
+        return None
+    if isinstance(value, datetime.datetime):
+        return value.strftime(_EXPIRATION_FMT)
+    return value
+
+
+def jwt_expiration_dt(token):
+    """
+    Return expiration datetime from a JWT access token payload exp claim.
+
+    Decodes the payload without verifying the signature. Returns None if the
+    token is not a JWT or has no usable exp claim.
+    """
+    if not token or not isinstance(token, str):
+        return None
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    payload = parts[1]
+    try:
+        padding = "=" * (-len(payload) % 4)
+        data = json.loads(base64.urlsafe_b64decode(payload + padding))
+    except (ValueError, json.JSONDecodeError, TypeError):
+        return None
+    exp = data.get("exp")
+    if exp is None:
+        return None
+    try:
+        return datetime.datetime.fromtimestamp(int(exp))
+    except (TypeError, ValueError, OSError, OverflowError):
+        return None
+
+
+class AuthState:
+    """
+    Persisted authentication credentials (credentials file payload).
+    """
+
+    def __init__(
+        self,
+        idp_token=None,
+        idp_token_expiration=None,
+        idp_refresh_token=None,
+        access_key_id=None,
+        secret_access_key=None,
+        session_token=None,
+        expiration=None,
+    ):
+        # IDP token and expiration
+        self.idp_token = idp_token
+        self.idp_token_expiration = idp_token_expiration
+        self.idp_refresh_token = idp_refresh_token
+        # S3 credentials
+        self.access_key_id = access_key_id
+        self.secret_access_key = secret_access_key
+        self.session_token = session_token
+        self.expiration = expiration
+
+    @classmethod
+    def from_dict(cls, data):
+        """Build AuthState from a credentials-file dict."""
+        if not data:
+            return cls()
+        return cls(
+            idp_token=data.get("idp_token"),
+            idp_token_expiration=_parse_expiration(data.get("idp_token_expiration")),
+            idp_refresh_token=data.get("idp_refresh_token"),
+            access_key_id=data.get("access_key_id"),
+            secret_access_key=data.get("secret_access_key"),
+            session_token=data.get("session_token"),
+            expiration=_parse_expiration(data.get("expiration")),
+        )
+
+    def to_dict(self):
+        """Return dict suitable for JSON persistence; omit unset fields."""
+        data = {
+            "idp_token": self.idp_token,
+            "idp_token_expiration": _format_expiration(self.idp_token_expiration),
+            "idp_refresh_token": self.idp_refresh_token,
+            "access_key_id": self.access_key_id,
+            "secret_access_key": self.secret_access_key,
+            "session_token": self.session_token,
+            "expiration": _format_expiration(self.expiration),
+        }
+        return {key: value for key, value in data.items() if value is not None}
+
+    def clear_expired(self):
+        """
+        Drop expired S3 and/or IDP fields.
+        Returns True if anything was scrubbed.
+        """
+        now = datetime.datetime.now()
+        updated = False
+
+        # Check S3 credentials expiration
+        if self.expiration:
+            if self.expiration > now:
+                logging.info("found existing, valid S3 credentials")
+            else:
+                logging.info("info: found existing, expired S3 credentials")
+                self.expiration = None
+                self.access_key_id = None
+                self.secret_access_key = None
+                self.session_token = None
+                updated = True
+
+        # Check IDP token expiration
+        if self.idp_token_expiration:
+            if self.idp_token_expiration > now:
+                logging.info("found existing, valid idp access token")
+            else:
+                logging.info("found existing, expired idp access token")
+                self.idp_token = None
+                self.idp_token_expiration = None
+                self.idp_refresh_token = None
+                updated = True
+
+        return updated
+
+    @classmethod
+    def restore(cls, path):
+        """
+        Load credentials file at path.
+        On JSON decode failure, start empty.
+        Run clear_expired(); if scrubbed, rewrite file via save().
+        Return AuthState instance.
+        """
+        with open(path, "r", encoding="utf-8") as fs:
+            data = fs.read()
+
+        raw = {}
+        try:
+            raw = json.loads(data)
+        except json.JSONDecodeError as e:
+            logging.info("failed to decode json from existing credentials file: %s", e)
+
+        state = cls.from_dict(raw)
+        if state.clear_expired():
+            state.save(path)
+        return state
+
+    def save(self, path):
+        """
+        Persist to_dict() to path with mode 0600.
+        """
+        os.umask(0)
+        fd = os.open(
+            path=path,
+            flags=os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+            mode=0o600,
+        )
+        with open(fd, "w", encoding="utf-8") as fs:
+            json.dump(self.to_dict(), fs, indent=2, sort_keys=True)
+
+    def has_s3_credentials(self):
+        """Return True if all S3 credential fields are set."""
+        return None not in (
+            self.access_key_id,
+            self.secret_access_key,
+            self.session_token,
+        ) and "" not in (
+            self.access_key_id,
+            self.secret_access_key,
+            self.session_token,
+        )
+
+    def s3_expiration_str(self):
+        """
+        Returns a human readable time string of auth token, if possible.
+        If token expiration date is not set, returns an empty string.
+        """
+        if not self.expiration:
+            return ""
+        return self.expiration.strftime("%a %b %d %H:%M:%S %Y")
+
+    def idp_seconds_remaining(self):
+        """
+        Return seconds until IDP access token expiry, or None if expiration unset.
+        """
+        if self.idp_token_expiration is None:
+            return None
+        return (self.idp_token_expiration - datetime.datetime.now()).total_seconds()
 
 
 class Auth:
@@ -64,94 +264,100 @@ class Auth:
         self.idp_auth_endpoint = config.get("idp_auth_endpoint")
         self.s3_auth_endpoint = config.get("s3_auth_endpoint")
         self.credentials_file = os.path.expanduser(config.get("s3_credential_file"))
+        self.idp_token_refresh_threshold = config.get("idp_token_refresh_threshold")
 
-        self.config = {}
-        self.expiration_dt = ""
+        self.state = AuthState()
+        # Persist refreshed tokens to the credentials file by default. Disabled
+        # when tokens come from RIFT_AUTH_IDP_* env vars (ephemeral in-memory use).
+        self._persist_credentials = True
+        # Serialize IDP refresh across threads (e.g. repos proxy) so only one
+        # identical refresh_token grant is sent when many callers race near expiry.
+        self._idp_refresh_lock = threading.Lock()
 
-    def get_expiration_timestr(self):
+    def _request_idp_token(self, data):
         """
-        Returns a human readable time string of auth token, if possible.
-        If token expiration date is not set, returns an emptry string
+        Request an IDP token with the given grant form data and update AuthState.
+        Persist to the credentials file when _persist_credentials is true.
         """
-        if not self.expiration_dt:
-            return ""
-        return self.expiration_dt.strftime("%a %b %d %H:%M:%S %Y")
-
-    def restore_state(self):
-        """
-        Loads data from existing credentials file, if one exists.
-        If credentials file contains expired data, remove expired items from file.
-        """
-
-        with open(self.credentials_file, "r", encoding="utf-8") as fs:
-            data = fs.read()
-
-            config = {}
-            try:
-                config = json.loads(data)
-            except json.JSONDecodeError as e:
-                logging.info(
-                    "failed to decode json from existing credentials file: %s", e
-                )
-
-            update_authfile = False
-
-            expiry = config.get("expiration")
-            if expiry:
-                expiration = datetime.datetime.strptime(expiry, "%Y-%m-%dT%H:%M:%SZ")
-                if expiration > datetime.datetime.now():
-                    # S3 credentials are still valid
-                    logging.info("found existing, valid S3 credentials")
-                    self.expiration_dt = expiration
-                else:
-                    # S3 credentials expired
-                    logging.info("info: found existing, expired S3 credentials")
-                    config.pop("expiration", None)
-                    config.pop("access_key_id", None)
-                    config.pop("secret_access_key", None)
-                    config.pop("session_token", None)
-                    update_authfile = True
-
-            idp_expiry = config.get("idp_token_expiration")
-            if idp_expiry:
-                expiration = datetime.datetime.strptime(
-                    idp_expiry, "%Y-%m-%dT%H:%M:%SZ"
-                )
-                if expiration > datetime.datetime.now():
-                    # IDP access token is still valid
-                    logging.info("found existing, valid idp access token")
-                else:
-                    # IDP access token has expired
-                    logging.info("found existing, expired idp access token")
-                    config.pop("idp_token")
-                    config.pop("idp_token_expiration")
-                    update_authfile = True
-
-            self.config = config
-
-            if update_authfile:
-                self.save_state()
-
-    def save_state(self):
-        """
-        Saves auth object config information to credentials file.
-        """
-        os.umask(0)
-        fd = os.open(
-            path=self.credentials_file,
-            flags=os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
-            mode=0o600,
+        logging.debug("requesting new idp token on %s", self.idp_auth_endpoint)
+        res = requests.post(
+            self.idp_auth_endpoint,
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=60,
         )
-        with open(fd, "w", encoding="utf-8") as fs:
-            json.dump(self.config, fs, indent=2, sort_keys=True)
+        js = res.json()
+
+        token = js.get("access_token")
+        if not token:
+            msg = "received unexpected response while fetching idp access token:"
+            msg += " missing field 'access_token'"
+            raise RiftError(msg)
+
+        expires_in_sec = js.get("expires_in")
+        if not expires_in_sec:
+            msg = "received unexpected response while fetching idp access token:"
+            msg += " missing field 'expires_in'"
+            logging.info(msg)
+        else:
+            self.state.idp_token_expiration = (
+                datetime.datetime.now() + datetime.timedelta(seconds=expires_in_sec)
+            )
+
+        self.state.idp_token = token
+        refresh_token = js.get("refresh_token")
+        if refresh_token:
+            self.state.idp_refresh_token = refresh_token
+
+        if self._persist_credentials:
+            self.state.save(self.credentials_file)
+
+    def _ensure_idp_token_fresh(self):
+        """
+        Refresh the IDP access token when remaining validity is below threshold
+        and a refresh token is available.
+
+        Uses double-checked locking so concurrent callers (e.g. repos proxy
+        request threads) trigger at most one refresh request.
+        """
+        if not self.idp_token_refresh_threshold:
+            return
+        remaining = self.state.idp_seconds_remaining()
+        if remaining is None or remaining >= self.idp_token_refresh_threshold:
+            return
+        if not self.idp_auth_endpoint:
+            logging.error("missing required config parameter: idp_auth_endpoint")
+            return
+        if not self.state.idp_refresh_token:
+            logging.debug("idp access token near expiry but no refresh token available")
+            return
+
+        with self._idp_refresh_lock:
+            # Another thread may have refreshed while we waited for the lock.
+            remaining = self.state.idp_seconds_remaining()
+            if remaining is None or remaining >= self.idp_token_refresh_threshold:
+                return
+
+            logging.debug(
+                "refreshing idp access token (remaining: %.0f seconds)", remaining
+            )
+
+            self._request_idp_token(
+                {
+                    "client_id": "minio",
+                    "grant_type": "refresh_token",
+                    "refresh_token": self.state.idp_refresh_token,
+                    "client_secret": self.idp_app_token,
+                }
+            )
 
     # Step 1: Get OpenID token
     def get_idp_token(self):
         """
         Get OpenID Token
         """
-        token = self.config.get("idp_token")
-        if token:
+        if self.state.idp_token:
+            self._ensure_idp_token_fresh()
             logging.info("retrieved existing idp_token from auth file")
             return True
 
@@ -170,84 +376,91 @@ class Auth:
         if not password:
             password = getpass.getpass("Password: ")
 
-        data = {
-            "client_id": "minio",
-            "grant_type": "password",
-            "username": user,
-            "password": password,
-            "client_secret": client_secret,
-        }
-
-        res = requests.post(
-            self.idp_auth_endpoint,
-            data=data,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            timeout=60,
+        self._request_idp_token(
+            {
+                "client_id": "minio",
+                "grant_type": "password",
+                "username": user,
+                "password": password,
+                "client_secret": client_secret,
+            }
         )
-
-        js = res.json()
-
-        token = js.get("access_token")
-        if not token:
-            msg = "received unexpected response while fetching idp access token:"
-            msg += " missing field 'access_token'"
-            raise RiftError(msg)
-
-        expires_in_sec = js.get("expires_in")
-        if not expires_in_sec:
-            msg = "received unexpected response while fetching idp access token:"
-            msg += " missing field 'expires_in'"
-            logging.info(msg)
-
-        expire_dt = datetime.datetime.now() + datetime.timedelta(seconds=expires_in_sec)
-
-        self.config["idp_token_expiration"] = expire_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-        self.config["idp_token"] = token
-        self.save_state()
-
         return True
 
     def get_idp_token_noninteractive(self):
         """
-        Return cached OpenID token from environment or state file without
-        prompting user. Raise RiftError if token is missing or expired.
+        Return an IDP access token without prompting the user.
+
+        Prefer a token already loaded in state (so successive calls keep a
+        previously refreshed token), otherwise load from RIFT_AUTH_IDP_TOKEN
+        (and optional RIFT_AUTH_IDP_REFRESH_TOKEN / JWT exp), otherwise restore
+        from the credentials file. Refresh when remaining validity is below
+        threshold. Raise RiftError if no token is available.
         """
+
+        # Prefer tokens already loaded into state (e.g. after a prior refresh)
+        # so successive calls do not overwrite them with a stale env value.
+        if self.state.idp_token:
+            self._ensure_idp_token_fresh()
+            return self.state.idp_token
 
         token = os.environ.get("RIFT_AUTH_IDP_TOKEN")
         if token:
             logging.debug("fetched idp token from environment")
-            return token
+            # Set the IDP access token in the state.
+            self.state.idp_token = token
+
+            # Check if the IDP refresh token is set in the environment. If so,
+            # set it in the state.
+            refresh = os.environ.get("RIFT_AUTH_IDP_REFRESH_TOKEN")
+            if refresh:
+                self.state.idp_refresh_token = refresh
+
+            # Get the expiration date of the token based on the exp claim in JWT
+            # payload and set it in the state.
+            exp_dt = jwt_expiration_dt(token)
+            if exp_dt is None:
+                logging.warning(
+                    "unable to extract expiration from RIFT_AUTH_IDP_TOKEN "
+                    "(not a JWT or missing exp claim); token refresh disabled"
+                )
+            else:
+                self.state.idp_token_expiration = exp_dt
+
+            # Env-sourced tokens stay in memory only (do not write state file).
+            self._persist_credentials = False
+
+            # Refresh the token if it is near expiry.
+            self._ensure_idp_token_fresh()
+            return self.state.idp_token
 
         if not os.path.isfile(self.credentials_file):
             raise RiftError(
                 f"Missing authentication state file {self.credentials_file}. "
                 "Run 'rift auth' first."
             )
-        self.restore_state()
-        token = self.config.get("idp_token")
+        self.state = AuthState.restore(self.credentials_file)
+        token = self.state.idp_token
         if not token:
             raise RiftError(
                 "Missing idp_token in authentication state file "
                 f"{self.credentials_file}. "
                 "Run 'rift auth' first."
             )
-        return token
+        self._ensure_idp_token_fresh()
+        return self.state.idp_token
 
     # Step 2: Get S3 credentials using token from (1)
     def get_s3_credentials(self):
         """
         Obtains an S3 credential using an already-obtained OpenID credential,
-        unless an S3 credential is already available in auth object's config,
+        unless an S3 credential is already available in auth object's state,
         in which case the credential is considered to have already been
         obtained.
 
         Returns True on success, False on failure.
         """
-        access_key_id = self.config.get("access_key_id", "")
-        secret_access_key = self.config.get("secret_access_key", "")
-        session_token = self.config.get("session_token", "")
-
-        if "" not in (access_key_id, secret_access_key, session_token):
+        if self.state.has_s3_credentials():
             return True
 
         if not self.s3_auth_endpoint:
@@ -262,7 +475,7 @@ class Auth:
             "Version": "2011-06-15",
             "Action": "AssumeRoleWithWebIdentity",
             "DurationSeconds": "86000",
-            "WebIdentityToken": self.config["idp_token"],
+            "WebIdentityToken": self.state.idp_token,
         }
 
         res = requests.post(
@@ -306,16 +519,12 @@ class Auth:
             msg += "AccessKeyId, SecretAccessKey, SessionToken, Expiration"
             raise RiftError(msg)
 
-        self.config["access_key_id"] = access_key_id
-        self.config["secret_access_key"] = secret_access_key
-        self.config["session_token"] = session_token
-        self.config["expiration"] = expiration
+        self.state.access_key_id = access_key_id
+        self.state.secret_access_key = secret_access_key
+        self.state.session_token = session_token
+        self.state.expiration = _parse_expiration(expiration)
 
-        self.expiration_dt = datetime.datetime.strptime(
-            expiration, "%Y-%m-%dT%H:%M:%SZ"
-        )
-
-        self.save_state()
+        self.state.save(self.credentials_file)
 
         return True
 
@@ -342,14 +551,14 @@ class Auth:
             )
             msg += " AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN"
             logging.info(msg)
-            self.config["access_key_id"] = aws_access_key_id
-            self.config["secret_access_key"] = aws_secret_access_key
-            self.config["session_token"] = aws_session_token
+            self.state.access_key_id = aws_access_key_id
+            self.state.secret_access_key = aws_secret_access_key
+            self.state.session_token = aws_session_token
             return True
 
         if os.path.isfile(self.credentials_file):
             logging.info("found credentials file: %s", self.credentials_file)
-            self.restore_state()
+            self.state = AuthState.restore(self.credentials_file)
         else:
             base = os.path.dirname(self.credentials_file)
             if os.path.exists(base):

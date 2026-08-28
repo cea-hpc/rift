@@ -97,7 +97,7 @@ class AuthenticatedRepositoryProxyRuntimeTest(RiftTestCase):
 
         runtime.start()
 
-        mock_auth.get_idp_token_noninteractive.assert_called_once()
+        mock_auth.get_idp_token_noninteractive.assert_called()
         mock_server_cls.assert_called_once_with(
             ("127.0.0.1", 0),
             _TokenAuthRepositoryProxyHandler,
@@ -111,6 +111,8 @@ class AuthenticatedRepositoryProxyRuntimeTest(RiftTestCase):
         self.assertTrue(runtime.active)
         self.assertEqual(runtime.token, "idp-token")
         self.assertEqual(runtime.port, 51234)
+        # Token is re-fetched per access (start + property read above).
+        self.assertGreaterEqual(mock_auth.get_idp_token_noninteractive.call_count, 2)
 
     @patch("rift.proxy.Auth")
     def test_start_skips_when_no_authenticated_repos(self, mock_auth):
@@ -133,7 +135,7 @@ class AuthenticatedRepositoryProxyRuntimeTest(RiftTestCase):
         server = Mock()
         runtime.server = server
         runtime._thread = Mock()
-        runtime.token = "idp-token"
+        runtime._auth = Mock()
 
         runtime.stop()
 
@@ -141,6 +143,7 @@ class AuthenticatedRepositoryProxyRuntimeTest(RiftTestCase):
         server.server_close.assert_called_once()
         self.assertIsNone(runtime.server)
         self.assertIsNone(runtime._thread)
+        self.assertIsNone(runtime._auth)
         self.assertIsNone(runtime.token)
 
     @patch("rift.proxy.Auth")

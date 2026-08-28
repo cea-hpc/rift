@@ -642,7 +642,7 @@ def action_auth(config):
     if auth_obj.authenticate():
         msg = "succesfully authenticated"
 
-        t = auth_obj.get_expiration_timestr()
+        t = auth_obj.state.s3_expiration_str()
         if t != "":
             msg += f"; token expires in {t}"
         else:
