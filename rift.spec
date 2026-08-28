@@ -56,6 +56,7 @@ complete lifecycle. It provides commands to perform the following actions:
 %doc AUTHORS
 %doc Changelog
 %{_bindir}/rift
+%{_bindir}/repos-token-proxy
 %{python3_sitelib}/
 %{_datadir}/%{name}
 
