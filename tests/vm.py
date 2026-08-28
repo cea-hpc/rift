@@ -2,6 +2,7 @@
 # Copyright (C) 2024 CEA
 #
 import atexit
+import errno
 import os
 import platform
 import shutil
@@ -210,34 +211,48 @@ class VMTest(RiftTestCase):
             vm = VM(self.config, "x86_64")
             self.assertEqual(vm.image_is_remote(), expected_value[1])
 
-    def test_default_port(self):
-        """Check VM default port uniqueness and range conformity"""
+    def test_default_ports(self):
+        """Check VM default SSH and proxy ports uniqueness and range conformity"""
         # Declare 2 supported architectures for this test
         self.config.set("arch", ["x86_64", "aarch64"])
+        port_range = {"min": 2000, "max": 3000}
+        self.config.set("vm", {"image": "/path/to/image", "port_range": port_range})
         vm1 = VM(self.config, "x86_64")
         vm2 = VM(self.config, "aarch64")
         vm3 = VM(self.config, "x86_64")
-        port_range = {"min": 2000, "max": 3000}
-        # Verify vm1 and vm2 default are different because of their different
-        # architecture.
-        self.assertNotEqual(vm1.default_port(port_range), vm2.default_port(port_range))
-        # Verify vm1 and vm3 have the same default port because they share the
-        # same combination of user/arch/version.
-        self.assertEqual(vm1.default_port(port_range), vm3.default_port(port_range))
-        # Verify both default ports are included in range
-        self.assertTrue(vm1.default_port(port_range) >= port_range["min"])
-        self.assertTrue(vm1.default_port(port_range) < port_range["max"])
-        self.assertTrue(vm2.default_port(port_range) >= port_range["min"])
-        self.assertTrue(vm2.default_port(port_range) < port_range["max"])
 
-    def test_default_port_invalid_range(self):
-        """Check VM default port raise error with invalid range"""
+        ssh1, proxy1 = vm1.default_ports(port_range)
+        ssh2, proxy2 = vm2.default_ports(port_range)
+        ssh3, proxy3 = vm3.default_ports(port_range)
+
+        # Verify vm1 and vm2 defaults are different because of their different
+        # architecture.
+        self.assertNotEqual((ssh1, proxy1), (ssh2, proxy2))
+        # Verify vm1 and vm3 have the same default ports because they share the
+        # same combination of user/arch/version.
+        self.assertEqual((ssh1, proxy1), (ssh3, proxy3))
+        # Verify both default ports are included in range and proxy != SSH
+        for ssh, proxy in ((ssh1, proxy1), (ssh2, proxy2)):
+            self.assertGreaterEqual(ssh, port_range["min"])
+            self.assertLess(ssh, port_range["max"])
+            self.assertGreaterEqual(proxy, port_range["min"])
+            self.assertLess(proxy, port_range["max"])
+            self.assertNotEqual(ssh, proxy)
+        # Proxy port is SSH + 1 wrapped in the range
+        self.assertEqual(
+            proxy1, port_range["min"] + ((ssh1 - port_range["min"] + 1) % 1000)
+        )
+        # Instance attributes match default_ports() for the configured range
+        self.assertEqual((vm1.port, vm1.proxy_port), vm1.default_ports(port_range))
+
+    def test_default_ports_invalid_range(self):
+        """Check VM default ports raise error with invalid range"""
         vm1 = VM(self.config, "x86_64")
         port_range = {"min": 2001, "max": 2000}
         with self.assertRaisesRegex(
             RiftError, "^VM port range maximum must be greater than the minimum$"
         ):
-            vm1.default_port(port_range)
+            vm1.default_ports(port_range)
 
     def test_gen_virtiofs_args(self):
         """
@@ -705,12 +720,98 @@ class VMTest(RiftTestCase):
         vm.spawn = Mock()
         vm.ready = Mock()
         vm.prepare = Mock()
+        vm._auth_proxy = Mock()
+        vm._auth_proxy.required = True
         self.assertTrue(vm.start(force=False))
         vm._download.assert_called_once_with(False)
         mock_message.assert_called_once_with("Launching VM ...")
         vm.spawn.assert_called_once()
         vm.ready.assert_called_once()
         vm.prepare.assert_called_once()
+        # Check IDP proxy is started with the VM proxy port
+        vm._auth_proxy.start.assert_called_once_with(port=vm.proxy_port)
+
+    @patch("rift.vm.message")
+    def test_start_skips_proxy_when_not_required(self, mock_message):
+        """Test VM start does not start the proxy without authenticated repos"""
+        vm = VM(self.config, platform.machine())
+        vm.running = Mock(return_value=False)
+        vm._download = Mock()
+        vm.spawn = Mock()
+        vm.ready = Mock()
+        vm.prepare = Mock()
+        vm._auth_proxy = Mock()
+        vm._auth_proxy.required = False
+        self.assertTrue(vm.start(force=False))
+        vm._auth_proxy.start.assert_not_called()
+
+    def test_connect(self):
+        """Test VM connect opens SSH and starts the IDP proxy when required"""
+        vm = VM(self.config, platform.machine())
+        vm._auth_proxy = Mock()
+        vm._auth_proxy.required = True
+        ssh = Mock()
+        ssh.returncode = 0
+        vm.cmd = Mock(return_value=ssh)
+
+        self.assertEqual(vm.connect(), 0)
+        vm._auth_proxy.start.assert_called_once_with(port=vm.proxy_port)
+        vm.cmd.assert_called_once_with(options=None, manage_output=False)
+        vm._auth_proxy.stop.assert_called_once()
+
+    def test_connect_skips_proxy_when_not_required(self):
+        """Test VM connect does not start the proxy without authenticated repos"""
+        vm = VM(self.config, platform.machine())
+        vm._auth_proxy = Mock()
+        vm._auth_proxy.required = False
+        ssh = Mock()
+        ssh.returncode = 0
+        vm.cmd = Mock(return_value=ssh)
+
+        self.assertEqual(vm.connect(), 0)
+        vm._auth_proxy.start.assert_not_called()
+        vm._auth_proxy.stop.assert_not_called()
+
+    def test_connect_skips_proxy_when_noproxy(self):
+        """Test VM connect does not start the proxy with proxy=False"""
+        vm = VM(self.config, platform.machine())
+        vm._auth_proxy = Mock()
+        vm._auth_proxy.required = True
+        ssh = Mock()
+        ssh.returncode = 0
+        vm.cmd = Mock(return_value=ssh)
+
+        self.assertEqual(vm.connect(proxy=False), 0)
+        vm._auth_proxy.start.assert_not_called()
+        vm._auth_proxy.stop.assert_not_called()
+        vm.cmd.assert_called_once_with(options=None, manage_output=False)
+
+    def test_connect_reuses_proxy_on_addr_in_use(self):
+        """Test VM connect reuses an existing proxy listener"""
+        vm = VM(self.config, platform.machine())
+        vm._auth_proxy = Mock()
+        vm._auth_proxy.required = True
+        vm._auth_proxy.start.side_effect = OSError(errno.EADDRINUSE, "in use")
+        ssh = Mock()
+        ssh.returncode = 0
+        vm.cmd = Mock(return_value=ssh)
+
+        self.assertEqual(vm.connect(), 0)
+        vm._auth_proxy.start.assert_called_once_with(port=vm.proxy_port)
+        vm.cmd.assert_called_once_with(options=None, manage_output=False)
+        vm._auth_proxy.stop.assert_not_called()
+
+    def test_connect_stops_proxy_ssh_error(self):
+        """Test VM connect stops the proxy it started if SSH fails"""
+        vm = VM(self.config, platform.machine())
+        vm._auth_proxy = Mock()
+        vm._auth_proxy.required = True
+        vm.cmd = Mock(side_effect=RuntimeError("ssh failed"))
+
+        with self.assertRaises(RuntimeError):
+            vm.connect()
+        vm._auth_proxy.start.assert_called_once_with(port=vm.proxy_port)
+        vm._auth_proxy.stop.assert_called_once()
 
     @patch("rift.vm.message")
     def test_start_force(self, mock_message):
