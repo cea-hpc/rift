@@ -13,6 +13,7 @@ import pathlib as pl
 import random
 import shutil
 import string
+import subprocess
 import tarfile
 import tempfile
 import time
@@ -502,6 +503,28 @@ def host_rpmlint(filepath, configdir=None):
 def make_temp_dir():
     """Create and return the name of a temporary directory."""
     return tempfile.mkdtemp(prefix="rift-test-")
+
+
+def remove_gpg_home(gpg_home):
+    """Stop GnuPG daemons and remove a temporary GNUPGHOME directory.
+
+    In some race conditions, GnuPG may unlink sockets (e.g. S.scdaemon) while
+    shutil.rmtree is walking the directory, which raises FileNotFoundError eventually.
+    For this reason, shutil.rmtree is called with inner function helper to ignore
+    FileNotFoundError.
+    """
+    if not os.path.exists(gpg_home):
+        return
+    subprocess.run(
+        ["gpgconf", "--homedir", gpg_home, "--kill", "all"],
+        check=False,
+    )
+
+    def _ignore_missing(_func, _path, exc_info):
+        if not issubclass(exc_info[0], FileNotFoundError):
+            raise exc_info[1]
+
+    shutil.rmtree(gpg_home, onerror=_ignore_missing)
 
 
 def make_temp_filename():

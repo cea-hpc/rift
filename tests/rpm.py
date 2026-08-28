@@ -20,6 +20,7 @@ from .test_utils import (
     host_rpmlint,
     make_temp_dir,
     read_file,
+    remove_gpg_home,
 )
 
 
@@ -435,12 +436,7 @@ class RPMTest(RiftProjectTestCase):
             # Remove signed copy of RPM package and keyring
             os.remove(rpm_copy)
 
-            # Kill GPG agent launched for the test
-            cmd = ["gpgconf", "--homedir", gpg_home, "--kill", "gpg-agent"]
-            subprocess.run(cmd)
-
-            # Remove temporary GPG home with generated key
-            shutil.rmtree(gpg_home)
+            remove_gpg_home(gpg_home)
 
     def test_sign_src_rpm(self):
         """Source RPM package signature."""
