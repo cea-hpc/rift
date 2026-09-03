@@ -28,7 +28,7 @@ jobs:
     - name: Install rift dependencies
       run: |
         sudo apt-get update
-        sudo apt-get -y install python3-rpm python3-dnf python3-yaml python3-jinja2
+        sudo apt-get -y install python3-rpm python3-yaml python3-jinja2
 
     # Install xmltodict
     - name: Install xmltodict

@@ -85,7 +85,8 @@ jobs:
 
       - name: Install tests dependencies
         run: |
-          dnf -y install python3-pip python3-jinja2 python3-PyYAML python3-rpm python3-dnf python3-pytest python3-pytest-cov sudo rpm-sign rpmlint openssh-clients genisoimage qemu qemu-user qemu-img qemu-virtiofsd mock createrepo_c podman
+          dnf -y install python3-pip python3-jinja2 python3-PyYAML python3-rpm python3-pytest python3-pytest-cov sudo rpm-sign rpmlint openssh-clients genisoimage qemu qemu-user qemu-img qemu-virtiofsd mock createrepo_c podman
+          dnf -y install dnf-plugins-core || dnf -y install dnf5-plugins
 
       # On Almalinux, install vendored qemu-user static binaries and setup
       # binfmt. The value in /etc/binfmt.d/qemu-static.conf is essentially a raw
