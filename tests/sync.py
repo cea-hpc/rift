@@ -4,6 +4,8 @@
 
 import os
 import shutil
+import subprocess
+import unittest
 import urllib
 from unittest.mock import patch
 
@@ -22,6 +24,20 @@ from rift.sync import (
 from .test_utils import RiftTestCase, make_temp_dir
 
 
+def _dnf_reposync_available():
+    """Return True if the dnf reposync plugin can be invoked."""
+    try:
+        result = subprocess.run(
+            ["dnf", "--releasever=/", "reposync", "--help"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        return False
+    return result.returncode == 0
+
+
 class RepoSyncFactoryTest(RiftTestCase):
     """
     Tests class for RepoSyncFactory
@@ -31,6 +47,7 @@ class RepoSyncFactoryTest(RiftTestCase):
         """Test RepoSyncFactory check_valid_method() does not fail with valid value."""
         RepoSyncFactory.check_valid_method("lftp")
         RepoSyncFactory.check_valid_method("epel")
+        RepoSyncFactory.check_valid_method("dnf")
 
     def test_check_valid_method_invalid_value(self):
         """Test check_valid_method() raises RiftError on invalid value."""
@@ -53,6 +70,10 @@ class RepoSyncFactoryTest(RiftTestCase):
         sync["method"] = "epel"
         self.assertIsInstance(
             RepoSyncFactory.get(Config(), "repo", "/output", sync), RepoSyncEpel
+        )
+        sync["method"] = "dnf"
+        self.assertIsInstance(
+            RepoSyncFactory.get(Config(), "repo", "/output", sync), RepoSyncDnf
         )
 
 
@@ -411,6 +432,9 @@ class RepoSyncDnfTest(RiftTestCase):
         # Remove temporary directory with local mirror
         shutil.rmtree(self.output)
 
+    @unittest.skipUnless(
+        _dnf_reposync_available(), "dnf reposync plugin is not installed"
+    )
     def test_run(self):
         """Test RepoSyncDnfTest synchronization run."""
         sync = {
@@ -437,69 +461,9 @@ class RepoSyncDnfTest(RiftTestCase):
             os.path.isdir(os.path.join(self.output, repo_name, self.arch, "repodata"))
         )
 
-    def test_include_exclude(self):
-        """Test RepoSyncDnfTest synchronization run with include/exclude."""
-        # First test without exclude pattern but with an include pattern that
-        # does not match any package. The binary package must not be
-        # synchronized (because it does not match include pattern).
-        sync = {
-            "method": "dnf",
-            "source": f"file://{self.fake_dnf_repo}",
-            "subdir": self.arch,
-            "include": [
-                r"fail",
-            ],
-            "exclude": [],
-        }
-        repo_name = "repo"
-        bin_pkg_path = os.path.join(
-            self.output, repo_name, self.arch, os.path.basename(self.bin_rpm.filepath)
-        )
-        synchronizer = RepoSyncDnf(self.config, repo_name, self.output, sync)
-        synchronizer.run()
-        self.assertFalse(os.path.exists(bin_pkg_path))
-        # Then test without exclude pattern but with an include pattern that
-        # matches the binary package name. The binary package must be
-        # synchronized.
-        sync["include"] = [os.path.basename(self.bin_rpm.filepath)]
-        synchronizer = RepoSyncDnf(self.config, repo_name, self.output, sync)
-        synchronizer.run()
-        self.assertTrue(os.path.isfile(bin_pkg_path))
-        # Finally test without include pattern but with an exclude pattern that
-        # matches the binary package name. The binary package must be removed.
-        sync["include"] = []
-        sync["exclude"] = [r"^pkg-\d"]
-        synchronizer = RepoSyncDnf(self.config, repo_name, self.output, sync)
-        synchronizer.run()
-        self.assertFalse(os.path.exists(bin_pkg_path))
-
-    def test_skip_downloaded(self):
-        """Test RepoSyncDnfTest skip already downloaded packages."""
-        # First test without exclude pattern but with an include pattern that
-        # does not match any package. The binary package must not be
-        # synchronized (because it does not match include pattern).
-        sync = {
-            "method": "dnf",
-            "source": f"file://{self.fake_dnf_repo}",
-            "subdir": self.arch,
-            "include": [],
-            "exclude": [],
-        }
-        repo_name = "repo"
-        bin_pkg_path = os.path.join(
-            self.output, repo_name, self.arch, os.path.basename(self.bin_rpm.filepath)
-        )
-        synchronizer = RepoSyncDnf(self.config, repo_name, self.output, sync)
-        # Create empty file to simulate package presence
-        os.makedirs(os.path.dirname(bin_pkg_path))
-        open(bin_pkg_path, "w+").close()
-        # Check debug log to indicate skipped file is emited
-        with self.assertLogs(level="DEBUG") as log:
-            synchronizer.run()
-            self.assertIn(
-                f"DEBUG:root:Ignoring existing file {bin_pkg_path}", log.output
-            )
-
+    @unittest.skipUnless(
+        _dnf_reposync_available(), "dnf reposync plugin is not installed"
+    )
     def test_wrong_url(self):
         """Test RepoSyncDnfTest synchronization raises RiftError with wrong URLs."""
         sync = {
@@ -511,7 +475,90 @@ class RepoSyncDnfTest(RiftTestCase):
         synchronizer = RepoSyncDnf(self.config, "repo", self.output, sync)
         with self.assertRaisesRegex(
             RiftError,
-            r"^Unable to download repository metadata from URL "
+            r"^Unable to synchronize repository from URL "
             r"https://127.0.0.1/fail/:.*",
+        ):
+            synchronizer.run()
+
+    @patch("rift.sync.subprocess.run")
+    def test_run_command(self, mock_subprocess_run):
+        """Test RepoSyncDnf invokes dnf reposync with the expected arguments."""
+        mock_subprocess_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        sync = {
+            "method": "dnf",
+            "source": "http://repo/directory",
+            "include": [],
+            "exclude": [],
+        }
+        synchronizer = RepoSyncDnf(self.config, "repo", self.output, sync)
+        synchronizer.run()
+        mock_subprocess_run.assert_called()
+        cmd = mock_subprocess_run.call_args[0][0]
+        self.assertEqual(cmd[0], "dnf")
+        self.assertIn("reposync", cmd)
+        self.assertIn("--download-metadata", cmd)
+        self.assertIn("--norepopath", cmd)
+        self.assertIn("--delete", cmd)
+        self.assertIn("--download-path", cmd)
+
+    @patch("rift.sync.subprocess.run")
+    def test_run_command_include(self, mock_subprocess_run):
+        """Test RepoSyncDnf passes includepkgs to reposync via --setopt."""
+        mock_subprocess_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        sync = {
+            "method": "dnf",
+            "source": "http://repo/directory",
+            "include": ["pkg"],
+            "exclude": [],
+        }
+        synchronizer = RepoSyncDnf(self.config, "repo", self.output, sync)
+        synchronizer.run()
+        commands = [call[0][0] for call in mock_subprocess_run.call_args_list]
+        self.assertFalse(any("repoquery" in cmd for cmd in commands))
+        reposync_cmds = [cmd for cmd in commands if "reposync" in cmd]
+        self.assertEqual(len(reposync_cmds), 1)
+        self.assertIn(
+            f"--setopt={RepoSyncDnf.REPO_ID}.includepkgs=pkg", reposync_cmds[0]
+        )
+
+    @patch("rift.sync.subprocess.run")
+    def test_run_command_exclude(self, mock_subprocess_run):
+        """Test RepoSyncDnf passes excludepkgs to reposync via --setopt."""
+        mock_subprocess_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr=""
+        )
+        sync = {
+            "method": "dnf",
+            "source": "http://repo/directory",
+            "include": [],
+            "exclude": ["pkg"],
+        }
+        synchronizer = RepoSyncDnf(self.config, "repo", self.output, sync)
+        synchronizer.run()
+        cmd = mock_subprocess_run.call_args[0][0]
+        self.assertIn("reposync", cmd)
+        self.assertIn(f"--setopt={RepoSyncDnf.REPO_ID}.excludepkgs=pkg", cmd)
+
+    @patch("rift.sync.subprocess.run")
+    def test_run_command_failure(self, mock_subprocess_run):
+        """Test RepoSyncDnf raises RiftError when dnf reposync fails."""
+        mock_subprocess_run.side_effect = subprocess.CalledProcessError(
+            1, ["dnf"], stderr="Unable to download metadata"
+        )
+        sync = {
+            "method": "dnf",
+            "source": "https://127.0.0.1/fail",
+            "include": [],
+            "exclude": [],
+        }
+        synchronizer = RepoSyncDnf(self.config, "repo", self.output, sync)
+        with self.assertRaisesRegex(
+            RiftError,
+            r"^Unable to synchronize repository from URL "
+            r"https://127.0.0.1/fail/: Unable to download metadata$",
         ):
             synchronizer.run()

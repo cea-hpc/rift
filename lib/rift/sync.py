@@ -34,19 +34,15 @@ Synchronize remote repositories.
 """
 
 import collections
-import glob
 import logging
 import os
 import re
 import shlex
-import shutil
 import subprocess
 import tempfile
 import time
 import urllib
 from datetime import datetime
-
-import dnf
 
 from rift import RiftError
 from rift.temp_dir import TempDir
@@ -132,6 +128,11 @@ class RepoSyncBase:
         if not os.path.exists(self.output):
             os.makedirs(self.output)
 
+    @staticmethod
+    def _cmd_str(cmd):
+        """Transform a list of command arguments into a quoted string."""
+        return " ".join([shlex.quote(arg) for arg in cmd])
+
 
 class RepoSyncLftp(RepoSyncBase):
     """Synchronize remote repositories with LFTP."""
@@ -156,11 +157,6 @@ class RepoSyncLftp(RepoSyncBase):
         self.exclude_arg = " ".join(
             [f"--exclude={pattern}" for pattern in self.patterns.exclude]
         )
-
-    @staticmethod
-    def _cmd_str(cmd):
-        """Transform a list of command arguments into a quoted string."""
-        return " ".join([shlex.quote(arg) for arg in cmd])
 
     def _run(self):
         """Run repository synchronization with LFTP."""
@@ -373,106 +369,119 @@ class RepoSyncEpel(RepoSyncIndexed):
 
 
 class RepoSyncDnf(RepoSyncIndexed):
-    """Synchronize DNF remote repositories."""
+    """
+    Synchronize DNF remote repositories with the dnf reposync command.
 
-    def _process_package(self, package):
-        """Process one package found in DNF repository."""
+    dnf reposync does not take a source URL: it syncs repositories already
+    defined for dnf. This class writes a temporary .repo file (baseurl, proxy)
+    under an isolated installroot and reposdir so only that remote is used, then
+    runs dnf against it.
 
-        relpath = package.remote_location()[len(self.source.geturl()) :].lstrip("/")
+    Include and exclude patterns are forwarded as DNF includepkgs and excludepkgs
+    via --setopt. Patterns are package names or DNF globs, not path regular
+    expressions.
+    """
 
-        # Check relative path against include/exclude pattern
-        if not self._relpath_matches(relpath):
-            return
+    DNF_BIN = "dnf"
+    REPO_ID = "rift-sync"
 
-        output_file = os.path.join(
-            self.output,
-            relpath,
-        )
-        # Append output file to the list of indexed files, so it is flagged to
-        # not be removed in the end.
-        self.indexed_files.append(output_file)
-
-        # Check file exists and skip download.
-        if os.path.exists(output_file):
-            logging.debug("Ignoring existing file %s", output_file)
-            return
-
-        # Create output file parent directories if missing.
-        output_directory = os.path.dirname(output_file)
-        if not os.path.exists(output_directory):
-            # Mention directory creation in log file
-            self.log_write(f"mkdir {output_directory}")
-            os.makedirs(output_directory)
-
-        url = package.remote_location()
-        self.log_write(f"download {url}")
-        logging.info("Downloading file '%s' to '%s'", url, output_directory)
+    def _run_dnf(self, cmd):
+        """Run a dnf command, log output, and convert failures to RiftError."""
+        logging.debug("Running synchronization command: %s", self._cmd_str(cmd))
         try:
-            download_file(url, output_file, self.max_size, self.retries)
-        except RiftError as err:
-            logging.warning("Download failed, skipping entry: %s", str(err))
+            result = subprocess.run(
+                cmd,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+            )
+        except FileNotFoundError as err:
+            raise RiftError("Unable to run dnf: command not found") from err
+        except subprocess.CalledProcessError as err:
+            detail = (err.stderr or err.stdout or "").strip()
+            raise RiftError(
+                "Unable to synchronize repository from URL "
+                f"{self.source.geturl()}: "
+                f"{detail or f'exit code: {err.returncode}'}"
+            ) from err
+        for stream in (result.stdout, result.stderr):
+            if stream:
+                self.log_write(stream.rstrip("\n"))
+        return result
+
+    def _write_repo_file(self, reposdir):
+        """Write a temporary .repo file for the source URL."""
+        lines = [
+            f"[{self.REPO_ID}]",
+            f"name={self.REPO_ID}",
+            f"baseurl={self.source.geturl()}",
+            "enabled=1",
+            "gpgcheck=0",
+            "skip_if_unavailable=0",
+            "metadata_expire=0",
+        ]
+        proxy = self.config.get("proxy")
+        if proxy:
+            lines.append(f"proxy={proxy}")
+        repo_path = os.path.join(reposdir, f"{self.REPO_ID}.repo")
+        with open(repo_path, "w", encoding="utf-8") as repo_file:
+            repo_file.write("\n".join(lines) + "\n")
+
+    def _reposync(self, installroot, reposdir, cachedir):
+        """Run dnf reposync into the local mirror directory."""
+        cmd = [
+            self.DNF_BIN,
+            "--installroot",
+            installroot,
+            "--releasever=/",
+            f"--setopt=cachedir={cachedir}",
+            f"--setopt=reposdir={reposdir}",
+            f"--setopt=persistdir={os.path.join(installroot, 'persist')}",
+            f"--setopt=retries={self.retries}",
+            "--setopt=skip_if_unavailable=0",
+        ]
+        if self.patterns.include:
+            cmd.append(
+                f"--setopt={self.REPO_ID}.includepkgs={','.join(self.patterns.include)}"
+            )
+        if self.patterns.exclude:
+            cmd.append(
+                f"--setopt={self.REPO_ID}.excludepkgs={','.join(self.patterns.exclude)}"
+            )
+        # no_proxy is a global dnf.conf option, so it must be passed on the
+        # command line. proxy is a per-repo option and is set in the .repo file.
+        no_proxy = self.config.get("no_proxy")
+        if no_proxy:
+            cmd.append(f"--setopt=no_proxy={no_proxy}")
+        cmd.extend(
+            [
+                "--nogpgcheck",
+                "--repo",
+                self.REPO_ID,
+                "reposync",
+                "--download-path",
+                self.output,
+                "--norepopath",
+                "--download-metadata",
+                "--delete",
+            ]
+        )
+        self._run_dnf(cmd)
 
     def _run(self):
-        """Run DNF repository synchronization."""
-        # Initialize DNF runtime
-        base = dnf.Base()
-
-        # Create temporary directory and use it for DNF metadata cache in order
-        # to force re-download of repository metadata at every synchronizations,
-        # no matter metadata expiry datetime.
-        dnf_metadata_cache_dir = TempDir("dnf-metadata")
-        dnf_metadata_cache_dir.create()
-        base.conf.cachedir = dnf_metadata_cache_dir.path
-
-        # Add repository in runtime DNF configuration
-        base.repos.add_new_repo(self.name, base.conf, baseurl=[self.source.geturl()])
+        """Run DNF repository synchronization with dnf reposync."""
+        dnf_root = TempDir("dnf-reposync")
+        dnf_root.create()
         try:
-            base.fill_sack(load_system_repo=False)
-        except dnf.exceptions.RepoError as err:
-            raise RiftError(
-                "Unable to download repository metadata from URL "
-                f"{self.source.geturl()}: {err}"
-            ) from err
-
-        # Query all available packages in remote repository and process them
-        query = base.sack.query().available()
-        for package in query.run():
-            self._process_package(package)
-
-        # Close DNF runtime
-        base.close()
-
-        # Remove unindexed files and empty dirs, except repodata in output root
-        # directory.
-        self._clean_output(skip_repodata=True)
-
-        # Copy repodata directory from cache
-        cached_repodata_dirs = glob.glob(
-            f"{dnf_metadata_cache_dir.path}/{self.name}-*/repodata"
-        )
-        # Check there is only one result.
-        try:
-            assert len(cached_repodata_dirs) == 1
-        except AssertionError as err:
-            raise RiftError(
-                "Unexpected number of repodata directory in DNF "
-                f"cache: {cached_repodata_dirs}"
-            ) from err
-
-        # Remove repodata destination directory, if existing
-        repodata = os.path.join(self.output, "repodata")
-        if os.path.exists(repodata):
-            logging.info("Removing existing repository metadata %s", repodata)
-            shutil.rmtree(repodata)
-
-        # Copy new repodata downloaded in DNF metadata cache temporary directory
-        logging.info(
-            "Copying new cached repository metadata %s", cached_repodata_dirs[0]
-        )
-        shutil.copytree(cached_repodata_dirs[0], repodata)
-
-        # Remove DNF metadata cache temporary directory
-        dnf_metadata_cache_dir.delete()
+            reposdir = os.path.join(dnf_root.path, "repos")
+            cachedir = os.path.join(dnf_root.path, "cache")
+            os.makedirs(reposdir)
+            os.makedirs(cachedir)
+            self._write_repo_file(reposdir)
+            self._reposync(dnf_root.path, reposdir, cachedir)
+        finally:
+            dnf_root.delete()
 
 
 class RepoSyncFactory:

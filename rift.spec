@@ -15,11 +15,11 @@ BuildRequires:  python3-setuptools
 Summary:        Tool to build and maintain your own RPM based repository
 BuildArch:      noarch
 Requires:       createrepo_c
+Requires:       (dnf-plugins-core or dnf5-plugins)
 Requires:       genisoimage
 Requires:       lftp
 Requires:       openssh-clients
 Requires:       python3-boto3
-Requires:       python3-dnf
 Requires:       python3-jinja2
 Requires:       python3-PyYAML
 Requires:       python3-requests

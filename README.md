@@ -15,7 +15,8 @@ flexibility in the tests environments.
 To run the unit tests and static analysis, some dependencies are required:
 
 ```sh
-$ dnf -y install python3-pip python3-jinja2 python3-PyYAML python3-rpm python3-dnf python3-pytest python3-pytest-cov sudo rpm-sign rpmlint openssh-clients genisoimage qemu qemu-user qemu-img qemu-virtiofsd mock createrepo_c python3-yaml python3-xmltodict python3-boto3 pylint
+$ dnf -y install python3-pip python3-jinja2 python3-PyYAML python3-rpm python3-pytest python3-pytest-cov sudo rpm-sign rpmlint openssh-clients genisoimage qemu qemu-user qemu-img qemu-virtiofsd mock createrepo_c python3-yaml python3-xmltodict python3-boto3 pylint
+$ dnf -y install dnf-plugins-core || dnf -y install dnf5-plugins
 ```
 
 We recommand the use of [Fedora](https://fedoraproject.org) as developpement environnement.
