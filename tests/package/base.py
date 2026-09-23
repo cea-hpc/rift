@@ -6,6 +6,7 @@ import textwrap
 from unittest.mock import patch
 
 from rift import RiftError
+from rift.config import _DEFAULT_VARIANT
 from rift.gerrit import Review
 from rift.package import Package
 from rift.package._base import (
@@ -205,9 +206,11 @@ class ActionableArchPackageTest(RiftProjectTestCase):
             suffix=".sh",
         )
         test = Test(command.name)
-        actionable_pkg.run_local_test(test)
+        actionable_pkg.run_local_test(test, _DEFAULT_VARIANT)
         mock_run_command.assert_called_once_with(
-            command.name, capture_output=True, shell=True
+            f"export RIFT_VARIANT={_DEFAULT_VARIANT}; {command.name}",
+            capture_output=True,
+            shell=True,
         )
 
     @patch("rift.package._base.run_command")
@@ -221,8 +224,9 @@ class ActionableArchPackageTest(RiftProjectTestCase):
             suffix=".sh",
         )
         test = Test(command.name)
-        actionable_pkg.run_local_test(test, {"hey": "echo hey!"})
+        actionable_pkg.run_local_test(test, _DEFAULT_VARIANT, {"hey": "echo hey!"})
         mock_run_command.assert_called_once_with(
+            f"export RIFT_VARIANT={_DEFAULT_VARIANT}; "
             f"hey() {{ echo hey!; }}; export -f hey; {command.name}",
             capture_output=True,
             shell=True,

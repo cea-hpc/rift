@@ -44,7 +44,7 @@ from abc import ABC, abstractmethod
 import yaml
 
 from rift import RiftError
-from rift.config import OrderedLoader
+from rift.config import _DEFAULT_VARIANT, OrderedLoader
 from rift.repository import ProjectArchRepositories
 from rift.run import run_command
 from rift.utils import message
@@ -319,13 +319,13 @@ class ActionableArchPackage(ABC):
     def test(self, **kwargs):
         """Test package. Must be overriden in concrete format classes."""
 
-    def run_local_test(self, test, funcs=None):
+    def run_local_test(self, test, variant=_DEFAULT_VARIANT, funcs=None):
         """
         Run a test command on local host. Dict of shell functions can be
         provided. Shell will be initialized with these functions before running
         the test.
         """
-        cmd = ""
+        cmd = f"export RIFT_VARIANT={variant}; "
         if not funcs:
             funcs = {}
         for func, code in funcs.items():
