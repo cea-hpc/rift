@@ -53,6 +53,7 @@ from rift.proxy import AuthenticatedRepositoryProxyRuntime
 from rift.rpm import RPM
 from rift.run import run_command
 from rift.temp_dir import TempDir
+from rift.utils import message
 
 # Global dictionary of re-entrant locks for each mock name.
 _mock_chroot_locks = {}
@@ -269,6 +270,8 @@ class Mock:
         self._repo_proxy = AuthenticatedRepositoryProxyRuntime(self._config, repolist)
         self._repo_proxy.start()
         self._init_tmp_conf(repolist)
+        if not os.path.exists(f"/var/lib/mock/{self._mockname}"):
+            message("Initializing chroot, this can take several minutes...")
         self._exec(["--init"])
 
     def _bind_mount_dirs_opt(self, paths):
