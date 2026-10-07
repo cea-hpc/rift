@@ -138,6 +138,12 @@ class VMTest(RiftTestCase):
         self.config.set("version", "2.0")
         vm3 = VM(self.config, "x86_64")
         self.assertNotEqual(vm1.vmid, vm3.vmid)
+        # Variant slot distinguishes VMs with the same arch and version.
+        vm_slot0 = VM(self.config, "x86_64", slot=0)
+        vm_slot1 = VM(self.config, "x86_64", slot=1)
+        self.assertNotEqual(vm_slot0.vmid, vm_slot1.vmid)
+        vm_slot0_again = VM(self.config, "x86_64")
+        self.assertEqual(vm_slot0.vmid, vm_slot0_again.vmid)
 
     def test_image_local(self):
         vm = VM(self.config, platform.machine())
@@ -352,7 +358,7 @@ class VMTest(RiftTestCase):
             "-machine",
             "memory-backend=mem,accel=kvm",
             "-chardev",
-            "socket,id=project,path=/tmp/.virtio_fs_project",
+            f"socket,id=project,path=/tmp/.virtio_fs_project-{vm.vmid}",
             "-device",
             "vhost-user-fs-pci,queue-size=1024,chardev=project,tag=project",
         ]
@@ -366,7 +372,7 @@ class VMTest(RiftTestCase):
             "-machine",
             "memory-backend=mem",
             "-chardev",
-            "socket,id=project,path=/tmp/.virtio_fs_project",
+            f"socket,id=project,path=/tmp/.virtio_fs_project-{vm.vmid}",
             "-device",
             "vhost-user-fs-pci,queue-size=1024,chardev=project,tag=project",
         ]
@@ -381,7 +387,7 @@ class VMTest(RiftTestCase):
 
         repo_args = [
             "-chardev",
-            f"socket,id={reponame},path=/tmp/.virtio_fs_{reponame}",
+            f"socket,id={reponame},path=/tmp/.virtio_fs_{reponame}-{vm.vmid}",
             "-device",
             f"vhost-user-fs-pci,queue-size=1024,chardev={reponame},tag={reponame}",
         ]

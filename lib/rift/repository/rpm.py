@@ -270,16 +270,17 @@ class LocalRepository:
             # rpms_dir already points to architecture directory
             shutil.copy(rpm.filepath, self.rpms_dir(arch))
 
-        if rpm.is_source:
-            logging.debug("Adding %s to repo %s", rpm.filepath, self.srpms_dir)
-            shutil.copy(rpm.filepath, self.srpms_dir)
-        else:
-            # Add noarch binary package in all architectures repositories
-            if rpm.arch == "noarch":
-                for arch in self.config.get("arch"):
-                    add_bin_arch(arch)
+        with repo_lock:
+            if rpm.is_source:
+                logging.debug("Adding %s to repo %s", rpm.filepath, self.srpms_dir)
+                shutil.copy(rpm.filepath, self.srpms_dir)
             else:
-                add_bin_arch(rpm.arch)
+                # Add noarch binary package in all architectures repositories
+                if rpm.arch == "noarch":
+                    for arch in self.config.get("arch"):
+                        add_bin_arch(arch)
+                else:
+                    add_bin_arch(rpm.arch)
 
     def delete(self, rpm):
         """Delete provided RPM package from repository."""

@@ -60,7 +60,6 @@ class PackageRPM(Package):
         # Extracted from infos.yaml
         self.ignore_rpms = None
         self.rpmnames = None
-        self.variants = []
         # Spec object
         self.spec = None
 
@@ -71,7 +70,7 @@ class PackageRPM(Package):
             data["rpm_names"] = self.rpmnames
         if self.ignore_rpms:
             data["ignore_rpms"] = self.ignore_rpms
-        if self.variants:
+        if self.has_real_variants():
             data["variants"] = self.variants
         return data
 
@@ -95,7 +94,7 @@ class PackageRPM(Package):
         its main attributes."""
         # load infos.yaml with parent class
         super().load(infopath)
-        arch_pkg = self.for_arch(self._config.chroot_arch())
+        arch_pkg = self.for_arch(self._config.chroot_arch(), self.variants[0])
         self.spec = Spec(
             self.buildfile, arch_pkg.mock, arch_pkg.repos.all, config=self._config
         )
@@ -176,11 +175,6 @@ class PackageRPM(Package):
         logging.info("Adding changelog record for '%s'", author)
         self.spec.add_changelog_entry(author, comment, bump)
 
-    def has_real_variants(self):
-        """Return True if package has more then the default main variant."""
-        assert self.variants  # Cannot be called with empty variants list.
-        return len(self.variants) > 1 or self.variants[0] != _DEFAULT_VARIANT
-
     def analyze(self, review, configdir):
         assert self.spec is not None
         self.spec.analyze(review, configdir)
@@ -195,22 +189,37 @@ class PackageRPM(Package):
             not self.spec.exclusive_archs or arch in self.spec.exclusive_archs
         )
 
-    def for_arch(self, arch):
+    def for_arch(self, arch, variant):
         """
         Return RPM package specialized for a given architecture.
         """
-        return ActionableArchPackageRPM(self, arch)
+        return ActionableArchPackageRPM(self, arch, variant)
 
 
 class ActionableArchPackageRPM(ActionableArchPackage):
     """Handle rift project package in RPM format for a specific architecture."""
 
-    def __init__(self, package, arch):
+    def __init__(self, package, arch, variant):
         super().__init__(package, arch)
-        self.mock = Mock(self.config, arch, self.config.get("version"))
+        self.variant = variant
+        self.mock = Mock(
+            self.config, arch, self.config.get("version"), slot=self._variant_slot()
+        )
+
+    def _variant_slot(self):
+        try:
+            return self.package.variants.index(self.variant)
+        except ValueError:
+            raise RiftError(
+                f"Unknown variant {self.variant!r} for package {self.package.name}"
+            ) from None
 
     def build(self, **kwargs):
-        message(f"Building RPM package '{self.name}' on architecture {self.arch}")
+        message(
+            f"Building RPM package '{self.name}'"
+            + (f" variant {self.variant}" if self.package.has_real_variants() else "")
+            + f" on architecture {self.arch}"
+        )
 
         # Define list of repositories included in mock build environment
         mock_repos = self.repos.all
@@ -222,27 +231,27 @@ class ActionableArchPackageRPM(ActionableArchPackage):
                 staging.for_format(self.package.format).repo.consumables[self.arch]
             )
 
+        sign = kwargs.get("sign", False)
+
         with self.mock.lock():
             message("Preparing Mock environment...")
             self.mock.init(mock_repos)
 
             message("Building SRPM...")
-            sign = kwargs.get("sign", False)
             srpm = self._build_srpm(sign)
             logging.info("Built: %s", srpm.filepath)
 
-            for variant in self.package.variants:
-                message(
-                    "Building RPMS"
-                    + (
-                        f" variant {variant}"
-                        if self.package.has_real_variants()
-                        else ""
-                    )
-                    + "..."
+            message(
+                "Building RPMS"
+                + (
+                    f" variant {self.variant}"
+                    if self.package.has_real_variants()
+                    else ""
                 )
-                for rpm in self._build_rpms(srpm, variant, sign):
-                    logging.info("Built: %s", rpm.filepath)
+                + "..."
+            )
+            for rpm in self._build_rpms(srpm, sign):
+                logging.info("Built: %s", rpm.filepath)
 
         message("RPMS successfully built")
 
@@ -257,7 +266,12 @@ class ActionableArchPackageRPM(ActionableArchPackage):
             ]
         else:
             extra_repos = []
-        vm = VM(self.config, self.arch, extra_repos=extra_repos)
+        vm = VM(
+            self.config,
+            self.arch,
+            extra_repos=extra_repos,
+            slot=self._variant_slot(),
+        )
 
         if vm.running():
             raise RiftError("VM is already running")
@@ -265,57 +279,54 @@ class ActionableArchPackageRPM(ActionableArchPackage):
         message(f"Preparing {self.arch} test environment")
         vm.start(False)
 
-        for variant in self.package.variants:
-            # Setup repos in VM considering the variant and presence of working
-            # repository.
-            repos_args = ""
-            if variant != _DEFAULT_VARIANT:
-                for repo in self.repos.for_variant(variant):
-                    repos_args += f"--enablerepo={repo} "
-            if self.repos.working is None:
-                repos_args = "--disablerepo=working"
-            vm.cmd(f"yum -y -d0 {repos_args} update")
+        # Setup repos in VM considering the variant and presence of working
+        # repository.
+        repos_args = ""
+        if self.variant != _DEFAULT_VARIANT:
+            for repo in self.repos.for_variant(self.variant):
+                repos_args += f"--enablerepo={repo} "
+        if self.repos.working is None:
+            repos_args = "--disablerepo=working"
+        vm.cmd(f"yum -y -d0 {repos_args} update")
 
-            banner(
-                f"Starting tests of package {self.name}"
-                + (f" variant {variant}" if self.package.has_real_variants() else "")
-                + f" on architecture {self.arch}"
+        banner(
+            f"Starting tests of package {self.name}"
+            + (f" variant {self.variant}" if self.package.has_real_variants() else "")
+            + f" on architecture {self.arch}"
+        )
+
+        tests = list(self.package.tests())
+        if not kwargs.get("noauto", False):
+            tests.insert(
+                0,
+                BasicTest(
+                    self.package,
+                    self.mock,
+                    self.repos.all,
+                    self.variant,
+                    config=self.config,
+                ),
             )
-
-            tests = list(self.package.tests())
-            if not kwargs.get("noauto", False):
-                tests.insert(
-                    0,
-                    BasicTest(
-                        self.package,
-                        self.mock,
-                        self.repos.all,
-                        variant,
-                        config=self.config,
-                    ),
-                )
-            for test in tests:
-                case = TestCase(
-                    test.name, self.name, variant, self.arch, self.package.format
-                )
-                now = time.time()
-                message(f"Running test '{case.fullname}' on architecture '{self.arch}'")
-                if test.local:
-                    proc = self.run_local_test(test, variant, vm.local_test_funcs())
-                else:
-                    proc = vm.run_test(test, variant)
-                if proc.returncode == 0:
-                    results.add_success(
-                        case, time.time() - now, out=proc.out, err=proc.err
-                    )
-                    message(f"Test '{case.fullname}' on architecture {self.arch}: OK")
-                else:
-                    results.add_failure(
-                        case, time.time() - now, out=proc.out, err=proc.err
-                    )
-                    message(
-                        f"Test '{case.fullname}' on architecture {self.arch}: ERROR"
-                    )
+        for test in tests:
+            case = TestCase(
+                test.name,
+                self.name,
+                self.variant,
+                self.arch,
+                self.package.format,
+            )
+            now = time.time()
+            message(f"Running test '{case.fullname}' on architecture '{self.arch}'")
+            if test.local:
+                proc = self.run_local_test(test, self.variant, vm.local_test_funcs())
+            else:
+                proc = vm.run_test(test, self.variant)
+            if proc.returncode == 0:
+                results.add_success(case, time.time() - now, out=proc.out, err=proc.err)
+                message(f"Test '{case.fullname}' on architecture {self.arch}: OK")
+            else:
+                results.add_failure(case, time.time() - now, out=proc.out, err=proc.err)
+                message(f"Test '{case.fullname}' on architecture {self.arch}: ERROR")
 
         if not kwargs.get("noquit", False):
             message(f"Cleaning {self.arch} test environment")
@@ -363,12 +374,12 @@ class ActionableArchPackageRPM(ActionableArchPackage):
         tmpdir.delete()
         return srpm
 
-    def _build_rpms(self, srpm, variant, sign):
+    def _build_rpms(self, srpm, sign):
         """
         Build package RPMS using provided `srpm' and repository list for build
         requires.
         """
-        return self.mock.build_rpms(srpm, variant, self.repos, sign)
+        return self.mock.build_rpms(srpm, self.variant, self.repos, sign)
 
 
 class BasicTest(Test):

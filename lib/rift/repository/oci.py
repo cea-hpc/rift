@@ -37,8 +37,11 @@ Manage OCI archive repository structure.
 import glob
 import logging
 import os
+import threading
 
 from rift.repository._base import ArchRepositoriesBase
+
+repo_lock = threading.Lock()
 
 
 class ArchRepositoriesOCI(ArchRepositoriesBase):
@@ -57,12 +60,13 @@ class ArchRepositoriesOCI(ArchRepositoriesBase):
         """Make sure OCI archives repository directory exists or create it."""
         if not self.path:
             return
-        if not os.path.exists(self.working_dir):
-            logging.debug("Creating working directory %s", self.working_dir)
-            os.mkdir(self.working_dir)
-        if not os.path.exists(self.path):
-            logging.debug("Creating oci repository directory %s", self.path)
-            os.mkdir(self.path)
+        with repo_lock:
+            if not os.path.exists(self.working_dir):
+                logging.debug("Creating working directory %s", self.working_dir)
+                os.mkdir(self.working_dir)
+            if not os.path.exists(self.path):
+                logging.debug("Creating oci repository directory %s", self.path)
+                os.mkdir(self.path)
 
     def delete_matching(self, package):
         """

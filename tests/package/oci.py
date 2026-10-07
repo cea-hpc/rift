@@ -6,6 +6,7 @@ import textwrap
 from unittest.mock import Mock, patch
 
 from rift import RiftError
+from rift.config import _DEFAULT_VARIANT
 from rift.gerrit import Review
 from rift.package.oci import ActionableArchPackageOCI, PackageOCI
 from rift.repository.oci import ArchRepositoriesOCI
@@ -230,7 +231,7 @@ class PackageOCITest(RiftProjectTestCase):
         """PackageOCI for_arch() returns ActionableArchPackageOCI object."""
         pkgname = "pkg"
         pkg = PackageOCI(pkgname, self.config, self.staff, self.modules)
-        pkg_arch = pkg.for_arch("x86_64")
+        pkg_arch = pkg.for_arch("x86_64", _DEFAULT_VARIANT)
         self.assertIsInstance(pkg_arch, ActionableArchPackageOCI)
         self.assertEqual(pkg_arch.name, pkg.name)
         self.assertEqual(pkg_arch.buildfile, pkg.buildfile)

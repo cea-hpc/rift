@@ -84,6 +84,7 @@ class Package(ABC):
         self.origin = None
         self.depends = None
         self.exclude_archs = None
+        self.variants = [_DEFAULT_VARIANT]
 
         # Static paths
         pkgdir = os.path.join(self._config.get("packages_dir"), self.name)
@@ -286,11 +287,15 @@ class Package(ABC):
         """
         return not self.exclude_archs or arch not in self.exclude_archs
 
+    def has_real_variants(self):
+        """Return True if package has more than the default main variant."""
+        return len(self.variants) > 1 or self.variants[0] != _DEFAULT_VARIANT
+
     @abstractmethod
-    def for_arch(self, arch):
+    def for_arch(self, arch, variant):
         """
         Must return the ActionableArchPackage child associated to the format
-        package child class for the given architecture.
+        package child class for the given architecture and variant.
         """
 
 

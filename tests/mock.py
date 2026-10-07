@@ -28,10 +28,16 @@ class MockTest(RiftProjectTestCase):
     """
 
     def test_mock_object(self):
-        """Test Mock instanciation"""
-        mock = Mock(config=[], arch="x86_64", proj_vers=1.0)
-        self.assertEqual(mock._mockname, "rift-x86_64-{}-1.0".format(getpass.getuser()))
-        self.assertEqual(mock._config, [])
+        """Test Mock instanciation and buildroot name (arch, version, slot)."""
+        user = getpass.getuser()
+        mock0 = Mock(config=[], arch="x86_64", proj_vers=1.0)
+        self.assertEqual(mock0._mockname, f"rift-x86_64-{user}-1.0-0")
+        self.assertEqual(mock0._config, [])
+        self.assertEqual(mock0._slot, 0)
+        mock1 = Mock(config=[], arch="x86_64", proj_vers=1.0, slot=1)
+        self.assertEqual(mock1._mockname, f"rift-x86_64-{user}-1.0-1")
+        mock2 = Mock(config=[], arch="x86_64", proj_vers=1.0, slot=2)
+        self.assertEqual(mock2._mockname, f"rift-x86_64-{user}-1.0-2")
 
     def test_build_context(self):
         """Test mock context generation"""
@@ -48,7 +54,10 @@ class MockTest(RiftProjectTestCase):
             )
         ]
         context = mock._build_template_ctx(repolist)
-        self.assertEqual(context["name"], "rift-{}-{}".format(arch, getpass.getuser()))
+        self.assertEqual(
+            context["name"],
+            f"rift-{arch}-{getpass.getuser()}-0",
+        )
         self.assertEqual(context["arch"], arch)
         repos_ctx = context["repos"][0]
         self.assertEqual(repos_ctx["name"], "tmp")

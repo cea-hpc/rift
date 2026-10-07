@@ -115,14 +115,16 @@ class Mock:
     MOCK_FILES = ["logging.ini", "site-defaults.cfg"]
     MOCK_RESULT = "/var/lib/mock/%s/result"
 
-    def __init__(self, config, arch, proj_vers=None):
+    def __init__(self, config, arch, proj_vers=None, slot=0):
         self._config = config
         self._arch = arch
+        self._slot = slot
         self._tmpdir = None
         self._repo_proxy = None
         self._mockname = f"rift-{self._arch}-{getpass.getuser()}"
         if proj_vers:
             self._mockname = f"{self._mockname}-{proj_vers}"
+        self._mockname = f"{self._mockname}-{slot}"
         logging.debug(self._mockname)
 
     @contextmanager

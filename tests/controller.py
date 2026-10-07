@@ -16,6 +16,7 @@ from unittest.mock import Mock, call, patch
 from rift import DeclError, RiftError
 from rift.config import _DEFAULT_VARIANT
 from rift.controller import (
+    _validate_pkgs,
     get_packages_in_graph,
     get_packages_to_build,
     main,
@@ -475,25 +476,49 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
 
     @patch("sys.stdout", new_callable=StringIO)
     @patch("rift.controller.remove_packages")
-    @patch("rift.controller.validate_pkgs")
+    @patch("rift.controller.StagingRepository")
+    @patch("rift.package._project.PackageOCI", autospec=PackageOCI)
+    @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
+    @patch("rift.controller._validate_pkgs", wraps=_validate_pkgs)
     @patch("rift.controller.get_packages_from_patch")
     def test_action_validdiff(
         self,
         mock_get_packages_from_patch,
         mock_validate_pkgs,
+        mock_pkg_rpm,
+        mock_pkg_oci,
+        mock_staging_repo_cls,
         mock_remove_packages,
         mock_stdout,
     ):
         """Test validdiff action calls expected functions"""
-        updated = [
-            PackageRPM("pkg", self.config, self.staff, self.modules),
-            PackageOCI("oci", self.config, self.staff, self.modules),
-        ]
-        removed = []
-        mock_get_packages_from_patch.return_value = (updated, removed)
-        mock_validate_pkgs.return_value = TestResults()
         self.config.set("arch", ["x86_64"])
         self.update_project_conf()
+        self.make_pkg(build_requires=[])
+        self.make_pkg(name="oci", build_requires=[])
+
+        mock_pkg_rpm_objs = mock_pkg_rpm.return_value
+        mock_pkg_oci_objs = mock_pkg_oci.return_value
+        PackageRPM.__init__(
+            mock_pkg_rpm_objs, "pkg", self.config, self.staff, self.modules
+        )
+        PackageOCI.__init__(
+            mock_pkg_oci_objs, "oci", self.config, self.staff, self.modules
+        )
+        mock_get_packages_from_patch.return_value = (
+            [mock_pkg_rpm_objs, mock_pkg_oci_objs],
+            [],
+        )
+        mock_pkg_rpm_objs.supports_arch.return_value = True
+        mock_pkg_oci_objs.supports_arch.return_value = True
+        mock_act_arch_pkg_rpm = Mock(spec=ActionableArchPackageRPM)
+        mock_act_arch_pkg_oci = Mock(spec=ActionableArchPackageOCI)
+        mock_pkg_rpm_objs.for_arch.return_value = mock_act_arch_pkg_rpm
+        mock_pkg_oci_objs.for_arch.return_value = mock_act_arch_pkg_oci
+        mock_act_arch_pkg_rpm.test.return_value = TestResults()
+        mock_act_arch_pkg_oci.test.return_value = TestResults()
+        mock_staging_repo_cls.return_value = Mock()
+
         self.assertEqual(main(["validdiff", "/dev/null"]), 0)
 
         mock_get_packages_from_patch.assert_called_once()
@@ -501,27 +526,36 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
         mock_remove_packages.assert_called_once()
 
         out = mock_stdout.getvalue()
-        self.assertIn("** Validate thread validate-x86_64 output: **", out)
+        self.assertIn("** Validate thread validate-x86_64-main output: **", out)
 
     @patch("sys.stdout", new_callable=StringIO)
-    @patch("rift.controller.validate_pkgs")
     @patch("rift.controller.remove_packages")
+    @patch("rift.controller.StagingRepository")
+    @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
     @patch("rift.controller.get_packages_from_patch")
     def test_action_validdiff_quiet_success(
         self,
         mock_get_packages_from_patch,
+        mock_pkg_rpm,
+        mock_staging_repo_cls,
         mock_remove_packages,
-        mock_validate_pkgs,
         mock_stdout,
     ):
         """validiff --quiet does not print build output on success."""
-        mock_get_packages_from_patch.return_value = (
-            [PackageRPM("pkg", self.config, self.staff, self.modules)],
-            [],
-        )
-        mock_validate_pkgs.return_value = TestResults()
         self.config.set("arch", ["x86_64", "aarch64"])
         self.update_project_conf()
+        self.make_pkg(build_requires=[])
+
+        mock_pkg_rpm_objs = mock_pkg_rpm.return_value
+        PackageRPM.__init__(
+            mock_pkg_rpm_objs, "pkg", self.config, self.staff, self.modules
+        )
+        mock_get_packages_from_patch.return_value = ([mock_pkg_rpm_objs], [])
+        mock_pkg_rpm_objs.supports_arch.return_value = True
+        mock_act_arch_pkg_rpm = Mock(spec=ActionableArchPackageRPM)
+        mock_pkg_rpm_objs.for_arch.return_value = mock_act_arch_pkg_rpm
+        mock_act_arch_pkg_rpm.test.return_value = TestResults()
+        mock_staging_repo_cls.return_value = Mock()
 
         self.assertEqual(main(["validdiff", "/dev/null", "--quiet"]), 0)
 
@@ -529,38 +563,45 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
         self.assertNotIn("Validate thread", out)
 
     @patch("sys.stdout", new_callable=StringIO)
-    @patch("rift.controller.get_packages_from_patch")
+    @patch("rift.controller._validate_pkg_variant")
     @patch("rift.controller.remove_packages")
-    @patch("rift.controller.validate_pkgs")
+    @patch("rift.controller.StagingRepository")
+    @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
+    @patch("rift.controller.get_packages_from_patch")
     def test_action_validdiff_quiet_failure(
         self,
-        mock_validate_pkgs,
-        mock_remove_packages,
         mock_get_packages_from_patch,
+        mock_pkg_rpm,
+        mock_staging_repo_cls,
+        mock_remove_packages,
+        mock_validate_pkg_variant,
         mock_stdout,
     ):
         """validiff --quiet prints build output on failure."""
-
-        mock_get_packages_from_patch.return_value = (
-            [PackageRPM("pkg", self.config, self.staff, self.modules)],
-            [],
-        )
-
         validate_failed = TestResults()
         validate_failed.add_failure(
             TestCase("build", "pkg", _DEFAULT_VARIANT, "x86_64", "rpm"),
             1.0,
             err="simulated validate failure",
         )
-        mock_validate_pkgs.return_value = validate_failed
+        mock_validate_pkg_variant.return_value = validate_failed
+        mock_staging_repo_cls.return_value = Mock()
 
         self.config.set("arch", ["x86_64"])
         self.update_project_conf()
+        self.make_pkg(build_requires=[])
+
+        mock_pkg_rpm_objs = mock_pkg_rpm.return_value
+        PackageRPM.__init__(
+            mock_pkg_rpm_objs, "pkg", self.config, self.staff, self.modules
+        )
+        mock_get_packages_from_patch.return_value = ([mock_pkg_rpm_objs], [])
+        mock_pkg_rpm_objs.supports_arch.return_value = True
 
         self.assertEqual(main(["validdiff", "/dev/null", "--quiet"]), 1)
 
         self.assertIn(
-            "** Validate thread validate-x86_64 output: **",
+            "** Validate thread validate-x86_64-main output: **",
             mock_stdout.getvalue(),
         )
 
@@ -609,9 +650,8 @@ class ControllerProjectActionValiddiffTest(RiftProjectTestCase):
         for arch in self.config.get("arch"):
             mock_pkg_rpm_objs.supports_arch.assert_any_call(arch)
 
-        # Check RPM package check() method is called for all supported arch
-        # (ie. twice).
-        mock_pkg_rpm_objs.check.assert_has_calls([call(), call()])
+        # Check RPM package check() once per package.
+        mock_pkg_rpm_objs.check.assert_called_once_with()
 
         # Check actionable RPM package build(), publish(staging), test() and
         # clean() methods are called for all supported arch (ie. twice).
@@ -764,8 +804,8 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         mock_act_arch_pkg_oci.clean.assert_has_calls([call(), call()])
 
         out = mock_stdout.getvalue()
-        self.assertIn("** Build thread build-x86_64 output: **", out)
-        self.assertIn("** Build thread build-aarch64 output: **", out)
+        self.assertIn("** Build thread build-x86_64-main output: **", out)
+        self.assertIn("** Build thread build-aarch64-main output: **", out)
 
         # Remove temporary working repo and unregister its deletion at exit
         shutil.rmtree(working_repo)
@@ -815,6 +855,108 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
             [call(sign=False, staging=None), call(sign=False, staging=None)]
         )
         mock_act_arch_pkg_rpm.clean.assert_has_calls([call(), call()])
+
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
+    def test_action_build_variants(self, mock_pkg_rpm, mock_stdout):
+        """build runs each RPM variant in its own thread."""
+        variants = ["variant1", "variant2"]
+        arch = "x86_64"
+        self.config.set("arch", [arch])
+        self.update_project_conf()
+
+        self.make_pkg(
+            build_requires=[],
+            formats=["rpm"],
+            variants=variants,
+        )
+
+        mock_pkg_rpm_objs = mock_pkg_rpm.return_value
+        PackageRPM.__init__(
+            mock_pkg_rpm_objs, "pkg", self.config, self.staff, self.modules
+        )
+        mock_pkg_rpm_objs.variants = variants
+        mock_pkg_rpm_objs.supports_arch.return_value = True
+
+        mock_act_arch_pkg_variant1 = Mock(spec=ActionableArchPackageRPM)
+        mock_act_arch_pkg_variant2 = Mock(spec=ActionableArchPackageRPM)
+        mock_pkg_rpm_objs.for_arch.side_effect = [
+            mock_act_arch_pkg_variant1,
+            mock_act_arch_pkg_variant2,
+        ]
+
+        self.assertEqual(main(["build", "pkg", "--formats", "rpm"]), 0)
+
+        self.assertCountEqual(
+            mock_pkg_rpm_objs.for_arch.call_args_list,
+            [
+                call("x86_64", variant="variant1"),
+                call("x86_64", variant="variant2"),
+            ],
+        )
+        mock_act_arch_pkg_variant1.build.assert_called_once_with(
+            sign=False, staging=None
+        )
+        mock_act_arch_pkg_variant2.build.assert_called_once_with(
+            sign=False, staging=None
+        )
+        out = mock_stdout.getvalue()
+        self.assertIn("** Build thread build-x86_64-variant1 output: **", out)
+        self.assertIn("** Build thread build-x86_64-variant2 output: **", out)
+
+    @patch("rift.controller.RiftThread")
+    @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
+    def test_action_build_seq(self, mock_pkg_rpm, mock_rift_thread):
+        """build --seq runs each architecture and variant without worker threads."""
+        variants = ["variant1", "variant2"]
+        archs = ["x86_64", "aarch64"]
+        self.config.set("arch", archs)
+        self.update_project_conf()
+
+        self.make_pkg(
+            build_requires=[],
+            formats=["rpm"],
+            variants=variants,
+        )
+
+        mock_pkg_rpm_objs = mock_pkg_rpm.return_value
+        PackageRPM.__init__(
+            mock_pkg_rpm_objs, "pkg", self.config, self.staff, self.modules
+        )
+        mock_pkg_rpm_objs.variants = variants
+        mock_pkg_rpm_objs.supports_arch.return_value = True
+
+        mock_act_x86_64_variant1 = Mock(spec=ActionableArchPackageRPM)
+        mock_act_x86_64_variant2 = Mock(spec=ActionableArchPackageRPM)
+        mock_act_aarch64_variant1 = Mock(spec=ActionableArchPackageRPM)
+        mock_act_aarch64_variant2 = Mock(spec=ActionableArchPackageRPM)
+        mock_pkg_rpm_objs.for_arch.side_effect = [
+            mock_act_x86_64_variant1,
+            mock_act_x86_64_variant2,
+            mock_act_aarch64_variant1,
+            mock_act_aarch64_variant2,
+        ]
+
+        self.assertEqual(main(["build", "pkg", "--formats", "rpm", "--seq"]), 0)
+
+        self.assertEqual(
+            mock_pkg_rpm_objs.for_arch.call_args_list,
+            [
+                call("x86_64", variant="variant1"),
+                call("x86_64", variant="variant2"),
+                call("aarch64", variant="variant1"),
+                call("aarch64", variant="variant2"),
+            ],
+        )
+        mock_act_x86_64_variant1.build.assert_called_once_with(sign=False, staging=None)
+        mock_act_x86_64_variant2.build.assert_called_once_with(sign=False, staging=None)
+        mock_act_aarch64_variant1.build.assert_called_once_with(
+            sign=False, staging=None
+        )
+        mock_act_aarch64_variant2.build.assert_called_once_with(
+            sign=False, staging=None
+        )
+        mock_rift_thread.assert_not_called()
 
     def test_action_build_publish_functional(self):
         """Functional RPM build and publish test"""
@@ -866,7 +1008,7 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         # Create fake package without build requirement but 2 variants
         self.make_pkg(build_requires=[], variants=["variant1", "variant2"])
 
-        main(["build", "pkg", "--publish"])
+        self.assertEqual(main(["build", "pkg", "--publish"]), 0)
         for arch in self.config.get("arch"):
             self.assertTrue(
                 os.path.exists(f"{working_repo}/{arch}/pkg-variant1-1.0-1.noarch.rpm")
@@ -1078,15 +1220,22 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         self.assertNotIn("Build thread", out)
 
     @patch("sys.stdout", new_callable=StringIO)
+    @patch("rift.controller._build_pkg_variant")
     @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
-    @patch("rift.controller.build_architecture")
     def test_action_build_quiet_failure(
         self,
-        mock_build_architecture,
         mock_pkg_rpm,
+        mock_build_pkg_variant,
         mock_stdout,
     ):
         """build --quiet prints build output on failure."""
+        build_failed = TestResults()
+        build_failed.add_failure(
+            TestCase("build", "pkg", _DEFAULT_VARIANT, "x86_64", "rpm"),
+            1.0,
+            err="simulated build failure",
+        )
+        mock_build_pkg_variant.return_value = build_failed
 
         self.config.set("arch", ["x86_64"])
         self.update_project_conf()
@@ -1096,18 +1245,12 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         PackageRPM.__init__(
             mock_pkg_rpm_objs, "pkg", self.config, self.staff, self.modules
         )
-        build_failed = TestResults("build-x86_64")
-        build_failed.add_failure(
-            TestCase("build", "pkg", _DEFAULT_VARIANT, "x86_64", "rpm"),
-            1.0,
-            err="simulated build failure",
-        )
-        mock_build_architecture.return_value = build_failed
+        mock_pkg_rpm_objs.supports_arch.return_value = True
 
         self.assertEqual(main(["build", "pkg", "--formats", "rpm", "--quiet"]), 2)
 
         self.assertIn(
-            "** Build thread build-x86_64 output: **",
+            "** Build thread build-x86_64-main output: **",
             mock_stdout.getvalue(),
         )
 
@@ -1440,8 +1583,8 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         self.assertEqual(main(["validate", "pkg"]), 0)
 
         out = mock_stdout.getvalue()
-        self.assertIn("** Validate thread validate-x86_64 output: **", out)
-        self.assertIn("** Validate thread validate-aarch64 output: **", out)
+        self.assertIn("** Validate thread validate-x86_64-main output: **", out)
+        self.assertIn("** Validate thread validate-aarch64-main output: **", out)
 
         # Check RPM package supports_arch() method is called for all supported
         # archs.
@@ -1449,10 +1592,9 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
             mock_pkg_rpm_objs.supports_arch.assert_any_call(arch)
             mock_pkg_oci_objs.supports_arch.assert_any_call(arch)
 
-        # Check RPM and OCI package check() method is called for all supported
-        # arch (ie. twice).
-        mock_pkg_rpm_objs.check.assert_has_calls([call(), call()])
-        mock_pkg_oci_objs.check.assert_has_calls([call(), call()])
+        # Check RPM and OCI package check() once per package (not per arch).
+        mock_pkg_rpm_objs.check.assert_called_once_with()
+        mock_pkg_oci_objs.check.assert_called_once_with()
 
         # Check actionable RPM and OCI package build(), publish(staging),
         # test() and clean() methods are called for all supported arch (ie.
@@ -1531,21 +1673,27 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         self.assertNotIn("Validate thread", out)
 
     @patch("sys.stdout", new_callable=StringIO)
+    @patch("rift.controller._validate_pkg_variant")
+    @patch("rift.controller.StagingRepository")
     @patch("rift.package._project.PackageOCI", autospec=PackageOCI)
     @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
-    @patch("rift.controller.validate_pkgs")
     def test_action_validate_quiet_failure(
-        self, mock_validate_pkgs, mock_pkg_rpm, mock_pkg_oci, mock_stdout
+        self,
+        mock_pkg_rpm,
+        mock_pkg_oci,
+        mock_staging_repo_cls,
+        mock_validate_pkg_variant,
+        mock_stdout,
     ):
         """validate --quiet prints build output on failure."""
-
         validate_failed = TestResults()
         validate_failed.add_failure(
             TestCase("build", "pkg", _DEFAULT_VARIANT, "x86_64", "rpm"),
             1.0,
             err="simulated validate failure",
         )
-        mock_validate_pkgs.return_value = validate_failed
+        mock_validate_pkg_variant.return_value = validate_failed
+        mock_staging_repo_cls.return_value = Mock()
 
         self.config.set("arch", ["x86_64"])
         self.update_project_conf()
@@ -1559,11 +1707,13 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         PackageOCI.__init__(
             mock_pkg_oci_objs, "pkg", self.config, self.staff, self.modules
         )
+        mock_pkg_rpm_objs.supports_arch.return_value = True
+        mock_pkg_oci_objs.supports_arch.return_value = True
 
         self.assertEqual(main(["validate", "pkg", "--quiet"]), 2)
 
         self.assertIn(
-            "** Validate thread validate-x86_64 output: **",
+            "** Validate thread validate-x86_64-main output: **",
             mock_stdout.getvalue(),
         )
 
@@ -1867,9 +2017,8 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
         # Check OCI package supports_arch() method has not been called called.
         mock_pkg_oci_objs.supports_arch.assert_not_called()
 
-        # Check RPM package check() method is called for all supported arch
-        # (ie. twice), as opposed to OCI package check() method.
-        mock_pkg_rpm_objs.check.assert_has_calls([call(), call()])
+        # Check RPM package check() once per package, not OCI.
+        mock_pkg_rpm_objs.check.assert_called_once_with()
         mock_pkg_oci_objs.check.assert_not_called()
 
         # Check actionable RPM package build(), publish(staging), test() and
@@ -1997,12 +2146,11 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
             log.output,
         )
 
-        # Check RPM and OCI package load() and check() methods are called for
-        # all supported arch (ie. twice).
-        mock_pkg_rpm_objs.load.assert_has_calls([call(), call()])
-        mock_pkg_oci_objs.load.assert_has_calls([call(), call()])
-        mock_pkg_rpm_objs.check.assert_has_calls([call(), call()])
-        mock_pkg_oci_objs.check.assert_has_calls([call(), call()])
+        # Check RPM and OCI package load() and check() once per package.
+        mock_pkg_rpm_objs.load.assert_called_once_with()
+        mock_pkg_oci_objs.load.assert_called_once_with()
+        mock_pkg_rpm_objs.check.assert_called_once_with()
+        mock_pkg_oci_objs.check.assert_called_once_with()
 
         # Check actionable RPM and OCI package build(), publish(), test() and
         # clean() have not been called.
@@ -2068,12 +2216,11 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
             "ERROR:root:oci build failure: fake oci build failure", log.output
         )
 
-        # Check RPM and OCI package load() and check() methods are called for
-        # all supported arch (ie. twice).
-        mock_pkg_rpm_objs.load.assert_has_calls([call(), call()])
-        mock_pkg_oci_objs.load.assert_has_calls([call(), call()])
-        mock_pkg_rpm_objs.check.assert_has_calls([call(), call()])
-        mock_pkg_oci_objs.check.assert_has_calls([call(), call()])
+        # Check RPM and OCI package load() and check() once per package.
+        mock_pkg_rpm_objs.load.assert_called_once_with()
+        mock_pkg_oci_objs.load.assert_called_once_with()
+        mock_pkg_rpm_objs.check.assert_called_once_with()
+        mock_pkg_oci_objs.check.assert_called_once_with()
 
         # Check actionable RPM and OCI package build() has been called for all
         # supported arch (ie. twice).
@@ -2157,10 +2304,9 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
             mock_pkg_rpm_objs.supports_arch.assert_any_call(arch)
             mock_pkg_oci_objs.supports_arch.assert_any_call(arch)
 
-        # Check RPM and OCI package check() method is called for all supported
-        # arch (ie. twice).
-        mock_pkg_rpm_objs.check.assert_has_calls([call(), call()])
-        mock_pkg_oci_objs.check.assert_has_calls([call(), call()])
+        # Check RPM and OCI package check() once per package (not per arch).
+        mock_pkg_rpm_objs.check.assert_called_once_with()
+        mock_pkg_oci_objs.check.assert_called_once_with()
 
         # Check actionable RPM and OCI package build(), publish(staging),
         # test() and clean() methods are called for all supported arch (ie.
