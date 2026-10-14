@@ -463,6 +463,7 @@ def make_parser():
     subprs = subparsers.add_parser(
         "gitlab", add_help=False, help="Check specfiles for GitLab"
     )
+    subprs.add_argument("--junit", metavar="FILENAME", help="write junit result file")
     subprs.add_argument("patch", metavar="PATCH", type=argparse.FileType("r"))
 
     # Gerrit review
@@ -1197,6 +1198,8 @@ def action_validdiff(args, config):
 def action_gitlab(args, config, staff, modules):
     """Review a patchset for GitLab (specfiles)"""
 
+    results = TestResults("gitlab")
+
     # Parse matching diff and specfiles in it
     for f in parse_unidiff(args.patch):
         path = f.path
@@ -1205,8 +1208,35 @@ def action_gitlab(args, config, staff, modules):
             pkgs = ProjectPackages.get(names[1], config, staff, modules)
             for pkg in pkgs:
                 if os.path.abspath(path) == pkg.buildfile and not f.is_deleted_file:
-                    pkg.load()
-                    pkg.check()
+                    now = time.time()
+                    case = TestCase(
+                        "check",
+                        pkg.name,
+                        _DEFAULT_VARIANT,
+                        config.chroot_arch(),
+                        pkg.format,
+                    )
+                    try:
+                        pkg.load()
+                        pkg.check()
+                    except RiftError as ex:
+                        logging.error(str(ex))
+                        results.add_failure(case, time.time() - now, err=str(ex))
+                    else:
+                        results.add_success(case, time.time() - now)
+
+    if getattr(args, "junit", False):
+        logging.info("Writing test results in %s", args.junit)
+        results.junit(args.junit)
+
+    if len(results) > 1:
+        print(results.summary())
+
+    if results.global_result:
+        banner("Test suite SUCCEEDED")
+        return 0
+    banner("Test suite FAILED!")
+    return 1
 
 
 def action_gerrit(args, config, staff, modules):

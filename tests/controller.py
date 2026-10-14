@@ -10,6 +10,7 @@ import os.path
 import shutil
 import subprocess
 import textwrap
+import xml.etree.ElementTree as ET
 from io import StringIO
 from unittest.mock import Mock, call, patch
 
@@ -36,6 +37,7 @@ from .test_utils import (
     host_rpmlint,
     make_temp_dir,
     make_temp_file,
+    make_temp_filename,
     make_temp_tar,
     read_file,
     remove_gpg_home,
@@ -3006,9 +3008,9 @@ class ControllerProjectActionGitlabTest(RiftProjectTestCase):
         )
         # mock Mock.read_spec to return spec file content directly read on host
         mock_mock.return_value.read_spec = read_file
-        # Test no error is raised
+        # Test a passing check returns success
         with patch.object(mock_mock.return_value, "rpmlint", host_rpmlint):
-            main(["gitlab", patch_file.name])
+            self.assertEqual(main(["gitlab", patch_file.name]), 0)
 
     @patch("rift.package.rpm.Mock")
     def test_gitlab_check_failed(self, mock_mock):
@@ -3045,10 +3047,97 @@ class ControllerProjectActionGitlabTest(RiftProjectTestCase):
         )
         # mock Mock.read_spec to return spec file content directly read on host
         mock_mock.return_value.read_spec = read_file
-        # Test error is raised
+        # Test check failure is reported through the command return code
         with patch.object(mock_mock.return_value, "rpmlint", host_rpmlint):
-            with self.assertRaisesRegex(RiftError, "rpmlint reported errors"):
-                main(["gitlab", patch_file.name])
+            self.assertEqual(main(["gitlab", patch_file.name]), 1)
+
+    @patch("rift.package.rpm.Mock")
+    def test_gitlab_junit(self, mock_mock):
+        """gitlab writes a passing junit report"""
+        self.make_pkg()
+        patch_file = make_temp_file(
+            textwrap.dedent("""
+                diff --git a/packages/pkg/pkg.spec b/packages/pkg/pkg.spec
+                index d1a0d0e7..b3e36379 100644
+                --- a/packages/pkg/pkg.spec
+                +++ b/packages/pkg/pkg.spec
+                @@ -1,6 +1,6 @@
+                 Name:    pkg
+                 Version:        1.0
+                -Release:        1
+                +Release:        2
+                 Summary:        A package
+                 Group:          System Environment/Base
+                 License:        GPL
+                """)
+        )
+        junit_file = make_temp_filename()
+        mock_mock.return_value.read_spec = read_file
+        # Check command returns success
+        with patch.object(mock_mock.return_value, "rpmlint", host_rpmlint):
+            self.assertEqual(
+                main(["gitlab", "--junit", junit_file, patch_file.name]), 0
+            )
+
+        # Check junit file is valid XML and contains no failures.
+        root = ET.parse(junit_file).getroot()
+        self.assertEqual(root.tag, "testsuite")
+        self.assertEqual(root.attrib["name"], "gitlab")
+        self.assertEqual(root.attrib["tests"], "1")
+        cases = root.findall("testcase")
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(cases[0].attrib["name"], "check")
+        self.assertEqual(cases[0].attrib["classname"], "rift.pkg")
+        self.assertIsNone(cases[0].find("failure"))
+
+    @patch("rift.package.rpm.Mock")
+    def test_gitlab_junit_check_failed(self, mock_mock):
+        """gitlab writes a failing junit report and returns failure"""
+        self.make_pkg()
+        with open(self.buildfiles["pkg:rpm"], "w") as spec:
+            spec.write(
+                gen_rpm_spec(
+                    name="pkg",
+                    version="1.0",
+                    release="2",
+                    arch="noarch",
+                    buildsteps="$RPM_SOURCE_DIR\n$RPM_BUILD_ROOT",
+                )
+            )
+        patch_file = make_temp_file(
+            textwrap.dedent("""
+                diff --git a/packages/pkg/pkg.spec b/packages/pkg/pkg.spec
+                index d1a0d0e7..b3e36379 100644
+                --- a/packages/pkg/pkg.spec
+                +++ b/packages/pkg/pkg.spec
+                @@ -1,6 +1,6 @@
+                 Name:    pkg
+                 Version:        1.0
+                -Release:        1
+                +Release:        2
+                 Summary:        A package
+                 Group:          System Environment/Base
+                 License:        GPL
+                """)
+        )
+        junit_file = make_temp_filename()
+        mock_mock.return_value.read_spec = read_file
+        # Check command returns failure
+        with patch.object(mock_mock.return_value, "rpmlint", host_rpmlint):
+            self.assertEqual(
+                main(["gitlab", "--junit", junit_file, patch_file.name]), 1
+            )
+
+        # Check junit file is valid XML and contains a failure.
+        root = ET.parse(junit_file).getroot()
+        self.assertEqual(root.tag, "testsuite")
+        self.assertEqual(root.attrib["tests"], "1")
+        cases = root.findall("testcase")
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(cases[0].attrib["name"], "check")
+        failure = cases[0].find("failure")
+        self.assertIsNotNone(failure)
+        self.assertIn("rpmlint reported errors", failure.text)
 
 
 class ControllerProjectActionGerritTest(RiftProjectTestCase):
