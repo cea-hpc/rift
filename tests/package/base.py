@@ -38,7 +38,7 @@ class PackageTestingConcrete(Package):
     def build_requires(self):
         return []
 
-    def for_arch(self, arch):
+    def for_arch(self, arch, variant):
         return ActionableArchPackageTestingConcrete(self, arch)
 
 
@@ -109,7 +109,7 @@ class PackageTest(RiftProjectTestCase):
         pkg = PackageTestingConcrete(
             "pkg", self.config, self.staff, self.modules, "rpm"
         )
-        actionable_pkg = pkg.for_arch("x86_64")
+        actionable_pkg = pkg.for_arch("x86_64", "main")
         self.assertIsInstance(actionable_pkg, ActionableArchPackageTestingConcrete)
         self.assertEqual(actionable_pkg.name, "pkg")
         self.assertEqual(actionable_pkg.package, pkg)

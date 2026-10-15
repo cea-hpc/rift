@@ -138,9 +138,10 @@ class VM:
     QEMU_USERNET_HOST = "10.0.2.2"
     SUPPORTED_FS = ("9p", "virtiofs")
 
-    def __init__(self, config, arch, tmpmode=True, extra_repos=None):
+    def __init__(self, config, arch, tmpmode=True, extra_repos=None, slot=0):
         self.version = config.get("version", "0")
         self.arch = arch
+        self.slot = slot
 
         vm_config = config.get("vm", arch=arch)
         image = vm_config.get("image")
@@ -208,12 +209,16 @@ class VM:
     @property
     def vmid(self):
         """
-        Generate a checksum for the triplet current user, architecture and version
+        Generate a checksum for user, architecture, version, and variant slot
         that can be used to uniquely identify a VM for this combination.
         """
         return hashlib.sha1(
-            f"{os.getuid()}-{self.arch}-{self.version}".encode()
+            f"{os.getuid()}-{self.arch}-{self.version}-{self.slot}".encode()
         ).hexdigest()
+
+    def _virtiofs_socket_path(self, share):
+        """Return virtiofsd socket path unique to this VM instance."""
+        return f"/tmp/.virtio_fs_{share}-{self.vmid}"
 
     @property
     def image_local(self) -> str:
@@ -347,7 +352,7 @@ class VM:
                 cmd += ["-machine", "memory-backend=mem"]
             cmd += [
                 "-chardev",
-                "socket,id=project,path=/tmp/.virtio_fs_project",
+                f"socket,id=project,path={self._virtiofs_socket_path('project')}",
                 "-device",
                 "vhost-user-fs-pci,queue-size=1024,chardev=project,tag=project",
             ]
@@ -355,7 +360,7 @@ class VM:
             qemu_version = is_virtiofs_qemu(self.virtiofsd)
             helper_cmd.append(
                 gen_virtiofs_args(
-                    socket_path="/tmp/.virtio_fs_project",
+                    socket_path=self._virtiofs_socket_path("project"),
                     directory=self._project_dir,
                     qemu=qemu_version,
                     virtiofsd=self.virtiofsd,
@@ -369,14 +374,14 @@ class VM:
                         )
                     cmd += [
                         "-chardev",
-                        f"socket,id={repo.name},path=/tmp/.virtio_fs_{repo.name}",
+                        f"socket,id={repo.name},path={self._virtiofs_socket_path(repo.name)}",
                         "-device",
                         "vhost-user-fs-pci,queue-size=1024,"
                         f"chardev={repo.name},tag={repo.name}",
                     ]
                     helper_cmd.append(
                         gen_virtiofs_args(
-                            socket_path=f"/tmp/.virtio_fs_{repo.name}",
+                            socket_path=self._virtiofs_socket_path(repo.name),
                             directory=repo.path,
                             qemu=qemu_version,
                             virtiofsd=self.virtiofsd,
@@ -390,10 +395,10 @@ class VM:
         """
         sockets = []
         if self.shared_fs_type == "virtiofs":
-            sockets = ["/tmp/.virtio_fs_project"]
+            sockets = [self._virtiofs_socket_path("project")]
             for repo in self._repos:
                 if repo.is_file():
-                    sockets.append(f"/tmp/.virtio_fs_{repo.name}")
+                    sockets.append(self._virtiofs_socket_path(repo.name))
             with Popen(["sudo", "/bin/chmod", "777"] + sockets) as popen:
                 popen.wait()
 

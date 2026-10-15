@@ -6,6 +6,7 @@ import subprocess
 from unittest.mock import Mock, patch
 
 from rift import RiftError
+from rift.config import _DEFAULT_VARIANT
 from rift.container import ContainerArchive, ContainerFile, ContainerRuntime
 from rift.gerrit import Review
 from rift.package.oci import PackageOCI
@@ -30,7 +31,7 @@ class ContainerRuntimeTest(RiftProjectTestCase):
         self.make_pkg()
         package = PackageOCI("pkg", self.config, self.staff, self.modules)
         package.load()
-        actionable_package = package.for_arch("x86_64")
+        actionable_package = package.for_arch("x86_64", _DEFAULT_VARIANT)
         container = ContainerRuntime(self.config)
         self.assertEqual(container.tag(actionable_package), "pkg:1.0-1-x86_64")
 
@@ -40,7 +41,7 @@ class ContainerRuntimeTest(RiftProjectTestCase):
         self.make_pkg()
         package = PackageOCI("pkg", self.config, self.staff, self.modules)
         package.load()
-        actionable_package = package.for_arch("x86_64")
+        actionable_package = package.for_arch("x86_64", _DEFAULT_VARIANT)
         container = ContainerRuntime(self.config)
         mock_run_command.return_value = RunResult(0, "ok", None)
         container.build(actionable_package, "pkg_1.0")
@@ -70,7 +71,7 @@ class ContainerRuntimeTest(RiftProjectTestCase):
         self.make_pkg()
         package = PackageOCI("pkg", self.config, self.staff, self.modules)
         package.load()
-        actionable_package = package.for_arch("x86_64")
+        actionable_package = package.for_arch("x86_64", _DEFAULT_VARIANT)
         container = ContainerRuntime(self.config)
         mock_run_command.return_value = RunResult(1, None, "failure")
         with self.assertRaisesRegex(
@@ -84,7 +85,7 @@ class ContainerRuntimeTest(RiftProjectTestCase):
         self.make_pkg()
         package = PackageOCI("pkg", self.config, self.staff, self.modules)
         package.load()
-        actionable_package = package.for_arch("x86_64")
+        actionable_package = package.for_arch("x86_64", _DEFAULT_VARIANT)
         test = [test for test in package.tests()].pop()
         container = ContainerRuntime(self.config)
         test_result = RunResult(0, "ok", None)
@@ -114,7 +115,7 @@ class ContainerRuntimeTest(RiftProjectTestCase):
         self.make_pkg()
         package = PackageOCI("pkg", self.config, self.staff, self.modules)
         package.load()
-        actionable_package = package.for_arch("x86_64")
+        actionable_package = package.for_arch("x86_64", _DEFAULT_VARIANT)
         container = ContainerRuntime(self.config)
         archive_result = RunResult(0, "ok", None)
         mock_run_command.return_value = archive_result

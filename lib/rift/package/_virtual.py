@@ -74,7 +74,7 @@ class PackageVirtual(Package):
         """Must not be called on virtual package."""
         raise RiftError("Unable to get build requirements of a virtual package")
 
-    def for_arch(self, arch):
+    def for_arch(self, arch, variant):
         """Must not be called on virtual package."""
         raise RiftError(
             "Unable to get actionable architecture package of a virtual package"
