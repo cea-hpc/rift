@@ -224,8 +224,6 @@ class Spec:
             rpm.delMacro(macro)
             if value:
                 rpm.addMacro(macro, value)
-        if self.variant is not None and self.variant != _DEFAULT_VARIANT:
-            rpm.addMacro(f"with_{self.variant}", "1")
         # Disable automatic expansion of debug_package macro to avoid double
         # expansion when parsing output of `rpmspec --parse` leading to
         # "package *-debuginfo already exists" error eventually.
