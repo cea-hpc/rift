@@ -98,17 +98,14 @@ class SpecTest(RiftTestCase):
         self.mock.read_spec.assert_called_once_with(self.spec)
 
     def test_init_variant(self):
-        """Test Spec instanciation"""
-        self.variants = ["variant1", "variant2"]
-        self.update_spec()
-        spec = Spec(self.spec, self.mock, None, variant="variant1")
-        self.assertIn(self.name, spec.pkgnames)
-        self.assertEqual(len(spec.pkgnames), 2)
-        self.assertCountEqual(spec.pkgnames, ["pkg", "pkg-variant1"])
-        spec = Spec(self.spec, self.mock, None, variant="variant2")
-        self.assertIn(self.name, spec.pkgnames)
-        self.assertEqual(len(spec.pkgnames), 2)
-        self.assertCountEqual(spec.pkgnames, ["pkg", "pkg-variant2"])
+        """Non-main variant is passed to read_spec."""
+
+        def fake_read_spec(filepath, variant=None):
+            return read_file(filepath)
+
+        self.mock.read_spec.side_effect = fake_read_spec
+        Spec(self.spec, self.mock, None, variant="variant1")
+        self.mock.read_spec.assert_called_once_with(self.spec, "variant1")
 
     def test_init_fails(self):
         """Test Spec instanciation with error"""

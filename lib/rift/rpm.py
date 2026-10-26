@@ -224,8 +224,6 @@ class Spec:
             rpm.delMacro(macro)
             if value:
                 rpm.addMacro(macro, value)
-        if self.variant is not None and self.variant != _DEFAULT_VARIANT:
-            rpm.addMacro(f"with_{self.variant}", "1")
         # Disable automatic expansion of debug_package macro to avoid double
         # expansion when parsing output of `rpmspec --parse` leading to
         # "package *-debuginfo already exists" error eventually.
@@ -254,7 +252,10 @@ class Spec:
             # access on the same mock build root.
             with self.mock.lock():
                 self.mock.init(self.repos)
-                content = self.mock.read_spec(self.filepath)
+                if self.variant is not None and self.variant != _DEFAULT_VARIANT:
+                    content = self.mock.read_spec(self.filepath, self.variant)
+                else:
+                    content = self.mock.read_spec(self.filepath)
                 self.mock.clean()
             with tempfile.NamedTemporaryFile(mode="w+") as fp:
                 fp.write(content)

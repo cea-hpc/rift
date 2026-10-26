@@ -241,6 +241,37 @@ class MockTest(RiftProjectTestCase):
         self.assertEqual(result, "standard output")
 
     @patch("rift.mock.run_command")
+    def test_read_spec_variant(self, mock_run_command):
+        """Non-main variant is enabled with rpmspec --define before --parse."""
+        mock_run_command.return_value = RunResult(
+            0, "standard output", "standard error"
+        )
+        mock = Mock(config=self.config, arch="x86_64", proj_vers=1.0)
+        mock.init([])
+        mock.read_spec("/dev/package.spec", "variant1")
+        mock_run_command.assert_called_with(
+            [
+                "mock",
+                "--config-opts",
+                "print_main_output=yes",
+                f"--configdir={mock._tmpdir.path}",
+                "--plugin-option=bind_mount:dirs="
+                "[('/dev/package.spec', '/dev/package.spec')]",
+                "chroot",
+                "rpmspec",
+                "--define",
+                "_with_variant1 --with-variant1",
+                "--parse",
+                "/dev/package.spec",
+            ],
+            live_output=True,
+            capture_output=True,
+            merge_out_err=False,
+            cwd="/",
+        )
+        mock.clean()
+
+    @patch("rift.mock.run_command")
     def test_read_spec_exec_error(self, mock_run_command):
         mock = Mock(config=self.config, arch="x86_64", proj_vers=1.0)
         # First run_command call for init OK

@@ -282,23 +282,33 @@ class Mock:
         pairs = ",".join(f"('{p}', '{p}')" for p in unique)
         return f"--plugin-option=bind_mount:dirs=[{pairs}]"
 
-    def read_spec(self, filepath):
+    def read_spec(self, filepath, variant=None):
         """
         Interpret RPM spec file in chroot by running rpmspec command. Return output of
         rpmspec command with some prefixed messages filtered out to make it parsable
         by RPM library.
+
+        When a non-main variant is given, expand the spec with that variant enabled
+        so the returned package names are the ones that variant builds.
         """
         filepath_rp = os.path.realpath(filepath)
-        proc = self._exec(
-            [
-                self._bind_mount_dirs_opt([filepath_rp]),
-                "chroot",
-                "rpmspec",
-                "--parse",
-                filepath_rp,
-            ],
-            merge_out_err=False,
-        )
+        cmd = [
+            self._bind_mount_dirs_opt([filepath_rp]),
+            "chroot",
+            "rpmspec",
+        ]
+
+        # For variant different from the default, expand the spec with that variant
+        # enabled.
+        #
+        # Unfortunately, rpmspec in RPM <4.15.1 shipped in el8 does not support --with
+        # option like rpmbuild. In order to reproduce the same behavior, the macro
+        # _with_<variant> is defined. This macro is expanded to value --with-<variant>
+        # similarly to rpmbuild.
+        if variant is not None and variant != _DEFAULT_VARIANT:
+            cmd += ["--define", f"_with_{variant} --with-{variant}"]
+        cmd += ["--parse", filepath_rp]
+        proc = self._exec(cmd, merge_out_err=False)
 
         lines = []
 
