@@ -13,6 +13,7 @@ from rift.repository.rpm import (
     ConsumableRepository,
     LocalRepository,
     StagingRepositoryRPM,
+    project_repositories,
 )
 from rift.rpm import RPM
 
@@ -383,6 +384,33 @@ class ConsumableRepositoryTest(RiftTestCase):
         self.assertFalse(local_repo.authenticated())
         self.assertFalse(remote_without_auth_repo.authenticated())
         self.assertTrue(remote_auth_repo.authenticated())
+
+
+class ProjectRepositoriesTest(RiftTestCase):
+    """Tests for project_repositories."""
+
+    def test_project_repositories(self):
+        """Build consumable repositories from the project repos section."""
+        config = Config()
+        self.assertEqual(project_repositories(config, "x86_64"), [])
+        config.update(
+            {
+                "proxy": "http://proxy:3128",
+                "repos": {
+                    "os": {
+                        "url": "https://mirror.example/$arch/os",
+                        "priority": 10,
+                    },
+                },
+            }
+        )
+        repos = project_repositories(config, "x86_64")
+        self.assertEqual(len(repos), 1)
+        self.assertIsInstance(repos[0], ConsumableRepository)
+        self.assertEqual(repos[0].name, "os")
+        self.assertEqual(repos[0].url, "https://mirror.example/x86_64/os")
+        self.assertEqual(repos[0].priority, 10)
+        self.assertEqual(repos[0].proxy, "http://proxy:3128")
 
 
 class ArchRepositoriesRPMTest(RiftTestCase):

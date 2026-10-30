@@ -61,6 +61,7 @@ setup(
         "console_scripts": [
             "rift = rift.controller:main",
             "repos-token-proxy = rift.apps.proxy:main",
+            "repos-conf = rift.apps.repos_conf:main",
         ],
     },
 )

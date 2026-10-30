@@ -51,6 +51,26 @@ from rift.temp_dir import TempDir
 repo_lock = threading.Lock()
 
 
+def project_repositories(config, arch):
+    """
+    Return consumable repositories declared in the project for one architecture.
+    """
+    repos = config.get("repos", arch=arch)
+    if not repos:
+        return []
+    return [
+        ConsumableRepository(
+            data["url"],
+            name=name,
+            priority=data.get("priority"),
+            options=data,
+            default_proxy=config.get("proxy"),
+            variants=data.get("variants"),
+        )
+        for name, data in repos.items()
+    ]
+
+
 class ConsumableRepository:
     """
     Manipulate RPM packages repository to be consumed by dnf/yum and Mock.
@@ -305,20 +325,7 @@ class ArchRepositoriesRPM(ArchRepositoriesBase):
                 options={"module_hotfixes": "true"},
             )
             self.working.create()
-        self.supplementaries = []
-        repos = config.get("repos", arch=arch)
-        if repos:
-            for name, data in repos.items():
-                self.supplementaries.append(
-                    ConsumableRepository(
-                        data["url"],
-                        name=name,
-                        priority=data.get("priority"),
-                        options=data,
-                        default_proxy=config.get("proxy"),
-                        variants=data.get("variants"),
-                    )
-                )
+        self.supplementaries = project_repositories(config, arch)
 
     @property
     def all(self):
