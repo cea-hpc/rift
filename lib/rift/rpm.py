@@ -328,7 +328,15 @@ class Spec:
             dist = dist_match.group("dist")
             pattern += "(" + dist.replace("?", r"\?") + ")"
         else:
-            dist = ""
+            # Do not bump the digit of a dist-like suffix (e.g. el8 -> el9).
+            suffix_match = re.match(
+                r".*(?P<suffix>\.[A-Za-z][A-Za-z0-9_]*[0-9]+)$", release
+            )
+            if suffix_match:
+                dist = suffix_match.group("suffix")
+                pattern += f"({dist})"
+            else:
+                dist = ""
         pattern += "$"
         release_id = re.match(pattern, release)
         if release_id is None:
