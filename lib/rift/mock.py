@@ -279,40 +279,26 @@ class Mock:
     def _bind_mount_dirs_opt(self, paths):
         """Return mock bind_mount plugin option for dirs (host path = chroot path)."""
         unique = sorted({os.path.realpath(p) for p in paths})
-        pairs = ",".join(f"('{p}', '{p}')" for p in unique)
-        return f"--plugin-option=bind_mount:dirs=[{pairs}]"
+        pairs = [(p, p) for p in unique]
+        return f"--plugin-option=bind_mount:dirs={pairs}"
 
     def read_spec(self, filepath):
         """
-        Interpret RPM spec file in chroot by running rpmspec command. Return output of
-        rpmspec command with some prefixed messages filtered out to make it parsable
-        by RPM library.
+        Interpret RPM spec file in chroot by running rpmspec command.
         """
         filepath_rp = os.path.realpath(filepath)
         proc = self._exec(
             [
                 self._bind_mount_dirs_opt([filepath_rp]),
-                "chroot",
+                "shell",
                 "rpmspec",
                 "--parse",
-                filepath_rp,
+                shlex.quote(filepath_rp),
             ],
             merge_out_err=False,
         )
 
-        lines = []
-
-        rpmspec_ignore_prefixes = ("error: ", "warning: ", "rpm: ", "sh: ")
-        for line in proc.out.splitlines():
-            # filter out rpmspec errors and warings
-            ignore_line = False
-            for prefix in rpmspec_ignore_prefixes:
-                if line.startswith(prefix):
-                    ignore_line = True
-            if not ignore_line:
-                lines.append(line)
-
-        return "\n".join(lines)
+        return "\n".join(proc.out.splitlines())
 
     def rpmlint(self, spec_filepath, configdir=None):
         """
@@ -351,10 +337,8 @@ class Mock:
         cmd = self._mock_base() + [
             bind_opt,
             "--quiet",
-            "chroot",
+            "shell",
             "--",
-            "bash",
-            "-c",
             rpmlint_chroot_script(spec_fp),
         ]
         logging.debug("Running mock rpmlint chroot: %s", " ".join(cmd[:8]))
