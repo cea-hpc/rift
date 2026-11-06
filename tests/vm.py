@@ -272,6 +272,19 @@ class VMTest(RiftTestCase):
         # Instance attributes match default_ports() for the configured range
         self.assertEqual((vm1.port, vm1.proxy_port), vm1.default_ports(port_range))
 
+    def test_default_ports_slots(self):
+        """Check VM default ports never collide between slots"""
+        port_range = {"min": 2000, "max": 3000}
+        self.config.set("vm", {"image": "/path/to/image", "port_range": port_range})
+        ports = []
+        for slot in range(16):
+            vm = VM(self.config, "x86_64", slot=slot)
+            ports.extend(vm.default_ports(port_range))
+        self.assertEqual(len(ports), len(set(ports)))
+        for port in ports:
+            self.assertGreaterEqual(port, port_range["min"])
+            self.assertLess(port, port_range["max"])
+
     def test_default_ports_invalid_range(self):
         """Check VM default ports raise error with invalid range"""
         vm1 = VM(self.config, "x86_64")
