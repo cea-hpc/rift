@@ -925,6 +925,13 @@ class VMTest(RiftTestCase):
         vm.ready.assert_not_called()
         vm.prepare.assert_not_called()
 
+    def test_stop_not_spawned(self):
+        """Test VM stop when VM process has not been spawned"""
+        vm = VM(self.config, platform.machine())
+        vm._auth_proxy = Mock()
+        vm.stop()
+        vm._auth_proxy.stop.assert_called_once()
+
     def test_local_test_funcs(self):
         vm = VM(self.config, platform.machine())
         funcs = vm.local_test_funcs()
