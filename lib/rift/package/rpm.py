@@ -393,7 +393,9 @@ class BasicTest(Test):
 
     def __init__(self, pkg, mock, repos, variant, config=None):
         if pkg.rpmnames:
-            rpmnames = pkg.rpmnames
+            # Copy the list as it is modified below and package object is shared by
+            # variants running concurrently.
+            rpmnames = list(pkg.rpmnames)
         else:
             rpmnames = Spec(
                 pkg.buildfile, mock, repos, config=config, variant=variant
