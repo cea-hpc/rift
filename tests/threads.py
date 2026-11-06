@@ -1,8 +1,10 @@
 #
 # Copyright (C) 2026 CEA
 #
-from unittest.mock import Mock
+from io import StringIO
+from unittest.mock import Mock, patch
 
+from rift import RiftError
 from rift.test_results import TestResults
 from rift.threads import Job, RiftThread
 
@@ -28,6 +30,27 @@ class JobTest(RiftTestCase):
         self.assertIs(job.run(), results)
         worker.assert_called_once_with(args, pkg, "x86_64", staging, "main")
 
+    @patch("sys.stderr", new_callable=StringIO)
+    def test_run_crash(self, mock_stderr):
+        """Test Job run reports worker crash as failure with traceback"""
+        worker = Mock(side_effect=RiftError("fail"))
+        pkg = Mock()
+        pkg.name = "pkg"
+        pkg.format = "rpm"
+        job = Job("build", worker, Mock(), pkg, "x86_64", "main")
+        results = job.run()
+        self.assertFalse(results.global_result)
+        self.assertEqual(len(results), 1)
+        result = results.results[0]
+        self.assertEqual(result.value, "Failure")
+        self.assertEqual(result.case.name, "build")
+        self.assertEqual(result.case.classname, "pkg")
+        self.assertEqual(result.case.arch, "x86_64")
+        self.assertEqual(result.case.variant, "main")
+        self.assertEqual(result.case.format, "rpm")
+        self.assertEqual(result.err, "fail")
+        self.assertIn("rift.RiftError: fail", mock_stderr.getvalue())
+
 
 class RiftThreadTest(RiftTestCase):
     """Tests class for RiftThread"""
@@ -48,3 +71,18 @@ class RiftThreadTest(RiftTestCase):
         thread.join()
         self.assertIs(thread.results, results)
         self.assertEqual(thread.output.getvalue(), "worker output\n")
+
+    def test_run_job_crash(self):
+        """Test RiftThread buffers traceback of crashed job and its failure"""
+
+        def worker(args, pkg, arch, staging, variant):
+            raise RiftError("fail")
+
+        pkg = Mock()
+        pkg.name = "pkg"
+        pkg.format = "rpm"
+        thread = RiftThread(Job("build", worker, Mock(), pkg, "x86_64", "main"))
+        thread.start()
+        thread.join()
+        self.assertFalse(thread.results.global_result)
+        self.assertIn("rift.RiftError: fail", thread.output.getvalue())

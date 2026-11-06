@@ -1719,6 +1719,39 @@ class ControllerProjectActionBuildTest(RiftProjectTestCase):
             mock_stdout.getvalue(),
         )
 
+    @patch("sys.stdout", new_callable=StringIO)
+    @patch("rift.controller._validate_pkg_variant")
+    @patch("rift.controller.StagingRepository")
+    @patch("rift.package._project.PackageRPM", autospec=PackageRPM)
+    def test_action_validate_quiet_worker_crash(
+        self,
+        mock_pkg_rpm,
+        mock_staging_repo_cls,
+        mock_validate_pkg_variant,
+        mock_stdout,
+    ):
+        """validate --quiet reports worker crash and prints its output."""
+        mock_validate_pkg_variant.side_effect = RuntimeError("worker crash")
+        mock_staging_repo_cls.return_value = Mock()
+
+        self.config.set("arch", ["x86_64"])
+        self.update_project_conf()
+        self.make_pkg(build_requires=[], formats=["rpm"])
+
+        mock_pkg_rpm_objs = mock_pkg_rpm.return_value
+        PackageRPM.__init__(
+            mock_pkg_rpm_objs, "pkg", self.config, self.staff, self.modules
+        )
+        mock_pkg_rpm_objs.supports_arch.return_value = True
+
+        self.assertEqual(main(["validate", "pkg", "--quiet"]), 2)
+
+        # Check the buffered output of the failed thread is printed in quiet mode
+        # after worker crash.
+        out = mock_stdout.getvalue()
+        self.assertIn("** Validate thread validate-x86_64-main output: **", out)
+        self.assertIn("RuntimeError: worker crash", out)
+
     @patch("rift.controller.PackagesDependencyGraph")
     def test_build_graph(self, mock_graph_class):
         """Test build builds dependency graph when tracking is enabled."""

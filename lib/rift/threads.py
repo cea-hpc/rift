@@ -36,9 +36,10 @@ import contextlib
 import io
 import sys
 import threading
+import time
 import traceback
 
-from rift.test_results import TestResults
+from rift.test_results import TestCase, TestResults
 
 # Python provides standards context managers contextlib.redirect_{stdout,stderr}
 # but they are not thread-safe unfortunately. For redirecting threads
@@ -140,8 +141,27 @@ class Job:
         return f"{self.action}-{self.arch}-{self.variant}"
 
     def run(self):
-        """Run the worker with the job context and return its TestResults."""
-        return self.worker(self.args, self.pkg, self.arch, self.staging, self.variant)
+        """
+        Run the worker with the job context and return its TestResults. If the
+        worker crashes, its traceback is printed on stderr and the crash is
+        reported as a failed test case named after the action.
+        """
+        now = time.time()
+        try:
+            return self.worker(
+                self.args, self.pkg, self.arch, self.staging, self.variant
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            traceback.print_exc(file=sys.stderr)
+            results = TestResults()
+            results.add_failure(
+                TestCase(
+                    self.action, self.pkg.name, self.variant, self.arch, self.pkg.format
+                ),
+                time.time() - now,
+                err=str(exc),
+            )
+            return results
 
 
 class RiftThread(threading.Thread):
