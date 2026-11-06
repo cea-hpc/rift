@@ -817,6 +817,20 @@ class VMTest(RiftTestCase):
         vm._auth_proxy.start.assert_not_called()
 
     @patch("rift.vm.message")
+    def test_start_not_ready(self, mock_message):
+        """Test VM start raises error when VM does not become ready"""
+        vm = VM(self.config, platform.machine())
+        vm.running = Mock(return_value=False)
+        vm._download = Mock()
+        vm.spawn = Mock()
+        vm.ready = Mock(return_value=False)
+        vm.prepare = Mock()
+        vm._auth_proxy = Mock()
+        with self.assertRaisesRegex(RiftError, "^VM did not become ready in time$"):
+            vm.start(force=False)
+        vm.prepare.assert_not_called()
+
+    @patch("rift.vm.message")
     def test_download_serialized(self, mock_message):
         """Test concurrent VMs do not refresh image local copy simultaneously"""
         self.config.set("vm", {"image": "http://localhost/path/to/my_image.qcow2"})

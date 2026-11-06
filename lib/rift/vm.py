@@ -921,7 +921,8 @@ class VM:
         # Start authenticated repositories proxy
         self._start_auth_proxy()
         self.spawn()
-        self.ready()
+        if not self.ready():
+            raise RiftError("VM did not become ready in time")
         self.prepare()
         return True
 
