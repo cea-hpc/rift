@@ -12,6 +12,7 @@ from rift.repository.rpm import (
     ArchRepositoriesRPM,
     ConsumableRepository,
     LocalRepository,
+    RepositoryHost,
     StagingRepositoryRPM,
 )
 from rift.rpm import RPM
@@ -366,6 +367,36 @@ class ConsumableRepositoryTest(RiftTestCase):
         self.assertEqual(repo.generic_url("x86_64"), "http:/{}".format(directory))
         repo = ConsumableRepository("http://some/where/x86_64")
         self.assertEqual(repo.generic_url("x86_64"), "http://some/where/$basearch")
+        # Architecture is replaced in URL path and query, not in host.
+        repo = ConsumableRepository("http://x86_64.mirror/x86_64/os?arch=x86_64")
+        self.assertEqual(
+            repo.generic_url("x86_64"),
+            "http://x86_64.mirror/$basearch/os?arch=$basearch",
+        )
+        repo = ConsumableRepository("file:///repos/x86_64")
+        self.assertEqual(repo.generic_url("x86_64"), "file:///repos/$basearch")
+        repo = ConsumableRepository("/repos/x86_64")
+        self.assertEqual(repo.generic_url("x86_64"), "/repos/$basearch")
+
+    def test_replace_host(self):
+        url = "https://pkgs.internal:8443/x86_64/os?a=1"
+        repo = ConsumableRepository(url)
+        self.assertEqual(
+            repo.replace_host(RepositoryHost(None, "x86_64.mirror", None)),
+            "https://x86_64.mirror/x86_64/os?a=1",
+        )
+        host_url = repo.replace_host(RepositoryHost("http", "::1", 8080))
+        self.assertEqual(host_url, "http://[::1]:8080/x86_64/os?a=1")
+        self.assertEqual(
+            repo.generic_url("x86_64", host_url), "http://[::1]:8080/$basearch/os?a=1"
+        )
+        # Repository URL is not modified.
+        self.assertEqual(repo.url, url)
+        for url in ("file:///repos/x86_64", "/repos/x86_64", "http:///missing"):
+            repo = ConsumableRepository(url)
+            self.assertEqual(
+                repo.replace_host(RepositoryHost(None, "pkgs.external", None)), url
+            )
 
     def test_authenticated(self):
         local_repo = ConsumableRepository(
@@ -545,6 +576,113 @@ class ArchRepositoriesRPMTest(RiftTestCase):
             self.assertCountEqual(
                 [repo.name for repo in repos.for_variant(variant)], expected_result
             )
+
+    def test_generate_render(self):
+        arch_repos = ArchRepositoriesRPM(self.config, None, "x86_64")
+        repo = ConsumableRepository(
+            "https://pkgs.internal/8.8/BaseOS/x86_64/os",
+            name="os",
+            options={
+                "module_hotfixes": True,
+                "excludepkgs": "kernel",
+                "proxy": "http://127.0.0.1:8080",
+            },
+        )
+        arch_repos.supplementaries = [repo]
+        text = arch_repos.generate()
+        self.assertEqual(
+            text,
+            "\n".join(
+                [
+                    "[os]",
+                    "name=os",
+                    "baseurl=https://pkgs.internal/8.8/BaseOS/$basearch/os",
+                    "gpgcheck=0",
+                    "priority=999",
+                    "enabled=1",
+                    "module_hotfixes=True",
+                    "excludepkgs=kernel",
+                    "proxy=http://127.0.0.1:8080",
+                    "",
+                ]
+            ),
+        )
+
+    def test_generate_priority(self):
+        arch_repos = ArchRepositoriesRPM(self.config, None, "x86_64")
+        repos = [
+            ConsumableRepository("https://a.example/repo", name="a"),
+            ConsumableRepository("https://b.example/repo", name="b", priority=5),
+            ConsumableRepository("https://c.example/repo", name="c", priority=0),
+            ConsumableRepository("https://d.example/repo", name="d"),
+        ]
+        arch_repos.supplementaries = repos
+        text = arch_repos.generate()
+        self.assertIn("name=a\nbaseurl=https://a.example/repo\n", text)
+        self.assertIn("gpgcheck=0\npriority=999\n", text)
+        self.assertIn("name=b\nbaseurl=https://b.example/repo\n", text)
+        self.assertIn("priority=5\n", text)
+        self.assertIn("name=c\nbaseurl=https://c.example/repo\n", text)
+        self.assertIn("priority=4\n", text)
+        self.assertIn("name=d\nbaseurl=https://d.example/repo\n", text)
+        self.assertIn("priority=3\n", text)
+
+    def test_generate_variants(self):
+        arch_repos = ArchRepositoriesRPM(self.config, None, "x86_64")
+        repos = [
+            ConsumableRepository("https://a.example/repo", name="a"),
+            ConsumableRepository(
+                "https://b.example/repo", name="b", variants=["extra"]
+            ),
+            ConsumableRepository("https://c.example/repo", name="c", variants=["main"]),
+        ]
+        arch_repos.supplementaries = repos
+        text = arch_repos.generate()
+        self.assertIn("name=a\nbaseurl=https://a.example/repo\n", text)
+        self.assertIn("priority=999\nenabled=1\n", text)
+        self.assertIn("name=b\nbaseurl=https://b.example/repo\n", text)
+        self.assertIn("priority=998\nenabled=0\n", text)
+        self.assertIn("name=c\nbaseurl=https://c.example/repo\n", text)
+        self.assertIn("priority=997\nenabled=1\n", text)
+
+    def test_generate_host_replacement(self):
+        arch_repos = ArchRepositoriesRPM(self.config, None, "x86_64")
+        arch_repos.supplementaries = [
+            ConsumableRepository("https://pkgs.internal:8443/x86_64/os", name="os")
+        ]
+        text = arch_repos.generate(host=RepositoryHost("http", "pkgs.external", 8080))
+        self.assertIn("baseurl=http://pkgs.external:8080/$basearch/os\n", text)
+
+    def test_generate_token_proxy(self):
+        arch_repos = ArchRepositoriesRPM(self.config, None, "x86_64")
+        public = ConsumableRepository(
+            "https://pkgs.internal:8443/os/x86_64",
+            name="os",
+            options={"proxy": "http://proxy:3128"},
+        )
+        private = ConsumableRepository(
+            "https://pkgs.internal/private/x86_64",
+            name="private repo",
+            options={"auth": "idp_token", "proxy": "http://proxy:3128"},
+        )
+        arch_repos.supplementaries = [public, private]
+        text = arch_repos.generate(
+            host=RepositoryHost(None, "pkgs.external", None),
+            token_proxy="127.0.0.1:8765",
+        )
+        self.assertIn(
+            "baseurl=https://pkgs.external/os/$basearch\n",
+            text,
+        )
+        self.assertIn("proxy=http://proxy:3128\n", text)
+        self.assertIn("baseurl=http://127.0.0.1:8765/private%20repo/\n", text)
+        self.assertNotIn("proxy=", text.split("\n\n")[1])
+        self.assertNotIn("pkgs.external/private", text)
+
+    def test_generate_empty(self):
+        arch_repos = ArchRepositoriesRPM(self.config, None, "x86_64")
+        arch_repos.supplementaries = []
+        self.assertEqual(arch_repos.generate(), "")
 
 
 class StagingRepositoryRPMTest(RiftTestCase):

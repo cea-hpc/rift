@@ -38,6 +38,7 @@ import argparse
 import logging
 import os
 import time
+import urllib.parse
 from operator import attrgetter
 
 # Since pylint can not found rpm.error, disable this check
@@ -54,6 +55,10 @@ from rift.mock import Mock
 from rift.package import RIFT_SUPPORTED_FORMATS, ProjectPackages
 from rift.patches import get_packages_from_patch
 from rift.repository import ProjectArchRepositories, StagingRepository
+from rift.repository.rpm import (
+    ArchRepositoriesRPM,
+    RepositoryHost,
+)
 from rift.rpm import RPM, Spec
 from rift.sync import RepoSyncFactory
 from rift.test_results import TestCase, TestResults
@@ -541,6 +546,43 @@ def make_parser():
         metavar="PACKAGE",
         nargs="*",
         help="packages to represent in the graph",
+    )
+
+    # Repo options
+    subprs = subparsers.add_parser("repo", help="Manipulate project repositories")
+    subprs_repo = subprs.add_subparsers(
+        dest="repo_cmd", metavar="COMMAND", title="possible commands"
+    )
+    # Set required attribute after creation as required argument of
+    # add_subparsers() is not supported before Python 3.7.
+    subprs_repo.required = True
+    subsubprs = subprs_repo.add_parser(
+        "generate",
+        help="generate a dnf/yum repository file from project configuration",
+    )
+    subsubprs.add_argument(
+        "-o",
+        "--output",
+        help="write the repository file to this path (default: stdout)",
+    )
+    subsubprs.add_argument(
+        "--arch",
+        help=(
+            "architecture used to resolve repositories "
+            "(default: host architecture when the project supports it)"
+        ),
+    )
+    subsubprs.add_argument(
+        "-H",
+        "--host",
+        help=(
+            "replacement host for declared repository URLs, "
+            "as host, host:port, scheme://host, or scheme://host:port"
+        ),
+    )
+    subsubprs.add_argument(
+        "--token-proxy",
+        help="base URL of a running repos-token-proxy, such as http://127.0.0.1:8765",
     )
 
     # Parse options
@@ -1611,6 +1653,84 @@ def staff_modules(config):
     return staff, modules
 
 
+def parse_host(value):
+    """
+    Parse a --host value into a RepositoryHost.
+
+    The value is [scheme://]host[:port]. scheme is None when the value does not set one.
+    port is None when the value does not set one.
+    """
+    host_form = "expected host, host:port, scheme://host, or scheme://host:port"
+    if "://" in value:
+        parts = urllib.parse.urlsplit(value)
+    else:
+        if any(char in value for char in "/?#@"):
+            raise RiftError(f"Invalid host '{value}': expected no path")
+        parts = urllib.parse.urlsplit(f"//{value}")
+    if parts.path not in ("",):
+        raise RiftError(f"Invalid host '{value}': expected no path")
+    if parts.query or parts.fragment or parts.username or parts.password:
+        raise RiftError(f"Invalid host '{value}': {host_form}")
+    if not parts.hostname or ("://" in value and not parts.scheme):
+        raise RiftError(f"Invalid host '{value}': {host_form}")
+    try:
+        port = parts.port
+    except ValueError as err:
+        raise RiftError(f"Invalid host '{value}': {host_form}") from err
+    scheme = parts.scheme if "://" in value else None
+    return RepositoryHost(scheme, parts.hostname, port)
+
+
+def parse_token_proxy(value):
+    """
+    Parse a --token-proxy value.
+
+    The value must be an http URL with a host and no path other than /.
+    """
+    parts = urllib.parse.urlsplit(value)
+    if parts.scheme != "http" or not parts.hostname:
+        raise RiftError(
+            f"Invalid token proxy URL '{value}': expected an http URL with a host"
+        )
+    if parts.path not in ("", "/"):
+        raise RiftError(
+            f"Invalid token proxy URL '{value}': expected no path other than /"
+        )
+    if parts.query or parts.fragment or parts.username or parts.password:
+        raise RiftError(
+            f"Invalid token proxy URL '{value}': expected no user info, query, "
+            "or fragment"
+        )
+    return parts.netloc
+
+
+def action_repo(args, config):
+    """Action for 'repo' sub-commands."""
+
+    assert args.repo_cmd in ("generate",)
+    # Use the architecture specified on the command line, or the chroot
+    # architecture for the project (ie. the host architecture if supported or the
+    # first supported architecture).
+    arch = args.arch or config.chroot_arch()
+    # Get the consumable repositories declared in project configuration for the
+    # architecture. The working repository is not included: passing None as
+    # working directory avoids creating it.
+    repos = ArchRepositoriesRPM(config, None, arch)
+    # Parse the host replacement specified on the command line, if any.
+    host = parse_host(args.host) if args.host else None
+    # Parse the token proxy base URL specified on the command line, if any.
+    token_proxy = parse_token_proxy(args.token_proxy) if args.token_proxy else None
+    # Render the repository file.
+    text = repos.generate(host=host, token_proxy=token_proxy)
+    # Write the repository file to the output file, if specified, or to stdout.
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as repo_file:
+            repo_file.write(text)
+    else:
+        print(text, end="")
+    return 0
+
+
 def action(config, args):
     """
     Manage rift actions on annex, vm, packages or repositories
@@ -1685,6 +1805,10 @@ def action(config, args):
     # GRAPH
     if args.command == "graph":
         return action_graph(args, config, *staff_modules(config))
+
+    # REPO
+    if args.command == "repo":
+        return action_repo(args, config)
 
     return 0
 
