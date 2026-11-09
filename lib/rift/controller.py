@@ -58,7 +58,7 @@ from rift.rpm import RPM, Spec
 from rift.sync import RepoSyncFactory
 from rift.test_results import TestCase, TestResults
 from rift.text_table import TextTable
-from rift.threads import RiftThread
+from rift.threads import Job, RiftThread
 from rift.utils import banner, message
 from rift.vm import VM
 from unidiff import parse_unidiff
@@ -713,8 +713,8 @@ def _run_pkg_matrix(args, pkg, archs, stagings, worker, action):
     """
     Run worker for each supported (arch, variant) on a loaded package.
 
-    When not --seq, start one RiftThread per pair named
-    ``{action}-{arch}-{variant}`` (e.g. build-x86_64-main).
+    One Job is created per pair. When not --seq, each job runs in a RiftThread
+    named after the job ``{action}-{arch}-{variant}`` (e.g. build-x86_64-main).
     """
     results = TestResults()
 
@@ -730,29 +730,22 @@ def _run_pkg_matrix(args, pkg, archs, stagings, worker, action):
                 pkg.name,
             )
             continue
-        staging = stagings.get(arch)
         for variant in pkg.variants:
-            jobs.append((arch, variant, staging))
+            jobs.append(
+                Job(action, worker, args, pkg, arch, variant, stagings.get(arch))
+            )
 
     if not jobs:
         return results
 
     # Run jobs sequentially if --seq option is used
     if getattr(args, "seq", False):
-        for arch, variant, staging in jobs:
-            results.extend(worker(args, pkg, arch, staging, variant))
+        for job in jobs:
+            results.extend(job.run())
         return results
 
     # Run jobs in parallel threads otherwise
-    threads = []
-    for arch, variant, staging in jobs:
-        threads.append(
-            RiftThread(
-                worker,
-                f"{action}-{arch}-{variant}",
-                args=(args, pkg, arch, staging, variant),
-            )
-        )
+    threads = [RiftThread(job) for job in jobs]
     for thread in threads:
         message(f"Starting {action} thread {thread.name}")
         thread.start()
