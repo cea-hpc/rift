@@ -25,9 +25,8 @@ jobs:
       matrix:
         envs:
         - container: "almalinux/8-base"
-          epel: 8
-          ocean-repos: 3.8-1
-        - container: "fedora"
+          ocean: "8.10"
+        - container: "fedora:42"
     runs-on: ubuntu-latest
     container:
       image: ${{ matrix.envs.container }}
@@ -35,6 +34,67 @@ jobs:
       options: --device=/dev/kvm --privileged
     steps:
       - uses: actions/checkout@v4
+
+      # On AlmaLinux, replace default AlmaLinux repositories with the Ocean
+      # repositories of the CEA harbor. The ocean repositories are required
+      # to install the qemu version needed by Rift.
+      - name: Setup Ocean repositories (AlmaLinux 8)
+        if: ${{ startsWith(matrix.envs.container, 'almalinux') }}
+        run: |
+          rm -f /etc/yum.repos.d/almalinux*.repo
+          cat << 'EOF' > /etc/yum.repos.d/ocean.repo
+          [alma-os]
+          name=AlmaLinux OS ${{ matrix.envs.ocean }} - BaseOS
+          baseurl=https://harbor-forge.ccc.ocre.cea.fr/ocean/repos/${{ matrix.envs.ocean }}/alma-os/$basearch
+          enabled=1
+          gpgcheck=0
+          priority=90
+
+          [alma-appstream]
+          name=AlmaLinux OS ${{ matrix.envs.ocean }} - AppStream
+          baseurl=https://harbor-forge.ccc.ocre.cea.fr/ocean/repos/${{ matrix.envs.ocean }}/alma-appstream/$basearch
+          enabled=1
+          gpgcheck=0
+          priority=90
+
+          [alma-powertools]
+          name=AlmaLinux OS ${{ matrix.envs.ocean }} - PowerTools
+          baseurl=https://harbor-forge.ccc.ocre.cea.fr/ocean/repos/${{ matrix.envs.ocean }}/alma-powertools/$basearch
+          enabled=1
+          gpgcheck=0
+          priority=90
+
+          [epel]
+          name=EPEL 8
+          baseurl=https://harbor-forge.ccc.ocre.cea.fr/ocean/repos/${{ matrix.envs.ocean }}/epel/$basearch
+          enabled=1
+          gpgcheck=0
+          priority=90
+
+          [ocean]
+          name=Ocean ${{ matrix.envs.ocean }}
+          baseurl=https://harbor-forge.ccc.ocre.cea.fr/ocean/repos/${{ matrix.envs.ocean }}/ocean/$basearch
+          enabled=1
+          gpgcheck=0
+          priority=89
+          module_hotfixes=1
+
+          [ocean-updates]
+          name=Ocean ${{ matrix.envs.ocean }} - Updates
+          baseurl=https://harbor-forge.ccc.ocre.cea.fr/ocean/repos/${{ matrix.envs.ocean }}/ocean-updates/$basearch
+          enabled=1
+          gpgcheck=0
+          priority=88
+          module_hotfixes=1
+
+          [security]
+          name=Ocean ${{ matrix.envs.ocean }} - Security
+          baseurl=https://harbor-forge.ccc.ocre.cea.fr/ocean/repos/${{ matrix.envs.ocean }}/security/$basearch
+          enabled=1
+          gpgcheck=0
+          priority=87
+          module_hotfixes=1
+          EOF
 
       # Generate missing locales in the container. Programs are executed with
       # en_US.UTF-8 locale, this locale must be defined in the container in
@@ -66,22 +126,6 @@ jobs:
       - name: Mount binfmt_misc virtual filesystem
         run: |
           mount binfmt_misc -t binfmt_misc /proc/sys/fs/binfmt_misc
-
-      # On Almalinux, enable EPEL repository to install mock and all its
-      # dependencies.
-      - name: Enable EPEL repository (Almalinux 8)
-        if: ${{ startsWith(matrix.envs.container, 'almalinux') }}
-        run: |
-          dnf -y install 'dnf-command(config-manager)'
-          dnf config-manager --set-enabled powertools
-          dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-${{ matrix.envs.epel }}.noarch.rpm
-
-      # On almalinux, enable Ocean repositories in order to install qemu version
-      # required by Rift.
-      - name: Enable Ocean repository (Almalinux 8)
-        if: ${{ startsWith(matrix.envs.container, 'almalinux') }}
-        run:
-          dnf -y install https://ocean.eupex.eu/install/ocean-repos-${{ matrix.envs.ocean-repos }}.x86_64.rpm
 
       - name: Install tests dependencies
         run: |
