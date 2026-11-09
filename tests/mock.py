@@ -4,6 +4,7 @@
 
 import getpass
 import os
+import shlex
 import tempfile
 from textwrap import dedent
 from unittest.mock import ANY, MagicMock, patch
@@ -213,24 +214,24 @@ class MockTest(RiftProjectTestCase):
 
     @patch("rift.mock.run_command")
     def test_read_spec(self, mock_run_command):
-        mock_run_command.return_value = RunResult(
-            0, "standard output", "standard error"
-        )
+        err = "error: foo\nwarning: bar\nsh: baz\nrpm: qux\negrep\n"
+        specfile = "/dev/'package' \"2.spec"
+        specfile_rp = os.path.realpath(specfile)
+        mock_run_command.return_value = RunResult(0, "standard output", err)
         mock = Mock(config=self.config, arch="x86_64", proj_vers=1.0)
         mock.init([])
-        result = mock.read_spec("/dev/package.spec")
+        result = mock.read_spec(specfile)
         mock_run_command.assert_called_with(
             [
                 "mock",
                 "--config-opts",
                 "print_main_output=yes",
                 f"--configdir={mock._tmpdir.path}",
-                "--plugin-option=bind_mount:dirs="
-                "[('/dev/package.spec', '/dev/package.spec')]",
-                "chroot",
+                "--plugin-option=bind_mount:dirs=" + str([(specfile_rp, specfile_rp)]),
+                "shell",
                 "rpmspec",
                 "--parse",
-                "/dev/package.spec",
+                shlex.quote(specfile_rp),
             ],
             live_output=True,
             capture_output=True,
@@ -255,16 +256,6 @@ class MockTest(RiftProjectTestCase):
         with self.assertRaisesRegex(RiftError, "standard error"):
             mock.read_spec("/dev/package.spec")
         mock.clean()
-
-    @patch("rift.mock.run_command")
-    def test_read_spec_filter_output(self, mock_run_command):
-        output = "error: foo\nwarning: bar\nstandard output\nsh: baz\nrpm: qux\n"
-        mock_run_command.return_value = RunResult(0, output, "standard error")
-        mock = Mock(config=self.config, arch="x86_64", proj_vers=1.0)
-        mock.init([])
-        result = mock.read_spec("/dev/package.spec")
-        mock.clean()
-        self.assertEqual(result, "standard output")
 
     def test_rpmlint_env_returns_none_without_configdir(self):
         """Test rpmlint_env() returns None without configdir."""
@@ -378,10 +369,8 @@ class MockTest(RiftProjectTestCase):
             + [
                 "--plugin-option=bind_mount:dirs=[('/dev', '/dev')]",
                 "--quiet",
-                "chroot",
+                "shell",
                 "--",
-                "bash",
-                "-c",
                 expected_script,
             ],
             capture_output=True,
