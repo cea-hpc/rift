@@ -52,6 +52,7 @@ import sys
 import tempfile
 import termios
 import textwrap
+import threading
 import time
 import urllib
 import uuid
@@ -72,6 +73,11 @@ __all__ = ["VM"]
 
 ARCH_EFI_BIOS = "./usr/share/edk2/aarch64/QEMU_EFI.silent.fd"
 CLOUD_INIT_SEED_ISO = "seed.iso"
+
+# Serialize refresh of VM image local copies shared by concurrent VMs.
+_DOWNLOAD_LOCK = threading.Lock()
+# Local copies of VM images already refreshed in this run.
+_REFRESHED_IMAGES = set()
 
 
 def is_virtiofs_qemu(virtiofsd=_DEFAULT_VIRTIOFSD):
@@ -207,6 +213,17 @@ class VM:
         self.kernel = vm_config.get("kernel")
 
     @property
+    def imageid(self):
+        """
+        Generate a checksum for user, architecture and version, shared by all
+        VM slots of this combination. It identifies what slots have in common,
+        such as the local copy of the VM image.
+        """
+        return hashlib.sha1(
+            f"{os.getuid()}-{self.arch}-{self.version}".encode()
+        ).hexdigest()
+
+    @property
     def vmid(self):
         """
         Generate a checksum for user, architecture, version, and variant slot
@@ -231,7 +248,7 @@ class VM:
             return self._image_src.path
         return os.path.join(
             tempfile.gettempdir(),
-            f"rift-vm-local-image-{self.vmid}_{os.path.basename(self._image_src.path)}",
+            f"rift-vm-local-image-{self.imageid}_{os.path.basename(self._image_src.path)}",
         )
 
     def image_is_remote(self) -> bool:
@@ -487,6 +504,21 @@ class VM:
         if not self.image_is_remote():
             return
 
+        # Concurrent VMs share the local copy. Use a lock to manage concurrent checks
+        # and downloads. Make sure it is refreshed at most once per run.
+        with _DOWNLOAD_LOCK:
+            if self.image_local in _REFRESHED_IMAGES:
+                logging.debug(
+                    "VM image local copy %s already refreshed in this run, "
+                    "skipping download",
+                    self.image_local,
+                )
+                return
+            self._download_locked(force)
+            _REFRESHED_IMAGES.add(self.image_local)
+
+    def _download_locked(self, force: bool):
+        """Refresh local copy of remote VM image, with download lock held."""
         # Setup proxy if defined
         setup_dl_opener(self.proxy, self.no_proxy)
 
