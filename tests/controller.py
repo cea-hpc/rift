@@ -22,11 +22,14 @@ from rift.controller import (
     get_packages_to_build,
     main,
     make_parser,
+    parse_host,
+    parse_token_proxy,
     remove_packages,
 )
 from rift.package._virtual import PackageVirtual
 from rift.package.oci import ActionableArchPackageOCI, PackageOCI
 from rift.package.rpm import ActionableArchPackageRPM, PackageRPM
+from rift.repository.rpm import ArchRepositoriesRPM, RepositoryHost
 from rift.rpm import RPM
 from rift.test_results import TestCase, TestResults
 
@@ -3602,6 +3605,112 @@ class ControllerProjectActionChangelogTest(RiftProjectTestCase):
             main(["changelog", "pkg", "-c", "basic change", "-t", "Fail"])
 
 
+class ControllerProjectActionRepoTest(RiftProjectTestCase):
+    """
+    Tests class for Controller action repo
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.config.set("arch", ["x86_64", "aarch64"])
+        self.config.options["repos"] = {
+            "os": {"url": "https://pkgs.internal:8443/8.8/BaseOS/$arch/os"},
+            "private": {
+                "url": "https://pkgs.internal/private/$arch",
+                "auth": "idp_token",
+            },
+            "local": {"url": "file:///var/repos/$arch"},
+        }
+        self.config.options["aarch64"] = {
+            "repos": {"alt": {"url": "https://pkgs.internal:8443/alt"}}
+        }
+        self.update_project_conf()
+
+    def test_generate_stdout(self):
+        """Test repo generate renders x86_64 repositories on stdout."""
+        buf = StringIO()
+        with patch.object(
+            ArchRepositoriesRPM, "generate", autospec=True, return_value="rendered\n"
+        ) as generate, patch("sys.stdout", buf):
+            rc = main(["repo", "generate", "--arch", "x86_64"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(buf.getvalue(), "rendered\n")
+        args, kwargs = generate.call_args
+        (repos,) = args
+        self.assertEqual(repos.arch, "x86_64")
+        self.assertCountEqual(
+            [repo.name for repo in repos.supplementaries], ["os", "private", "local"]
+        )
+        self.assertIsNone(kwargs["host"])
+        self.assertIsNone(kwargs["token_proxy"])
+
+    def test_generate_default_arch(self):
+        """Test repo generate uses project chroot architecture by default."""
+        with patch.object(
+            ArchRepositoriesRPM, "generate", autospec=True, return_value=""
+        ) as generate, patch("sys.stdout", StringIO()):
+            rc = main(["repo", "generate"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(generate.call_args[0][0].arch, self.config.chroot_arch())
+
+    def test_generate_output_file(self):
+        """Test repo generate writes output file with host and token proxy."""
+        output = os.path.join(self.projdir, "rift.repo")
+        with patch.object(
+            ArchRepositoriesRPM, "generate", autospec=True, return_value="rendered\n"
+        ) as generate:
+            rc = main(
+                [
+                    "repo",
+                    "generate",
+                    "-H",
+                    "pkgs.external",
+                    "--token-proxy",
+                    "http://127.0.0.1:8765",
+                    "-o",
+                    output,
+                    "--arch",
+                    "x86_64",
+                ]
+            )
+        self.assertEqual(rc, 0)
+        self.assertEqual(read_file(output), "rendered\n")
+        kwargs = generate.call_args[1]
+        self.assertEqual(kwargs["host"], RepositoryHost(None, "pkgs.external", None))
+        self.assertEqual(kwargs["token_proxy"], "127.0.0.1:8765")
+
+    def test_generate_arch_repos(self):
+        """Test repo generate resolves architecture specific repositories."""
+        with patch.object(
+            ArchRepositoriesRPM, "generate", autospec=True, return_value=""
+        ) as generate, patch("sys.stdout", StringIO()):
+            rc = main(
+                ["repo", "generate", "--arch", "aarch64", "-H", "http://pkgs.external"]
+            )
+        self.assertEqual(rc, 0)
+        args, kwargs = generate.call_args
+        (repos,) = args
+        self.assertEqual(repos.arch, "aarch64")
+        self.assertEqual([repo.name for repo in repos.supplementaries], ["alt"])
+        self.assertEqual(kwargs["host"], RepositoryHost("http", "pkgs.external", None))
+
+    def test_generate_rendered(self):
+        """Test repo generate end-to-end rendering."""
+        buf = StringIO()
+        with patch("sys.stdout", buf):
+            rc = main(["repo", "generate", "--arch", "x86_64"])
+        self.assertEqual(rc, 0)
+        self.assertIn(
+            "[os]\nname=os\nbaseurl=https://pkgs.internal:8443/8.8/BaseOS/$basearch/os\n",
+            buf.getvalue(),
+        )
+
+    def test_generate_invalid_host(self):
+        """Test repo generate fails on invalid host."""
+        with self.assertRaisesRegex(RiftError, "expected no path"):
+            main(["repo", "generate", "-H", "pkgs.external/extra"])
+
+
 class ControllerArgumentsTest(RiftTestCase):
     """Arguments parsing tests for Controller module"""
 
@@ -3912,3 +4021,94 @@ class ControllerArgumentsTest(RiftTestCase):
         args = ["vm", "build", "--url", "http://image", "--output"]
         with self.assertRaises(SystemExit):
             parser.parse_args(args)
+
+    def test_parse_args_repo_missing_command(self):
+        """Test repo parser fails without sub-command."""
+        with self.assertRaises(SystemExit):
+            make_parser().parse_args(["repo"])
+
+    def test_parse_args_repo_generate_defaults(self):
+        """Test repo generate parser defaults."""
+        opts = make_parser().parse_args(["repo", "generate"])
+        self.assertEqual(opts.repo_cmd, "generate")
+        self.assertIsNone(opts.output)
+        self.assertIsNone(opts.arch)
+        self.assertIsNone(opts.host)
+        self.assertIsNone(opts.token_proxy)
+
+    def test_parse_args_repo_generate_options(self):
+        """Test repo generate parser options."""
+        opts = make_parser().parse_args(
+            [
+                "repo",
+                "generate",
+                "-o",
+                "out.repo",
+                "--arch",
+                "aarch64",
+                "--host",
+                "pkgs.external",
+                "--token-proxy",
+                "http://127.0.0.1:8765",
+            ]
+        )
+        self.assertEqual(opts.output, "out.repo")
+        self.assertEqual(opts.arch, "aarch64")
+        self.assertEqual(opts.host, "pkgs.external")
+        self.assertEqual(opts.token_proxy, "http://127.0.0.1:8765")
+        short = make_parser().parse_args(["repo", "generate", "-H", "pkgs.external"])
+        self.assertEqual(short.host, "pkgs.external")
+
+
+class ReposConfParseTest(RiftTestCase):
+    """Tests for parse_host and parse_token_proxy."""
+
+    def test_parse_host(self):
+        self.assertEqual(
+            parse_host("pkgs.external"),
+            RepositoryHost(None, "pkgs.external", None),
+        )
+        self.assertEqual(
+            parse_host("pkgs.external:9443"),
+            RepositoryHost(None, "pkgs.external", 9443),
+        )
+        self.assertEqual(
+            parse_host("http://pkgs.external"),
+            RepositoryHost("http", "pkgs.external", None),
+        )
+        self.assertEqual(
+            parse_host("http://pkgs.external:8080"),
+            RepositoryHost("http", "pkgs.external", 8080),
+        )
+        with self.assertRaisesRegex(RiftError, "expected no path"):
+            parse_host("pkgs.external/extra")
+        with self.assertRaisesRegex(RiftError, "expected no path"):
+            parse_host("http://pkgs.external/extra")
+        with self.assertRaisesRegex(RiftError, "expected host, host:port"):
+            parse_host("http://user:pass@pkgs.external")
+        with self.assertRaisesRegex(RiftError, "expected host, host:port"):
+            parse_host("http://pkgs.external?arch=1")
+        with self.assertRaisesRegex(RiftError, "expected host, host:port"):
+            parse_host("http://")
+        with self.assertRaisesRegex(RiftError, "expected host, host:port"):
+            parse_host("pkgs.external:abc")
+
+    def test_parse_token_proxy(self):
+        self.assertEqual(
+            parse_token_proxy("http://127.0.0.1:8765"),
+            "127.0.0.1:8765",
+        )
+        self.assertEqual(
+            parse_token_proxy("http://127.0.0.1:8765/"),
+            "127.0.0.1:8765",
+        )
+        with self.assertRaisesRegex(RiftError, "expected an http URL with a host"):
+            parse_token_proxy("https://127.0.0.1:8765")
+        with self.assertRaisesRegex(RiftError, "expected an http URL with a host"):
+            parse_token_proxy("http://")
+        with self.assertRaisesRegex(RiftError, "expected no path other than /"):
+            parse_token_proxy("http://127.0.0.1:8765/extra")
+        with self.assertRaisesRegex(RiftError, "expected no user info, query"):
+            parse_token_proxy("http://user:pass@127.0.0.1:8765")
+        with self.assertRaisesRegex(RiftError, "expected no user info, query"):
+            parse_token_proxy("http://127.0.0.1:8765?arch=1")

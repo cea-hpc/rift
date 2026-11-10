@@ -39,16 +39,20 @@ import logging
 import os
 import shutil
 import threading
+import urllib.parse
+from collections import namedtuple
 from subprocess import PIPE, STDOUT, CalledProcessError, Popen, run
 
 from rift import RiftError
-from rift.config import _DEFAULT_REPO_CMD, _DEFAULT_REPOS_VARIANTS
+from rift.config import _DEFAULT_REPO_CMD, _DEFAULT_REPOS_VARIANTS, _DEFAULT_VARIANT
 from rift.mock import Mock
 from rift.repository._base import ArchRepositoriesBase, StagingRepositoryBase
 from rift.rpm import RPM, Spec
 from rift.temp_dir import TempDir
 
 repo_lock = threading.Lock()
+
+RepositoryHost = namedtuple("RepositoryHost", ["scheme", "hostname", "port"])
 
 
 class ConsumableRepository:
@@ -101,12 +105,51 @@ class ConsumableRepository:
             return self.url[len(self.FILE_SCHEME) :]
         return self.url
 
-    def generic_url(self, arch):
+    def generic_url(self, arch, url=None):
         """
-        Return the URL with all occurrences of the given architecture replaced
-        by generic $basearch placeholder.
+        Return the URL with all occurrences of the given architecture in its path
+        and query replaced by generic $basearch placeholder. When url is provided
+        (eg. as returned by replace_host()), it is used instead of the repository
+        URL.
         """
-        return self.url.replace(arch, "$basearch")
+        parts = urllib.parse.urlsplit(url or self.url)
+        return urllib.parse.urlunsplit(
+            parts._replace(
+                path=parts.path.replace(arch, "$basearch"),
+                query=parts.query.replace(arch, "$basearch"),
+            )
+        )
+
+    def replace_host(self, host):
+        """
+        Return the repository URL with its host replaced by the given
+        RepositoryHost. The repository URL is not modified.
+
+        file:// URLs and URLs with no host are returned unchanged. The declared port is
+        dropped. A scheme on host overrides the declared scheme; otherwise the declared
+        scheme is kept. The path and query are kept.
+        """
+        if self.is_file():
+            return self.url
+        parts = urllib.parse.urlsplit(self.url)
+        if not parts.hostname:
+            return self.url
+        if host.scheme is None:
+            scheme = parts.scheme
+        else:
+            scheme = host.scheme
+        # Bracket IPv6 hosts so the port separator stays unambiguous.
+        if ":" in host.hostname:
+            hostname = f"[{host.hostname}]"
+        else:
+            hostname = host.hostname
+        if host.port is None:
+            netloc = hostname
+        else:
+            netloc = f"{hostname}:{host.port}"
+        return urllib.parse.urlunsplit(
+            (scheme, netloc, parts.path, parts.query, parts.fragment)
+        )
 
     def exists(self):
         """
@@ -342,6 +385,49 @@ class ArchRepositoriesRPM(ArchRepositoriesBase):
                 repos.append(repo)
 
         return repos
+
+    def generate(self, host=None, token_proxy=None):
+        """
+        Render a dnf/yum repository file for the supplementary repositories
+        declared in the project for the architecture (working repository is
+        excluded).
+        """
+        stanzas = []
+        prio = 1000
+        for repo in self.supplementaries:
+            prio = repo.priority or (prio - 1)
+            proxy = None
+            # When repository is authenticated and token proxy is provided, the
+            # repository uses this proxy.
+            if token_proxy is not None and repo.authenticated():
+                baseurl = f"http://{token_proxy}/{urllib.parse.quote(repo.name)}/"
+            else:
+                # If host is provided, use it in the repository URL.
+                url = repo.replace_host(host) if host is not None else repo.url
+                # Replaces the concrete architecture in declared URLs with
+                # $basearch.
+                baseurl = repo.generic_url(self.arch, url)
+                if repo.proxy and not repo.authenticated():
+                    proxy = repo.proxy
+            enabled = 1 if _DEFAULT_VARIANT in repo.variants else 0
+            lines = [
+                f"[{repo.name}]",
+                f"name={repo.name}",
+                f"baseurl={baseurl}",
+                "gpgcheck=0",
+                f"priority={prio}",
+                f"enabled={enabled}",
+            ]
+            if repo.module_hotfixes:
+                lines.append(f"module_hotfixes={repo.module_hotfixes}")
+            if repo.excludepkgs:
+                lines.append(f"excludepkgs={repo.excludepkgs}")
+            if proxy:
+                lines.append(f"proxy={proxy}")
+            stanzas.append("\n".join(lines))
+        if not stanzas:
+            return ""
+        return "\n\n".join(stanzas) + "\n"
 
     def delete_matching(self, package):
         """
