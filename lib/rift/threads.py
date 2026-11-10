@@ -30,15 +30,16 @@
 # knowledge of the CeCILL license and that you accept its terms.
 #
 
-"""Threads classes and utilities to build for architectures in parallel."""
+"""Jobs and threads classes and utilities to run jobs in parallel."""
 
 import contextlib
 import io
 import sys
 import threading
+import time
 import traceback
 
-from rift.test_results import TestResults
+from rift.test_results import TestCase, TestResults
 
 # Python provides standards context managers contextlib.redirect_{stdout,stderr}
 # but they are not thread-safe unfortunately. For redirecting threads
@@ -118,22 +119,68 @@ def redirect_output_threadsafe(output):
         del sys.stderr.local.stream
 
 
-class RiftThread(threading.Thread):
-    """Base thread for Rift parallel processing"""
+class Job:
+    """
+    Unit of work to run: a worker function with its context (package,
+    architecture, variant and staging repository). Running the job returns
+    TestResults.
+    """
 
-    def __init__(self, target, name, args):
-        # Initializing the Thread class
-        super().__init__(None, target, name, args=args)
-        self.output = io.StringIO()  # output buffer, for stdout/stderr
-        self.results = TestResults()  # build/validate tests results
+    def __init__(self, action, worker, args, pkg, arch, variant, staging=None):
+        self.action = action  # action name (eg. build, validate)
+        self.worker = worker
+        self.args = args  # command line arguments
+        self.pkg = pkg
+        self.arch = arch
+        self.variant = variant
+        self.staging = staging
+
+    @property
+    def name(self):
+        """Job name, ie. {action}-{arch}-{variant}."""
+        return f"{self.action}-{self.arch}-{self.variant}"
 
     def run(self):
         """
-        Run the thread target and bufferize its stdout/stderr in output attribute.
+        Run the worker with the job context and return its TestResults. If the
+        worker crashes, its traceback is printed on stderr and the crash is
+        reported as a failed test case named after the action.
+        """
+        now = time.time()
+        try:
+            return self.worker(
+                self.args, self.pkg, self.arch, self.staging, self.variant
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            traceback.print_exc(file=sys.stderr)
+            results = TestResults()
+            results.add_failure(
+                TestCase(
+                    self.action, self.pkg.name, self.variant, self.arch, self.pkg.format
+                ),
+                time.time() - now,
+                err=str(exc),
+            )
+            return results
+
+
+class RiftThread(threading.Thread):
+    """Thread to run a Rift job in parallel with buffered output."""
+
+    def __init__(self, job):
+        # Initializing the Thread class
+        super().__init__(name=job.name)
+        self.job = job
+        self.output = io.StringIO()  # output buffer, for stdout/stderr
+        self.results = TestResults()  # job tests results
+
+    def run(self):
+        """
+        Run the job and bufferize its stdout/stderr in output attribute.
         """
         with redirect_output_threadsafe(self.output):
             try:
-                self.results = self._target(*self._args)
+                self.results = self.job.run()
             except Exception:
                 # Avoid threading.Thread to catch the Exception and report the
                 # stacktrace out of thread buffered output. Force print of
