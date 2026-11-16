@@ -188,8 +188,8 @@ def _patched_file_updated_packages(patched_file, config, modules, staff):
             logging.info("Detected buildfile file")
             known_file = True
 
-        # rpmlint config file
-        elif names in [RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2]:
+        # rpmlint config file (RPM format only)
+        elif pkg.format == "rpm" and names[0] in [RPMLINT_CONFIG_V1, RPMLINT_CONFIG_V2]:
             logging.debug("Detecting rpmlint config file")
             known_file = True
 

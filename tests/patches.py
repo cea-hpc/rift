@@ -876,3 +876,46 @@ class PatchTest(RiftProjectTestCase):
         for package in updated:
             self.assertEqual(package.name, "pkgnew")
         self.assertCountEqual([package.format for package in updated], ["rpm", "oci"])
+
+    def test_package_rpmlint_modified(self):
+        """Test detect modified rpmlint file for an RPM package in patch"""
+        self.make_pkg("pkg")
+        patch = make_temp_file(
+            textwrap.dedent("""
+                diff --git a/packages/pkg/pkg.spec b/packages/pkg/pkg.spec
+                index b92c49d..e19169a 100644
+                --- a/packages/pkg/pkg.spec
+                +++ b/packages/pkg/pkg.spec
+                @@ -1,6 +1,6 @@
+                 Name:    pkg
+                 Version:        1.0
+                -Release:        1
+                +Release:        2
+                 Summary:        A package
+                 Group:          System Environment/Base
+                 License:        GPL
+                @@ -14,6 +14,7 @@ Provides:       pkg-provide
+                 A package
+                 %prep
+                 %build
+                +echo add build step
+                 # Nothing to build
+                 %install
+                 # Nothing to install
+                diff --git a/packages/pkg/rpmlint.toml b/packages/pkg/rpmlint.toml
+                new file mode 100644
+                index 0000000..a2fdb6f
+                --- /dev/null
+                +++ b/packages/pkg/rpmlint.toml
+                @@ -0,0 +1 @@
+                +Filters = ["E: superfluous-%clean-section"]
+                """)
+        )
+        with open(patch.name) as p:
+            (updated, removed) = get_packages_from_patch(
+                p, self.config, self.modules, self.staff
+            )
+            self.assertEqual(len(updated), 1)
+            self.assertEqual(len(removed), 0)
+            self.assertEqual(updated[0].name, "pkg")
+            self.assertEqual(updated[0].format, "rpm")
