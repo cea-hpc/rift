@@ -560,10 +560,16 @@ def make_parser():
         "generate",
         help="generate a dnf/yum repository file from project configuration",
     )
-    subsubprs.add_argument(
+    output_group = subsubprs.add_mutually_exclusive_group()
+    output_group.add_argument(
         "-o",
         "--output",
         help="write the repository file to this path (default: stdout)",
+    )
+    output_group.add_argument(
+        "-d",
+        "--output-dir",
+        help="write one <repository>.repo file per repository in this directory",
     )
     subsubprs.add_argument(
         "--arch",
@@ -1720,8 +1726,19 @@ def action_repo(args, config):
     host = parse_host(args.host) if args.host else None
     # Parse the token proxy base URL specified on the command line, if any.
     token_proxy = parse_token_proxy(args.token_proxy) if args.token_proxy else None
-    # Render the repository file.
-    text = repos.generate(host=host, token_proxy=token_proxy)
+    # Render the repository stanzas.
+    stanzas = repos.generate(host=host, token_proxy=token_proxy)
+    # When an output directory is specified, write one file per repository.
+    if args.output_dir:
+        os.makedirs(args.output_dir, exist_ok=True)
+        for name, stanza in stanzas:
+            path = os.path.join(args.output_dir, f"{name}.repo")
+            with open(path, "w", encoding="utf-8") as repo_file:
+                repo_file.write(stanza)
+            logging.info("Repository file %s written", path)
+        return 0
+    # Join the stanzas, separated by blank lines, into a single repository file.
+    text = "\n".join(stanza for _, stanza in stanzas)
     # Write the repository file to the output file, if specified, or to stdout.
     if args.output:
         with open(args.output, "w", encoding="utf-8") as repo_file:
