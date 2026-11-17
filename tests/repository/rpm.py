@@ -20,6 +20,11 @@ from rift.rpm import RPM
 from ..test_utils import RiftTestCase, make_temp_dir, read_file
 
 
+def _render(stanzas):
+    """Join generated repository stanzas into a single repository file."""
+    return "\n".join(stanza for _, stanza in stanzas)
+
+
 class LocalRepositoryTest(RiftTestCase):
     """
     Tests class for Repository
@@ -589,7 +594,7 @@ class ArchRepositoriesRPMTest(RiftTestCase):
             },
         )
         arch_repos.supplementaries = [repo]
-        text = arch_repos.generate()
+        text = _render(arch_repos.generate())
         self.assertEqual(
             text,
             "\n".join(
@@ -617,7 +622,7 @@ class ArchRepositoriesRPMTest(RiftTestCase):
             ConsumableRepository("https://d.example/repo", name="d"),
         ]
         arch_repos.supplementaries = repos
-        text = arch_repos.generate()
+        text = _render(arch_repos.generate())
         self.assertIn("name=a\nbaseurl=https://a.example/repo\n", text)
         self.assertIn("gpgcheck=0\npriority=999\n", text)
         self.assertIn("name=b\nbaseurl=https://b.example/repo\n", text)
@@ -637,7 +642,7 @@ class ArchRepositoriesRPMTest(RiftTestCase):
             ConsumableRepository("https://c.example/repo", name="c", variants=["main"]),
         ]
         arch_repos.supplementaries = repos
-        text = arch_repos.generate()
+        text = _render(arch_repos.generate())
         self.assertIn("name=a\nbaseurl=https://a.example/repo\n", text)
         self.assertIn("priority=999\nenabled=1\n", text)
         self.assertIn("name=b\nbaseurl=https://b.example/repo\n", text)
@@ -650,7 +655,9 @@ class ArchRepositoriesRPMTest(RiftTestCase):
         arch_repos.supplementaries = [
             ConsumableRepository("https://pkgs.internal:8443/x86_64/os", name="os")
         ]
-        text = arch_repos.generate(host=RepositoryHost("http", "pkgs.external", 8080))
+        text = _render(
+            arch_repos.generate(host=RepositoryHost("http", "pkgs.external", 8080))
+        )
         self.assertIn("baseurl=http://pkgs.external:8080/$basearch/os\n", text)
 
     def test_generate_token_proxy(self):
@@ -666,9 +673,11 @@ class ArchRepositoriesRPMTest(RiftTestCase):
             options={"auth": "idp_token", "proxy": "http://proxy:3128"},
         )
         arch_repos.supplementaries = [public, private]
-        text = arch_repos.generate(
-            host=RepositoryHost(None, "pkgs.external", None),
-            token_proxy="127.0.0.1:8765",
+        text = _render(
+            arch_repos.generate(
+                host=RepositoryHost(None, "pkgs.external", None),
+                token_proxy="127.0.0.1:8765",
+            )
         )
         self.assertIn(
             "baseurl=https://pkgs.external/os/$basearch\n",
@@ -682,7 +691,35 @@ class ArchRepositoriesRPMTest(RiftTestCase):
     def test_generate_empty(self):
         arch_repos = ArchRepositoriesRPM(self.config, None, "x86_64")
         arch_repos.supplementaries = []
-        self.assertEqual(arch_repos.generate(), "")
+        self.assertEqual(arch_repos.generate(), [])
+
+    def test_generate_stanzas(self):
+        arch_repos = ArchRepositoriesRPM(self.config, None, "x86_64")
+        arch_repos.supplementaries = [
+            ConsumableRepository("https://a.example/x86_64", name="a"),
+            ConsumableRepository("https://b.example/repo", name="b", priority=5),
+        ]
+        stanzas = arch_repos.generate()
+        self.assertEqual([name for name, _ in stanzas], ["a", "b"])
+        self.assertEqual(
+            stanzas[0][1],
+            "[a]\nname=a\nbaseurl=https://a.example/$basearch\ngpgcheck=0\n"
+            "priority=999\nenabled=1\n",
+        )
+        self.assertEqual(
+            stanzas[1][1],
+            "[b]\nname=b\nbaseurl=https://b.example/repo\ngpgcheck=0\n"
+            "priority=5\nenabled=1\n",
+        )
+
+    def test_generate_name_path_separator(self):
+        arch_repos = ArchRepositoriesRPM(self.config, None, "x86_64")
+        arch_repos.supplementaries = [
+            ConsumableRepository("https://a.example/repo", name="../evil"),
+        ]
+        stanzas = arch_repos.generate()
+        self.assertEqual(stanzas[0][0], ".._evil")
+        self.assertTrue(stanzas[0][1].startswith("[../evil]\nname=../evil\n"))
 
 
 class StagingRepositoryRPMTest(RiftTestCase):
