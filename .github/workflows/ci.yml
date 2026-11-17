@@ -151,10 +151,16 @@ jobs:
 
       # Some tests expect to run as non-root with kvm, mock and sudo permissions
       # sudo required for sudo virtiosfd --version
+      #
+      # /dev/kvm keeps the numeric GID of the runner host, which may not match
+      # any group in the container (stat -c %G then reports UNKNOWN). Create a
+      # group with this GID when it is missing.
       - name: Create unprivileged user
         run: |
           useradd ci
-          usermod -aG $(stat -c %G /dev/kvm) ci
+          KVM_GID=$(stat -c %g /dev/kvm)
+          getent group "${KVM_GID}" >/dev/null || groupadd -g "${KVM_GID}" hostkvm
+          usermod -aG "${KVM_GID}" ci
           usermod -aG mock ci
           echo -e 'Defaults:ci !requiretty\nci ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/00-ci
 
