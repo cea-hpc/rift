@@ -170,6 +170,10 @@ class SpecTest(RiftTestCase):
         spec.release = "1.keyword1{}".format(dist)
         spec.bump_release()
         self.assertEqual(spec.release, "1.keyword2{}".format(dist))
+        # Check with dist-like suffix different from host dist
+        spec.release = "1.el8"
+        spec.bump_release()
+        self.assertEqual(spec.release, "2.el8")
         # Check with invalid release
         spec.release = "a"
         self.assert_except(
