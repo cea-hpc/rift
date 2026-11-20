@@ -1472,7 +1472,14 @@ def action_create_import(args, config):
     if args.maintainer is None:
         raise RiftError("You must specify a maintainer")
 
-    pkgs = ProjectPackages.get(pkgname, config, *staff_modules(config))
+    staff, modules = staff_modules(config)
+
+    # Resolve the module name case-insensitively to its canonical spelling
+    # in modules.yaml, so package metadata uses the project spelling.
+    if args.module:
+        args.module = modules.canonical_name(args.module)
+
+    pkgs = ProjectPackages.get(pkgname, config, staff, modules)
 
     for pkg in pkgs:
         if args.command == "reimport":
