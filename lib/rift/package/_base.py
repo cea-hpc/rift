@@ -196,7 +196,9 @@ class Package(ABC):
         # Write meta information
         data = self._serialize_metadata()
         with open(self.metafile, "w", encoding="utf-8") as fyaml:
-            yaml.dump({"package": data}, fyaml, default_flow_style=False)
+            yaml.dump(
+                {"package": data}, fyaml, default_flow_style=False, allow_unicode=True
+            )
 
     def _deserialize_generic_metadata(self, data):
         """Set generic package object attribute with values in metadata dict."""
