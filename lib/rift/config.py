@@ -42,7 +42,7 @@ import warnings
 
 import yaml
 
-from rift import DeclError
+from rift import DeclError, RiftError
 
 try:
     # included in standard lib from Python 2.7
@@ -930,3 +930,14 @@ class Modules(Staff):
                 if mngr not in self.staff:
                     msg = f"Manager '{mngr}' does not exist in staff list"
                     raise DeclError(msg)
+
+    def canonical_name(self, name):
+        """
+        Return the canonical module name matching 'name' case-insensitively.
+
+        RiftError is raised when no module matches.
+        """
+        for module in self._data:
+            if module.lower() == name.lower():
+                return module
+        raise RiftError(f"Module '{name}' is not defined")
