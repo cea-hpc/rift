@@ -106,7 +106,11 @@ def make_parser():
         "-o", "--origin", dest="origin", help="source of original package"
     )
     subprs.add_argument(
-        "-t", "--maintainer", dest="maintainer", help="maintainer name from staff.yaml"
+        "-t",
+        "--maintainer",
+        dest="maintainer",
+        required=True,
+        help="maintainer name from staff.yaml",
     )
 
     # Import options
@@ -130,7 +134,11 @@ def make_parser():
         "-o", "--origin", dest="origin", help="source of original package"
     )
     subprs.add_argument(
-        "-t", "--maintainer", dest="maintainer", help="maintainer name from staff.yaml"
+        "-t",
+        "--maintainer",
+        dest="maintainer",
+        required=True,
+        help="maintainer name from staff.yaml",
     )
 
     # Reimport options
