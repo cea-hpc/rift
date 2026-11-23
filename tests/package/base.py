@@ -105,6 +105,23 @@ class PackageTest(RiftProjectTestCase):
         self.assertCountEqual(pkg.depends, ["foo", "bar"])
         self.assertCountEqual(pkg.exclude_archs, ["aarch64"])
 
+    def test_write_non_ascii(self):
+        """Test Package information writing with non-ASCII characters"""
+        pkg = PackageTestingConcrete(
+            "pkg", self.config, self.staff, self.modules, "rpm"
+        )
+        pkg.module = "Great module"
+        pkg.reason = "Missing feature"
+        pkg.maintainers = ["Déjà vu"]
+        pkg.origin = "Vendor"
+        pkg.write()
+        with open(pkg.metafile, encoding="utf-8") as fyaml:
+            content = fyaml.read()
+        self.assertIn("Déjà vu", content)
+        self.assertNotIn("\\xE9", content)
+        os.unlink(pkg.metafile)
+        os.rmdir(pkg.dir)
+
     def test_for_arch(self):
         pkg = PackageTestingConcrete(
             "pkg", self.config, self.staff, self.modules, "rpm"
