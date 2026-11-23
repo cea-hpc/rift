@@ -21,7 +21,13 @@ from rift.config import (
 )
 from rift.package import Test
 from rift.repository.rpm import ConsumableRepository
-from rift.vm import ARCH_EFI_BIOS, VM, gen_virtiofs_args
+from rift.vm import (
+    _DOWNLOAD_LOCK,
+    _REFRESHED_IMAGES,
+    ARCH_EFI_BIOS,
+    VM,
+    gen_virtiofs_args,
+)
 
 from .test_utils import RiftProjectTestCase, RiftTestCase, make_temp_dir, make_temp_file
 
@@ -56,6 +62,13 @@ class VMTest(RiftTestCase):
     def setUp(self):
         self.config = Config()
         self.config.project_dir = "/"
+        # Start with no VM image marked as refreshed, in case tests from other
+        # modules (eg. controller) started VMs before.
+        _REFRESHED_IMAGES.clear()
+
+    def tearDown(self):
+        # Forget VM images local copies refreshed during the test.
+        _REFRESHED_IMAGES.clear()
 
     def test_init(self):
         """Test VM initialisation"""
@@ -163,12 +176,12 @@ class VMTest(RiftTestCase):
             # remote URI http
             (
                 "http://localhost/path/to/my_image.qcow2",
-                f"/tmp/rift-vm-local-image-{vm.vmid}_my_image.qcow2",
+                f"/tmp/rift-vm-local-image-{vm.imageid}_my_image.qcow2",
             ),
             # remote URI https
             (
                 "https://localhost/path/to/my_other_image.qcow2",
-                f"/tmp/rift-vm-local-image-{vm.vmid}_my_other_image.qcow2",
+                f"/tmp/rift-vm-local-image-{vm.imageid}_my_other_image.qcow2",
             ),
         }
         for expected_value in expected_values:
@@ -180,6 +193,14 @@ class VMTest(RiftTestCase):
             )
             vm = VM(self.config, platform.machine())
             self.assertEqual(vm.image_local, expected_value[1])
+
+    def test_image_local_shared_by_slots(self):
+        """Test all VM slots share the same local copy of remote image"""
+        self.config.set("vm", {"image": "http://localhost/path/to/my_image.qcow2"})
+        vm0 = VM(self.config, platform.machine(), slot=0)
+        vm1 = VM(self.config, platform.machine(), slot=1)
+        self.assertEqual(vm0.image_local, vm1.image_local)
+        self.assertNotEqual(vm0.vmid, vm1.vmid)
 
     def test_image_local_unsupported_scheme(self):
         self.config.set(
@@ -569,6 +590,50 @@ class VMTest(RiftTestCase):
             cm.output,
         )
 
+    @patch("rift.vm.download_file")
+    @patch("rift.vm.message")
+    def test_download_once_per_run(self, mock_message, mock_download_file):
+        """Test VM image local copy shared by slots is refreshed once per run"""
+        url = "http://localhost/path/to/my_image.qcow2"
+        self.config.set("vm", {"image": url})
+        with patch(
+            "rift.vm.VM.image_local", new_callable=PropertyMock
+        ) as mock_image_local:
+            tmpfile = make_temp_file("")
+            mock_image_local.return_value = tmpfile.name
+            vm1 = VM(self.config, platform.machine(), slot=0)
+            vm2 = VM(self.config, platform.machine(), slot=1)
+            vm1._download(True)
+            vm2._download(True)
+            # Check download_file() has been called only once.
+            mock_download_file.assert_called_once_with(
+                url, tmpfile.name, bearer_token=None
+            )
+
+    @patch("rift.vm.download_file")
+    @patch("rift.vm.message")
+    def test_download_retry_after_failure(self, mock_message, mock_download_file):
+        """Test VM image download is retried by next slot after failure"""
+        url = "http://localhost/path/to/my_image.qcow2"
+        self.config.set("vm", {"image": url})
+        mock_download_file.side_effect = [RiftError("download failed"), None]
+        with patch(
+            "rift.vm.VM.image_local", new_callable=PropertyMock
+        ) as mock_image_local:
+            tmpfile = make_temp_file("")
+            mock_image_local.return_value = tmpfile.name
+            os.unlink(tmpfile.name)
+            vm1 = VM(self.config, platform.machine(), slot=0)
+            vm2 = VM(self.config, platform.machine(), slot=1)
+            with self.assertRaises(RiftError):
+                vm1._download(False)
+            vm2._download(False)
+            # Check download_file() has been re-called for vm2 after failure on vm1.
+            self.assertEqual(mock_download_file.call_count, 2)
+            # Once refreshed, the local copy is not downloaded again.
+            vm1._download(False)
+            self.assertEqual(mock_download_file.call_count, 2)
+
     @patch("rift.vm.last_modified")
     @patch("rift.vm.download_file")
     @patch("rift.vm.message")
@@ -750,6 +815,21 @@ class VMTest(RiftTestCase):
         vm._auth_proxy.required = False
         self.assertTrue(vm.start(force=False))
         vm._auth_proxy.start.assert_not_called()
+
+    @patch("rift.vm.message")
+    def test_download_serialized(self, mock_message):
+        """Test concurrent VMs do not refresh image local copy simultaneously"""
+        self.config.set("vm", {"image": "http://localhost/path/to/my_image.qcow2"})
+        lock_held = []
+
+        def check_lock(_):
+            lock_held.append(_DOWNLOAD_LOCK.locked())
+
+        vm = VM(self.config, platform.machine())
+        vm._download_locked = check_lock
+        vm._download(False)
+        self.assertEqual(lock_held, [True])
+        self.assertFalse(_DOWNLOAD_LOCK.locked())
 
     def test_connect(self):
         """Test VM connect opens SSH and starts the IDP proxy when required"""
