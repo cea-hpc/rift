@@ -84,7 +84,7 @@ class ControllerProjectActionCreateTest(RiftProjectTestCase):
 
     def test_create_missing_maintainer(self):
         """create without maintainer"""
-        with self.assertRaisesRegex(RiftError, "You must specify a maintainer"):
+        with self.assertRaisesRegex(SystemExit, "2"):
             main(["create", "pkg", "-m", "Great module", "-r", "Good reason"])
 
     def test_create(self):
@@ -157,7 +157,7 @@ class ControllerProjectActionImportTest(RiftProjectTestCase):
 
     def test_import_missing_maintainer(self):
         """import without maintainer"""
-        with self.assertRaisesRegex(RiftError, "You must specify a maintainer"):
+        with self.assertRaisesRegex(SystemExit, "2"):
             main(["import", self.src_rpm, "-m", "Great module", "-r", "Good reason"])
 
     def test_import_bin_rpm(self):
