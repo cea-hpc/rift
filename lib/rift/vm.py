@@ -213,6 +213,16 @@ class VM:
         self.kernel = vm_config.get("kernel")
 
     @property
+    def _emulated(self):
+        """
+        True if the VM is emulated by QEMU, False if it is accelerated by KVM.
+        KVM acceleration is only possible on the same architecture as the host.
+        Use platform.machine() instead of platform.processor() to be container
+        compatible.
+        """
+        return not (self.arch == platform.machine() and self.enable_kvm)
+
+    @property
     def imageid(self):
         """
         Generate a checksum for user, architecture and version, shared by all
@@ -361,9 +371,7 @@ class VM:
                 "-object",
                 f"memory-backend-file,id=mem,size={str(self.memory)}M,mem-path=/tmp,share=on",
             ]
-            # Use platform.machine() instead of platform.proccessor to be container
-            # compatible.
-            if self.arch == platform.machine() and self.enable_kvm:
+            if not self._emulated:
                 cmd += ["-machine", "memory-backend=mem,accel=kvm"]
             else:
                 cmd += ["-machine", "memory-backend=mem"]
@@ -426,9 +434,7 @@ class VM:
 
         # If we are on the same architecture we should be able to use kvm
         # acceleration
-        # Use platform.machine() instead of platform.proccessor to be container
-        # compatible.
-        if self.arch == platform.machine() and self.enable_kvm:
+        if not self._emulated:
             cmd += ["-enable-kvm"]
         elif self.arch != platform.machine():
             cmd += ["-machine", "virt"]
