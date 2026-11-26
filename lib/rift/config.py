@@ -86,6 +86,8 @@ _DEFAULT_VM_BUILD_POST_SCRIPT = "build-post.sh"
 _DEFAULT_VM_PORT_RANGE_MIN = 10000
 _DEFAULT_VM_PORT_RANGE_MAX = 15000
 _DEFAULT_VM_ENABLE_KVM = True
+_DEFAULT_VM_START_TIMEOUT = 50
+_DEFAULT_VM_START_TIMEOUT_EMULATED = 200
 _DEFAULT_QEMU_CMD = "qemu-system-$arch"
 _DEFAULT_REPO_CMD = "createrepo_c"
 _DEFAULT_CONTAINER_CMD = "podman"
@@ -309,6 +311,14 @@ class Config:
                     "values": ["idp_token"],
                 },
                 "enable_kvm": {"check": "bool", "default": _DEFAULT_VM_ENABLE_KVM},
+                "start_timeout": {
+                    "check": "digit",
+                    "default": _DEFAULT_VM_START_TIMEOUT,
+                },
+                "start_timeout_emulated": {
+                    "check": "digit",
+                    "default": _DEFAULT_VM_START_TIMEOUT_EMULATED,
+                },
             },
         },
         "vm_image": {"deprecated": "vm.image"},

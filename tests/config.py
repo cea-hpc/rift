@@ -24,6 +24,8 @@ from rift.config import (
     _DEFAULT_VM_CPUS,
     _DEFAULT_VM_PORT_RANGE_MAX,
     _DEFAULT_VM_PORT_RANGE_MIN,
+    _DEFAULT_VM_START_TIMEOUT,
+    _DEFAULT_VM_START_TIMEOUT_EMULATED,
     Config,
     Modules,
     RiftDeprecatedConfWarning,
@@ -44,6 +46,13 @@ class ConfigTest(RiftTestCase):
         self.assertEqual(config.get("modules_file"), _DEFAULT_MODULES_FILE)
         self.assertEqual(config.get("vm").get("cpus"), _DEFAULT_VM_CPUS)
         self.assertEqual(config.get("vm").get("address"), _DEFAULT_VM_ADDRESS)
+        self.assertEqual(
+            config.get("vm").get("start_timeout"), _DEFAULT_VM_START_TIMEOUT
+        )
+        self.assertEqual(
+            config.get("vm").get("start_timeout_emulated"),
+            _DEFAULT_VM_START_TIMEOUT_EMULATED,
+        )
         self.assertEqual(config.get("shared_fs_type"), _DEFAULT_SHARED_FS_TYPE)
         self.assertEqual(config.get("virtiofsd"), _DEFAULT_VIRTIOFSD)
         self.assertEqual(
@@ -70,6 +79,16 @@ class ConfigTest(RiftTestCase):
         # set an 'int'
         config.set("vm", {"image": "/path/to/image", "cpus": 42})
         self.assertEqual(config.get("vm").get("cpus"), 42)
+        config.set(
+            "vm",
+            {
+                "image": "/path/to/image",
+                "start_timeout": 120,
+                "start_timeout_emulated": 600,
+            },
+        )
+        self.assertEqual(config.get("vm").get("start_timeout"), 120)
+        self.assertEqual(config.get("vm").get("start_timeout_emulated"), 600)
 
         # set a 'dict'
         config.set(
@@ -100,6 +119,13 @@ class ConfigTest(RiftTestCase):
             Config().set,
             "vm",
             {"image": "/path/to/image", "cpus": "a string"},
+        )
+        self.assert_except(
+            DeclError,
+            "Bad data type str for 'start_timeout'",
+            Config().set,
+            "vm",
+            {"image": "/path/to/image", "start_timeout": "a string"},
         )
         self.assert_except(
             DeclError,

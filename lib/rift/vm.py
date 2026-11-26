@@ -178,6 +178,11 @@ class VM:
         self.qemu = config.get("qemu", arch=arch)
 
         self.enable_kvm = vm_config.get("enable_kvm")
+        # Maximum time in seconds to wait for the VM to be ready after its
+        # start. Emulated VMs are much slower to boot.
+        self.start_timeout = vm_config.get(
+            "start_timeout_emulated" if self._emulated else "start_timeout"
+        )
 
         # default emulated cpu architecture
         if self.arch == "aarch64":
@@ -846,14 +851,11 @@ class VM:
         """
         Wait until VM is ready to accept commands.
 
-        Return False if it is not ready after 50 seconds for x86_64 and 200
-        seconds for aarch64.
+        Return False if it is not ready after start_timeout seconds.
         """
         sleeping_time = 5
-        if self.arch == "aarch64":  # VM very long to boot in emulation mode
-            sleeping_time = 20
-
-        for _ in range(1, 10):
+        deadline = time.monotonic() + self.start_timeout
+        while True:
             # Check if Qemu process is really running
             if self._vm.poll() is not None:
                 raise RiftError(
@@ -862,9 +864,10 @@ class VM:
             time.sleep(sleeping_time)
             if self.running():
                 return True
+            if time.monotonic() >= deadline:
+                return False
             sys.stdout.write(".")
             sys.stdout.flush()
-        return False
 
     def stop(self, unlink=True):
         """
@@ -928,7 +931,9 @@ class VM:
         self._start_auth_proxy()
         self.spawn()
         if not self.ready():
-            raise RiftError("VM did not become ready in time")
+            raise RiftError(
+                f"VM did not become ready within {self.start_timeout} seconds"
+            )
         self.prepare()
         return True
 
