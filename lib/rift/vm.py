@@ -266,7 +266,8 @@ class VM:
         """
         Return (ssh_port, proxy_port) in the given range for this VM.
 
-        SSH port is derived from the VM unique identifier. Proxy port is the
+        SSH port is derived from the identifier shared by all slots, then
+        spaced by slot so that concurrent slots never collide. Proxy port is the
         next port in the range (wrapping) so it never matches this VM's SSH
         port.
         """
@@ -277,7 +278,12 @@ class VM:
                 "VM port range maximum must be greater than the minimum"
             ) from exc
         span = port_range["max"] - port_range["min"]
-        ssh = (int(self.vmid, 16) % span) + port_range["min"]
+        # Base offset is derived from the identifier shared by all slots, then
+        # each slot is shifted by 2 ports to reserve room for its SSH port and
+        # its proxy port (SSH + 1), so consecutive slots never overlap.
+        ssh = ((int(self.imageid, 16) + 2 * self.slot) % span) + port_range["min"]
+        # Proxy port is the next port after SSH, wrapping back to the range
+        # minimum when SSH is the last port of the range.
         proxy = port_range["min"] + ((ssh - port_range["min"] + 1) % span)
         return ssh, proxy
 
