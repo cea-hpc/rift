@@ -388,9 +388,11 @@ class ArchRepositoriesRPM(ArchRepositoriesBase):
 
     def generate(self, host=None, token_proxy=None):
         """
-        Render a dnf/yum repository file for the supplementary repositories
+        Render dnf/yum repository stanzas for the supplementary repositories
         declared in the project for the architecture (working repository is
-        excluded).
+        excluded). Return an ordered list of (repository name, stanza) tuples,
+        each stanza ending with a newline. Path separators in the returned
+        repository names are replaced by underscores.
         """
         stanzas = []
         prio = 1000
@@ -424,10 +426,10 @@ class ArchRepositoriesRPM(ArchRepositoriesBase):
                 lines.append(f"excludepkgs={repo.excludepkgs}")
             if proxy:
                 lines.append(f"proxy={proxy}")
-            stanzas.append("\n".join(lines))
-        if not stanzas:
-            return ""
-        return "\n\n".join(stanzas) + "\n"
+            # Replace path separators in the returned name so that it can be
+            # used safely as a file name.
+            stanzas.append((repo.name.replace(os.sep, "_"), "\n".join(lines) + "\n"))
+        return stanzas
 
     def delete_matching(self, package):
         """

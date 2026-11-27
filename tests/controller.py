@@ -3663,7 +3663,10 @@ class ControllerProjectActionRepoTest(RiftProjectTestCase):
         """Test repo generate renders x86_64 repositories on stdout."""
         buf = StringIO()
         with patch.object(
-            ArchRepositoriesRPM, "generate", autospec=True, return_value="rendered\n"
+            ArchRepositoriesRPM,
+            "generate",
+            autospec=True,
+            return_value=[("rendered", "rendered\n")],
         ) as generate, patch("sys.stdout", buf):
             rc = main(["repo", "generate", "--arch", "x86_64"])
         self.assertEqual(rc, 0)
@@ -3680,7 +3683,7 @@ class ControllerProjectActionRepoTest(RiftProjectTestCase):
     def test_generate_default_arch(self):
         """Test repo generate uses project chroot architecture by default."""
         with patch.object(
-            ArchRepositoriesRPM, "generate", autospec=True, return_value=""
+            ArchRepositoriesRPM, "generate", autospec=True, return_value=[]
         ) as generate, patch("sys.stdout", StringIO()):
             rc = main(["repo", "generate"])
         self.assertEqual(rc, 0)
@@ -3690,7 +3693,10 @@ class ControllerProjectActionRepoTest(RiftProjectTestCase):
         """Test repo generate writes output file with host and token proxy."""
         output = os.path.join(self.projdir, "rift.repo")
         with patch.object(
-            ArchRepositoriesRPM, "generate", autospec=True, return_value="rendered\n"
+            ArchRepositoriesRPM,
+            "generate",
+            autospec=True,
+            return_value=[("rendered", "rendered\n")],
         ) as generate:
             rc = main(
                 [
@@ -3715,7 +3721,7 @@ class ControllerProjectActionRepoTest(RiftProjectTestCase):
     def test_generate_arch_repos(self):
         """Test repo generate resolves architecture specific repositories."""
         with patch.object(
-            ArchRepositoriesRPM, "generate", autospec=True, return_value=""
+            ArchRepositoriesRPM, "generate", autospec=True, return_value=[]
         ) as generate, patch("sys.stdout", StringIO()):
             rc = main(
                 ["repo", "generate", "--arch", "aarch64", "-H", "http://pkgs.external"]
@@ -3737,6 +3743,24 @@ class ControllerProjectActionRepoTest(RiftProjectTestCase):
             "[os]\nname=os\nbaseurl=https://pkgs.internal:8443/8.8/BaseOS/$basearch/os\n",
             buf.getvalue(),
         )
+
+    def test_generate_output_dir(self):
+        """Test repo generate writes one file per repository in output directory."""
+        output_dir = os.path.join(self.projdir, "repos.d")
+        rc = main(["repo", "generate", "--arch", "x86_64", "-d", output_dir])
+        self.assertEqual(rc, 0)
+        self.assertCountEqual(
+            os.listdir(output_dir), ["os.repo", "private.repo", "local.repo"]
+        )
+        content = read_file(os.path.join(output_dir, "os.repo"))
+        self.assertTrue(
+            content.startswith(
+                "[os]\nname=os\n"
+                "baseurl=https://pkgs.internal:8443/8.8/BaseOS/$basearch/os\n"
+            )
+        )
+        self.assertTrue(content.endswith("\n"))
+        self.assertEqual(content.count("["), 1)
 
     def test_generate_invalid_host(self):
         """Test repo generate fails on invalid host."""
@@ -4065,6 +4089,7 @@ class ControllerArgumentsTest(RiftTestCase):
         opts = make_parser().parse_args(["repo", "generate"])
         self.assertEqual(opts.repo_cmd, "generate")
         self.assertIsNone(opts.output)
+        self.assertIsNone(opts.output_dir)
         self.assertIsNone(opts.arch)
         self.assertIsNone(opts.host)
         self.assertIsNone(opts.token_proxy)
@@ -4091,6 +4116,21 @@ class ControllerArgumentsTest(RiftTestCase):
         self.assertEqual(opts.token_proxy, "http://127.0.0.1:8765")
         short = make_parser().parse_args(["repo", "generate", "-H", "pkgs.external"])
         self.assertEqual(short.host, "pkgs.external")
+
+    def test_parse_args_repo_generate_output_dir(self):
+        """Test repo generate parser output directory option."""
+        opts = make_parser().parse_args(["repo", "generate", "-d", "repos.d"])
+        self.assertEqual(opts.output_dir, "repos.d")
+        self.assertIsNone(opts.output)
+        opts = make_parser().parse_args(["repo", "generate", "--output-dir", "x"])
+        self.assertEqual(opts.output_dir, "x")
+
+    def test_parse_args_repo_generate_output_exclusive(self):
+        """Test repo generate parser rejects both output file and directory."""
+        with self.assertRaises(SystemExit), patch("sys.stderr", StringIO()):
+            make_parser().parse_args(
+                ["repo", "generate", "-o", "out.repo", "-d", "repos.d"]
+            )
 
 
 class ReposConfParseTest(RiftTestCase):
