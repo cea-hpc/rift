@@ -238,6 +238,20 @@ def make_parser():
         choices=RIFT_SUPPORTED_FORMATS,
         help="restrict tests to specific package formats",
     )
+    subprs.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="omit tests output when they succeed",
+    )
+    subprs.add_argument(
+        "--seq",
+        action="store_true",
+        help=(
+            "run one architecture and one variant at a time with live output "
+            "(no parallel threads)"
+        ),
+    )
 
     # Validate options
     subprs = subparsers.add_parser("validate", help="Fully validate package")
@@ -780,7 +794,7 @@ def _run_pkg_matrix(args, pkg, archs, stagings, worker, action):
         if not pkg.supports_arch(arch):
             logging.info(
                 "Skipping %s on architecture %s not supported by %s package %s",
-                "validation" if action == "validate" else "build",
+                "validation" if action == "validate" else action,
                 arch,
                 pkg.format,
                 pkg.name,
@@ -1042,50 +1056,46 @@ def action_sign(args, config):
     return 0
 
 
+def _test_pkg_variant(args, pkg, arch, _, variant):
+    """
+    Test one package variant on an architecture and return results.
+    """
+    return pkg.for_arch(arch, variant=variant).test(
+        noauto=args.noauto, noquit=args.noquit
+    )
+
+
 def action_test(args, config):
     """Action for 'test' command."""
     staff, modules = staff_modules(config)
     results = TestResults("test")
+    archs = config.get("arch")
+
     # Test package on all project supported architectures
+    for pkg in ProjectPackages.list(config, staff, modules, args.packages):
+        # Skip package if format is not selected by user
+        if args.formats and pkg.format not in args.formats:
+            logging.info(
+                "Skipping tests %s package %s due to restriction on package formats",
+                pkg.format,
+                pkg.name,
+            )
+            continue
 
-    for arch in config.get("arch"):
-        for pkg in ProjectPackages.list(config, staff, modules, args.packages):
-            # Skip package if format is not selected by user
-            if args.formats and pkg.format not in args.formats:
-                logging.info(
-                    "Skipping tests %s package %s due to restriction on "
-                    "package formats",
-                    pkg.format,
-                    pkg.name,
-                )
-                continue
+        # Load package and report possible failure
+        now = time.time()
+        try:
+            pkg.load()
+        except RiftError as ex:
+            # Create a dummy parse test case to report this error
+            # specifically. When parsing succeeds, this test case is not
+            # reported in test results.
+            case = TestCase("load", pkg.name, _DEFAULT_VARIANT, archs[0], pkg.format)
+            logging.error("Unable to load %s package: %s", pkg.format, str(ex))
+            results.add_failure(case, time.time() - now, err=str(ex))
+            continue  # skip current package
 
-            # Load package and report possible failure
-            now = time.time()
-            try:
-                pkg.load()
-            except RiftError as ex:
-                # Create a dummy parse test case to report this error
-                # specifically. When parsing succeeds, this test case is not
-                # reported in test results.
-                case = TestCase("load", pkg.name, _DEFAULT_VARIANT, arch, pkg.format)
-                logging.error("Unable to load %s package: %s", pkg.format, str(ex))
-                results.add_failure(case, time.time() - now, err=str(ex))
-                continue  # skip current package
-
-            if not pkg.supports_arch(arch):
-                logging.info(
-                    "Skipping test on architecture %s not supported by %s package %s",
-                    arch,
-                    pkg.format,
-                    pkg.name,
-                )
-                continue
-
-            for variant in pkg.variants:
-                pkg_arch = pkg.for_arch(arch, variant=variant)
-                pkg_results = pkg_arch.test(noauto=args.noauto, noquit=args.noquit)
-                results.extend(pkg_results)
+        results.extend(_run_pkg_matrix(args, pkg, archs, {}, _test_pkg_variant, "test"))
 
     if getattr(args, "junit", False):
         logging.info("Writing test results in %s", args.junit)
