@@ -178,6 +178,11 @@ class VM:
         self.qemu = config.get("qemu", arch=arch)
 
         self.enable_kvm = vm_config.get("enable_kvm")
+        # Maximum time in seconds to wait for the VM to be ready after its
+        # start. Emulated VMs are much slower to boot.
+        self.start_timeout = vm_config.get(
+            "start_timeout_emulated" if self._emulated else "start_timeout"
+        )
 
         # default emulated cpu architecture
         if self.arch == "aarch64":
@@ -211,6 +216,16 @@ class VM:
         self.build_post_script = config.project_path(vm_config.get("build_post_script"))
         self.images_cache = vm_config.get("images_cache")
         self.kernel = vm_config.get("kernel")
+
+    @property
+    def _emulated(self):
+        """
+        True if the VM is emulated by QEMU, False if it is accelerated by KVM.
+        KVM acceleration is only possible on the same architecture as the host.
+        Use platform.machine() instead of platform.processor() to be container
+        compatible.
+        """
+        return not (self.arch == platform.machine() and self.enable_kvm)
 
     @property
     def imageid(self):
@@ -367,9 +382,7 @@ class VM:
                 "-object",
                 f"memory-backend-file,id=mem,size={str(self.memory)}M,mem-path=/tmp,share=on",
             ]
-            # Use platform.machine() instead of platform.proccessor to be container
-            # compatible.
-            if self.arch == platform.machine() and self.enable_kvm:
+            if not self._emulated:
                 cmd += ["-machine", "memory-backend=mem,accel=kvm"]
             else:
                 cmd += ["-machine", "memory-backend=mem"]
@@ -432,9 +445,7 @@ class VM:
 
         # If we are on the same architecture we should be able to use kvm
         # acceleration
-        # Use platform.machine() instead of platform.proccessor to be container
-        # compatible.
-        if self.arch == platform.machine() and self.enable_kvm:
+        if not self._emulated:
             cmd += ["-enable-kvm"]
         elif self.arch != platform.machine():
             cmd += ["-machine", "virt"]
@@ -846,14 +857,11 @@ class VM:
         """
         Wait until VM is ready to accept commands.
 
-        Return False if it is not ready after 50 seconds for x86_64 and 200
-        seconds for aarch64.
+        Return False if it is not ready after start_timeout seconds.
         """
         sleeping_time = 5
-        if self.arch == "aarch64":  # VM very long to boot in emulation mode
-            sleeping_time = 20
-
-        for _ in range(1, 10):
+        deadline = time.monotonic() + self.start_timeout
+        while True:
             # Check if Qemu process is really running
             if self._vm.poll() is not None:
                 raise RiftError(
@@ -862,9 +870,10 @@ class VM:
             time.sleep(sleeping_time)
             if self.running():
                 return True
+            if time.monotonic() >= deadline:
+                return False
             sys.stdout.write(".")
             sys.stdout.flush()
-        return False
 
     def stop(self, unlink=True):
         """
@@ -927,7 +936,10 @@ class VM:
         # Start authenticated repositories proxy
         self._start_auth_proxy()
         self.spawn()
-        self.ready()
+        if not self.ready():
+            raise RiftError(
+                f"VM did not become ready within {self.start_timeout} seconds"
+            )
         self.prepare()
         return True
 

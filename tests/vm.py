@@ -17,6 +17,8 @@ from rift.config import (
     _DEFAULT_VM_MEMORY,
     _DEFAULT_VM_PORT_RANGE_MAX,
     _DEFAULT_VM_PORT_RANGE_MIN,
+    _DEFAULT_VM_START_TIMEOUT,
+    _DEFAULT_VM_START_TIMEOUT_EMULATED,
     Config,
 )
 from rift.package import Test
@@ -795,6 +797,35 @@ class VMTest(RiftTestCase):
         mock_message.assert_not_called()
         mock_download_file.assert_not_called()
 
+    @patch("rift.vm.platform.machine", return_value="x86_64")
+    def test_start_timeout(self, mock_machine):
+        """Test VM start timeout depends on KVM acceleration"""
+        self.config.set("arch", ["x86_64", "aarch64"])
+        # Same architecture with KVM
+        vm = VM(self.config, "x86_64")
+        self.assertFalse(vm._emulated)
+        self.assertEqual(vm.start_timeout, _DEFAULT_VM_START_TIMEOUT)
+        # Same architecture without KVM
+        self.config.set("vm", {"image": "/path/to/image", "enable_kvm": False})
+        vm = VM(self.config, "x86_64")
+        self.assertTrue(vm._emulated)
+        self.assertEqual(vm.start_timeout, _DEFAULT_VM_START_TIMEOUT_EMULATED)
+        # Other architecture
+        vm = VM(self.config, "aarch64")
+        self.assertTrue(vm._emulated)
+        self.assertEqual(vm.start_timeout, _DEFAULT_VM_START_TIMEOUT_EMULATED)
+        # Values from configuration
+        self.config.set(
+            "vm",
+            {
+                "image": "/path/to/image",
+                "start_timeout": 120,
+                "start_timeout_emulated": 600,
+            },
+        )
+        self.assertEqual(VM(self.config, "x86_64").start_timeout, 120)
+        self.assertEqual(VM(self.config, "aarch64").start_timeout, 600)
+
     @patch("rift.vm.message")
     def test_start(self, mock_message):
         """Test VM start not running"""
@@ -828,6 +859,57 @@ class VMTest(RiftTestCase):
         vm._auth_proxy.required = False
         self.assertTrue(vm.start(force=False))
         vm._auth_proxy.start.assert_not_called()
+
+    @patch("rift.vm.message")
+    def test_start_not_ready(self, mock_message):
+        """Test VM start raises error when VM does not become ready"""
+        vm = VM(self.config, platform.machine())
+        vm.running = Mock(return_value=False)
+        vm._download = Mock()
+        vm.spawn = Mock()
+        vm.ready = Mock(return_value=False)
+        vm.prepare = Mock()
+        vm._auth_proxy = Mock()
+        with self.assertRaisesRegex(
+            RiftError,
+            f"^VM did not become ready within {vm.start_timeout} seconds$",
+        ):
+            vm.start(force=False)
+        vm.prepare.assert_not_called()
+
+    @patch("rift.vm.time.sleep")
+    @patch("rift.vm.time.monotonic")
+    def test_ready(self, mock_monotonic, mock_sleep):
+        """Test VM ready() returns True when VM accepts connections"""
+        # Setup VM with a 12 seconds start timeout.
+        # Clock is read at start (0) and after the failed check (5). The first
+        # check fails, the second succeeds.
+        vm = VM(self.config, platform.machine())
+        vm._vm = Mock()
+        vm._vm.poll.return_value = None
+        vm.start_timeout = 12
+        mock_monotonic.side_effect = [0, 5]
+        vm.running = Mock(side_effect=[False, True])
+        self.assertTrue(vm.ready())
+        self.assertEqual(vm.running.call_count, 2)  # fails at 5, succeeds at 10
+        self.assertEqual(mock_sleep.call_count, 2)  # one sleep before each check
+
+    @patch("rift.vm.time.sleep")
+    @patch("rift.vm.time.monotonic")
+    def test_ready_timeout(self, mock_monotonic, mock_sleep):
+        """Test VM ready() returns False after start timeout"""
+        # Setup VM with a 12 seconds start timeout.
+        # Clock is read at start (0) and after each failed check (5, 10, 15).
+        # All checks fail.
+        vm = VM(self.config, platform.machine())
+        vm._vm = Mock()
+        vm._vm.poll.return_value = None
+        vm.start_timeout = 12
+        mock_monotonic.side_effect = [0, 5, 10, 15]
+        vm.running = Mock(return_value=False)
+        self.assertFalse(vm.ready())
+        self.assertEqual(vm.running.call_count, 3)  # checks at 5, 10 and 15
+        self.assertEqual(mock_sleep.call_count, 3)  # one sleep before each check
 
     @patch("rift.vm.message")
     def test_download_serialized(self, mock_message):
